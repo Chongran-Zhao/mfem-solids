@@ -1,0 +1,4 @@
+*.dSYM/
+*.o
+build/
+compile_commands.json
