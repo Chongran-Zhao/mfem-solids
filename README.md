@@ -9,9 +9,9 @@ through the code line by line; this repository holds the code those posts descri
 
 ## Steps
 
-| Program | Problem | Introduces |
-|---|---|---|
-| `1d-elastostatics.cpp` | A bar fixed at one end, pulled by a uniform axial traction at the other | `Mesh`, `H1_FECollection`, `FiniteElementSpace`, essential and natural boundary conditions, `BilinearForm`, `LinearForm`, `FormLinearSystem`, `CGSolver` |
+| Program | Problem | Introduces | Write-up |
+|---|---|---|---|
+| `1d-elastostatics.cpp` | A bar fixed at one end, pulled by a uniform axial traction at the other | `Mesh`, `H1_FECollection`, `FiniteElementSpace`, essential and natural boundary conditions, `BilinearForm`, `LinearForm`, `FormLinearSystem`, `CGSolver` | [MFEM 01](https://chongran-zhao.github.io/notes/mfem-01/) |
 
 ## Building
 
