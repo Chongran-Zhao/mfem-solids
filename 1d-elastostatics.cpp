@@ -74,7 +74,8 @@ int main()
    mfem::CGSolver solver;
    solver.SetRelTol(1e-12);
    solver.SetMaxIter(100);
-   solver.SetPrintLevel(0);
+   solver.SetPrintLevel(mfem::IterativeSolver::PrintLevel()
+                        .Warnings().Iterations().Summary());
    solver.SetPreconditioner(precond);
    solver.SetOperator(stiff_mat);
    solver.Mult(rhs, solution);
