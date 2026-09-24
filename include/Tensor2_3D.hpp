@@ -11,7 +11,6 @@
 #define TENSOR2_3D_HPP
 
 #include <array>
-#include <cassert>
 
 class Tensor2_3D
 {
@@ -58,7 +57,6 @@ public:
    {
       const Tensor2_3D &AA = *this;
       const double det_A = det();
-      assert(det_A != 0.0);
 
       Tensor2_3D out(AA(1, 1) * AA(2, 2) - AA(1, 2) * AA(2, 1),
                      AA(0, 2) * AA(2, 1) - AA(0, 1) * AA(2, 2),
