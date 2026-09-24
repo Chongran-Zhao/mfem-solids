@@ -33,6 +33,13 @@ public:
       return *this;
    }
 
+   Tensor4_3D &operator-=(const Tensor4_3D &BB)
+   {
+      for (int nn = 0; nn < 81; nn++)
+         ten[nn] -= BB.ten[nn];
+      return *this;
+   }
+
    Tensor4_3D &operator*=(double aa)
    {
       for (double &xx : ten)
@@ -60,6 +67,7 @@ private:
 };
 
 inline Tensor4_3D operator+(Tensor4_3D AA, const Tensor4_3D &BB) { return AA += BB; }
+inline Tensor4_3D operator-(Tensor4_3D AA, const Tensor4_3D &BB) { return AA -= BB; }
 inline Tensor4_3D operator*(double aa, Tensor4_3D BB) { return BB *= aa; }
 
 // Outer product of two second-order tensors (A otimes B)_ijkl = A_ij B_kl.
