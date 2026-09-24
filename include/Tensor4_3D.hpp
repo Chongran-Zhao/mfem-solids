@@ -31,7 +31,6 @@ public:
    }
 
    // 6 x 6 Voigt form, out(P, Q) = C_ijkl, with P from (i,j) and Q from (k,l)
-   // in the order
    mfem::DenseMatrix to_voigt() const
    {
       mfem::DenseMatrix out(6);
