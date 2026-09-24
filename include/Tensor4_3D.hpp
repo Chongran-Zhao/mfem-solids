@@ -11,7 +11,6 @@
 #define TENSOR4_3D_HPP
 
 #include "mfem.hpp"
-
 #include <array>
 
 class Tensor4_3D
