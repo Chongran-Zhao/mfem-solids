@@ -47,7 +47,7 @@ public:
    // CC = (-2/3) mu J^-2/3 ( I otimes C^-1 + C^-1 otimes I)
    //    + (kappa J (2J-1) + (2/9) mu J^-2/3 I1) C^-1 otimes C^-1
    //    - 2 (kappa J (J-1) - (1/3) mu J^-2/3 I1) C^-1 odot C^-1
-   Tensor4_3D get_stiffness(const Tensor2_3D &F) const override
+   Tensor4_3D get_2nd_elasticity_tensor(const Tensor2_3D &F) const override
    {
       const double det_F = F.det();
       const Tensor2_3D C = F.transpose() * F;
