@@ -10,6 +10,7 @@
 #ifndef TENSOR2_3D_HPP
 #define TENSOR2_3D_HPP
 
+#include "Vector_3D.hpp"
 #include <array>
 
 class Tensor2_3D
@@ -110,6 +111,22 @@ inline Tensor2_3D operator*(const Tensor2_3D &AA, const Tensor2_3D &BB)
          for (int kk = 0; kk < 3; kk++)
             out(ii, jj) += AA(ii, kk) * BB(kk, jj);
    return out;
+}
+
+// Double contraction A : B = A_ij B_ij.
+inline double contract(const Tensor2_3D &AA, const Tensor2_3D &BB)
+{
+   return AA(0, 0) * BB(0, 0) + AA(0, 1) * BB(0, 1) + AA(0, 2) * BB(0, 2)
+          + AA(1, 0) * BB(1, 0) + AA(1, 1) * BB(1, 1) + AA(1, 2) * BB(1, 2)
+          + AA(2, 0) * BB(2, 0) + AA(2, 1) * BB(2, 1) + AA(2, 2) * BB(2, 2);
+}
+
+// Outer product (a otimes b)_ij = a_i b_j.
+inline Tensor2_3D otimes(const Vector_3D &aa, const Vector_3D &bb)
+{
+   return Tensor2_3D(aa(0) * bb(0), aa(0) * bb(1), aa(0) * bb(2),
+                     aa(1) * bb(0), aa(1) * bb(1), aa(1) * bb(2),
+                     aa(2) * bb(0), aa(2) * bb(1), aa(2) * bb(2));
 }
 
 #endif
