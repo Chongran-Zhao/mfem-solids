@@ -19,7 +19,7 @@ through the code line by line; this repository holds the code those posts descri
 | Header | Content |
 |---|---|
 | `Vector_3D.hpp`, `Tensor2_3D.hpp`, `Tensor4_3D.hpp` | first-, second- and fourth-order tensors in 3D |
-| `HyperelasticMaterialModel.hpp` | interface of a hyperelastic material: $\bm S$, $\mathbb C$, and from them $\bm P$ and $\mathbb A = \partial\bm P/\partial\bm F$ |
+| `HyperelasticMaterialModel.hpp` | interface of a hyperelastic material: $\boldsymbol{S}$, $\mathbb{C}$, and from them $\boldsymbol{P}$ and $\mathbb{A} = \partial\boldsymbol{P}/\partial\boldsymbol{F}$ |
 | `CompressibleNeoHookean.hpp` | the compressible Neo-Hookean model |
 | `CompressibleHyperelasticIntegrator.hpp` | element residual and tangent, `AssembleElementVector` and `AssembleElementGrad` |
 
