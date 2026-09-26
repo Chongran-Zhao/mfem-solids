@@ -41,3 +41,8 @@ add_executable(read_mesh read_mesh.cpp)
 target_include_directories(read_mesh PRIVATE ${MFEM_INCLUDE_DIRS})
 target_link_libraries(read_mesh PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
 target_compile_definitions(read_mesh PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_executable(driver driver.cpp)
+target_include_directories(driver PRIVATE ../include ${MFEM_INCLUDE_DIRS})
+target_link_libraries(driver PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
+target_compile_definitions(driver PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
