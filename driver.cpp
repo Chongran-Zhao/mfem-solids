@@ -9,45 +9,28 @@
 // Step 4: collect the constrained dofs of each Dirichlet condition.
 // Step 5: define the material.
 // Step 6: build the nonlinear form and Newton's method.
-// Step 7: raise the prescribed displacements over the load steps.
+// Step 7: raise the prescribed displacements over the load steps and save
+//         the displacement of each step into results_gf, which
+//         write_paraview and write_traction_disp read.
 //
 // Author: Chongran Zhao
 // Date: Sep. 26, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #include "CompressibleHyperelasticIntegrator.hpp"
-#include "CompressibleNeoHookean.hpp"
-#include "VTK_write.hpp"
+#include "MaterialModel.hpp"
+#include "NewtonMonitor.hpp"
+#include "PrescribedComponent.hpp"
+#include "PrintInfo.hpp"
 #include "mfem.hpp"
 #include <yaml-cpp/yaml.h>
 #include <array>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
 #include <vector>
-
-// Prints the residual norm of every Newton iteration, absolute and relative
-// to the first iteration of the load step. NewtonSolver calls
-// MonitorResidual once per iteration, and once more with final = true.
-class NewtonMonitor : public mfem::IterativeSolverMonitor
-{
-public:
-   void MonitorResidual(int it, mfem::real_t norm, const mfem::Vector &,
-                        bool final) override
-   {
-      if (final)
-         return;
-      if (it == 0)
-         initial_norm = norm;
-      mfem::out << std::left << std::setw(12) << it << std::scientific
-                << std::setprecision(6) << std::setw(18) << norm
-                << norm / initial_norm << std::defaultfloat << '\n';
-   }
-
-private:
-   double initial_norm = 1.0;
-};
 
 int main(int argc, char *argv[])
 {
@@ -61,15 +44,7 @@ int main(int argc, char *argv[])
    //    the driver runs in the same directory, normally build/.
    const std::string mesh_file = config["mesh"]["output"].as<std::string>();
    mfem::Mesh mesh(mesh_file);
-
-   mfem::out << "\nMesh\n" << std::string(74, '-') << '\n' << std::left
-             << std::setw(20) << "file" << std::filesystem::absolute(mesh_file).string() << '\n'
-             << std::setw(20) << "elements" << mesh.GetNE() << '\n'
-             << std::setw(20) << "boundary elements" << mesh.GetNBE() << '\n'
-             << std::setw(20) << "faces";
-   for (const std::string &name : mesh.bdr_attribute_sets.GetAttributeSetNames())
-      mfem::out << name << ' ';
-   mfem::out << '\n' << std::string(74, '-') << '\n';
+   print_mesh(mesh_file, mesh);
 
    // 3. Continuous shape functions of the given order, with three components
    //    per node.
@@ -79,32 +54,17 @@ int main(int argc, char *argv[])
    mfem::FiniteElementSpace fespace(&mesh, &fec, dim, mfem::Ordering::byVDIM);
    mfem::GridFunction disp(&fespace);
    disp = 0.0;
-
-   mfem::out << std::setw(20) << "order" << order << '\n'
-             << std::setw(20) << "unknowns" << fespace.GetTrueVSize() << '\n'
-             << std::string(74, '-') << '\n';
+   print_space(order, fespace);
 
    // 4. Each Dirichlet condition names a face, the constrained components and
    //    their values. The face name gives the marker array of its boundary
    //    attributes, and GetEssentialTrueDofs collects the dofs of one
    //    component on the marked faces. A node on two constrained faces is
-   //    collected twice, hence Sort and Unique at the end.
+   //    collected twice, hence Sort and Unique at the end. Each prescribed
+   //    component is kept for the load steps.
    const std::array<std::string, 3> component_names = {"x", "y", "z"};
    mfem::Array<int> ess_tdof_list;
-
-   // One prescribed component on one face, kept for the load steps.
-   struct PrescribedComponent
-   {
-      std::string face;
-      mfem::Array<int> face_marker;
-      int component;
-      double value;
-   };
    std::vector<PrescribedComponent> prescribed;
-
-   mfem::out << "\nDirichlet conditions\n"
-             << std::setw(10) << "face" << std::setw(12) << "component"
-             << std::setw(12) << "value" << "dofs\n" << std::string(74, '-') << '\n';
 
    for (const YAML::Node &condition : config["dirichlet"])
    {
@@ -130,25 +90,17 @@ int main(int argc, char *argv[])
          mfem::Array<int> component_dofs;
          fespace.GetEssentialTrueDofs(face_marker, component_dofs, component);
          ess_tdof_list.Append(component_dofs);
-         prescribed.push_back({face, face_marker, component, values[cc]});
-
-         mfem::out << std::setw(10) << face << std::setw(12) << components[cc]
-                   << std::setw(12) << values[cc] << component_dofs.Size() << '\n';
+         prescribed.push_back({face, face_marker, component, values[cc],
+                               component_dofs.Size()});
       }
    }
    ess_tdof_list.Sort();
    ess_tdof_list.Unique();
+   print_dirichlet(prescribed, ess_tdof_list.Size());
 
-   mfem::out << std::string(74, '-') << '\n'
-             << std::setw(34) << "constrained unknowns" << ess_tdof_list.Size() << "\n\n";
-
-   // 5. Material, kept in the code for now: Young's modulus and Poisson's
-   //    ratio of the reference case, converted to shear and bulk moduli.
-   const double young = 540.0e3;
-   const double poisson = 0.324;
-   const double mu = young / (2.0 * (1.0 + poisson));
-   const double kappa = young / (3.0 * (1.0 - 2.0 * poisson));
-   const CompressibleNeoHookean material(kappa, mu);
+   // 5. The material is given in include/MaterialModel.hpp, so that
+   //    write_paraview and write_traction_disp use the same one.
+   const MaterialModel material = get_material_model();
 
    // 6. The nonlinear form owns the integrator; the material must outlive it.
    //    Newton's method solves R(d) = 0 from the current disp, with CG for
@@ -181,17 +133,26 @@ int main(int argc, char *argv[])
 
    // 7. At load step n of N every prescribed value is scaled by n / N and
    //    projected onto its face; the other nodes keep the previous solution,
-   //    which is the initial guess of Newton's method. Each converged step is
-   //    saved for ParaView.
+   //    which is the initial guess of Newton's method.
    const int load_steps = config["load_steps"].as<int>();
    const std::string length_unit = config["units"]["length"].as<std::string>();
 
-   // One VTU file per step on the deformed mesh, with the displacement and
-   // the first and second Piola-Kirchhoff stresses; step 0 is the undeformed
-   // state.
-   VTK_write output(config["output"]["paraview"].as<std::string>());
-   output.save(0, 0.0, fespace, disp, material);
+   // The displacement of each step as an MFEM grid function,
+   // <results>/disp_XXXX.gf, step 0 included. The folder is emptied first so
+   // that no files of an earlier run with more steps are left.
+   const std::filesystem::path results_dir = config["output"]["results"].as<std::string>();
+   std::filesystem::remove_all(results_dir);
+   std::filesystem::create_directories(results_dir);
 
+   auto save_disp = [&](int step)
+   {
+      std::ostringstream name;
+      name << "disp_" << std::setw(4) << std::setfill('0') << step << ".gf";
+      std::ofstream disp_file(results_dir / name.str());
+      disp_file.precision(16);
+      disp.Save(disp_file);
+   };
+   save_disp(0);
 
    const mfem::Vector zero_rhs;
    for (int step = 1; step <= load_steps; step++)
@@ -206,35 +167,19 @@ int main(int argc, char *argv[])
          disp.ProjectBdrCoefficient(face_disp.data(), item.face_marker);
       }
 
-      // Header: the displacement applied on each face at this step.
-      mfem::out << std::string(74, '=') << '\n'
-                << "Load step " << step << " / " << load_steps << '\n';
-      for (std::size_t ii = 0; ii < prescribed.size(); ii++)
-      {
-         const PrescribedComponent &item = prescribed[ii];
-         const bool new_face = (ii == 0 || prescribed[ii - 1].face != item.face);
-         if (new_face)
-            mfem::out << (ii == 0 ? "" : "\n") << "  " << std::left << std::setw(8)
-                      << item.face << "displacement ";
-         else
-            mfem::out << ", ";
-         mfem::out << 'u' << component_names[item.component] << " = "
-                   << factor * item.value << ' ' << length_unit;
-      }
-      mfem::out << "\n\n"
-                << std::left << std::setw(12) << "iteration" << std::setw(18) << "||R||"
-                << "||R|| / ||R_0||\n";
+      print_load_step(step, load_steps, factor, prescribed, length_unit);
 
       newton_solver.Mult(zero_rhs, disp);
       MFEM_VERIFY(newton_solver.GetConverged(), "Newton did not converge at step " << step << ".");
 
       mfem::out << "converged in " << newton_solver.GetNumIterations() << " iterations\n";
 
-      output.save(step, factor, fespace, disp, material);
+      save_disp(step);
    }
 
-   mfem::out << std::string(74, '=') << "\n\n" << std::left << std::setw(20) << "saved"
-             << std::filesystem::absolute(output.get_pvd_path()).string() << "\n\n";
+   mfem::out << std::string(74, '=') << "\n\n";
+   print_saved(results_dir);
+   mfem::out << '\n';
 
    return 0;
 }

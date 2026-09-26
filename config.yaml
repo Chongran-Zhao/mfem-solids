@@ -28,7 +28,7 @@ space:
 # their final values.
 dirichlet:
   - { face: left,  components: [x, y, z], values: [0.0, 0.0, 0.0] }
-  - { face: right, components: [y],       values: [-0.5] }
+  - { face: right, components: [z],       values: [-0.5] }
 
 # The prescribed values are reached in this many equal load steps.
 load_steps: 25
@@ -40,6 +40,9 @@ solver:
   linear_rel_tol: 1.0e-6
   linear_max_iter: 500
 
-# Folder of the ParaView output, in the directory the driver runs in.
+# Output folders, in the directory the programs run in: the displacement of
+# each step as MFEM grid functions, written by the driver, and the ParaView
+# files, written from them by write_paraview.
 output:
   paraview: ParaView
+  results: results_gf
