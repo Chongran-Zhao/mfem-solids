@@ -1,0 +1,45 @@
+# Input of read_mesh and of the driver. Input paths are relative to the
+# directory of this file; output paths are relative to the directory the
+# programs run in, normally build/.
+
+# Used by read_mesh.
+mesh:
+  # Mesh file in MFEM format.
+  file: ../meshes/Beam_coarse-hex.mesh
+  # Number of uniform refinements; each one splits a hexahedron into 8.
+  refine_levels: 0
+  # Mesh file written by read_mesh, with the six faces labelled and named.
+  output: beam.mesh
+  # Web page showing the named faces in 3D, and whether to open it.
+  output_html: beam_boundary.html
+  open_html: true
+
+# Used by the driver.
+# Units of the input, only used when printing: lengths and displacements.
+units:
+  length: m
+
+space:
+  # Order of the continuous shape functions.
+  order: 1
+
+# Prescribed displacements. Each condition names a face written by read_mesh
+# (left, right, front, back, bottom, top), the constrained components and
+# their final values.
+dirichlet:
+  - { face: left,  components: [x, y, z], values: [0.0, 0.0, 0.0] }
+  - { face: right, components: [y],       values: [-0.5] }
+
+# The prescribed values are reached in this many equal load steps.
+load_steps: 25
+
+# Newton's method and the CG solver of its linear systems.
+solver:
+  newton_rel_tol: 1.0e-8
+  newton_max_iter: 20
+  linear_rel_tol: 1.0e-6
+  linear_max_iter: 500
+
+# Folder of the ParaView output, in the directory the driver runs in.
+output:
+  paraview: ParaView
