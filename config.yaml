@@ -14,10 +14,15 @@ mesh:
   output_html: beam_boundary.html
   open_html: true
 
-# Used by the driver.
-# Units of the input, only used when printing: lengths and displacements.
+# Used by the driver and write_traction_disp.
+# Units of the input, only used when printing. The program converts nothing:
+# length is the unit of the mesh coordinates, stress that of the material
+# parameters in include/MaterialModel.hpp, and force must be stress times
+# length squared (Pa m^2 = N).
 units:
   length: m
+  stress: Pa
+  force: N
 
 space:
   # Order of the continuous shape functions.
@@ -46,3 +51,16 @@ solver:
 output:
   paraview: ParaView
   results: results_gf
+
+# Used by write_traction_disp: for each face, the mean displacement and the
+# resultant force on it at the chosen load steps, from the results of the
+# driver. One CSV file per face, <output>/<face>.csv.
+traction_disp:
+  # Faces written by read_mesh.
+  faces: [left, right]
+  # Load steps: all (0 to load_steps), or a list such as [5, 25].
+  steps: all
+  # Components of the displacement and the force.
+  components: [x, y, z]
+  # Folder of the CSV files, in the directory the program runs in.
+  output: results_csv

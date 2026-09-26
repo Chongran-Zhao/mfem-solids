@@ -48,3 +48,8 @@ add_executable(write_paraview write_paraview.cpp)
 target_include_directories(write_paraview PRIVATE include ${MFEM_INCLUDE_DIRS})
 target_link_libraries(write_paraview PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
 target_compile_definitions(write_paraview PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_executable(write_traction_disp write_traction_disp.cpp)
+target_include_directories(write_traction_disp PRIVATE include ${MFEM_INCLUDE_DIRS})
+target_link_libraries(write_traction_disp PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
+target_compile_definitions(write_traction_disp PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
