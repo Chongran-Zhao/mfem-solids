@@ -17,7 +17,7 @@
 // ============================================================================
 #include "CompressibleHyperelasticIntegrator.hpp"
 #include "MaterialModel.hpp"
-#include "PrintInfo.hpp"
+#include "SystemTools.hpp"
 #include "mfem.hpp"
 #include <yaml-cpp/yaml.h>
 #include <array>
@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
    //    build/.
    const std::string mesh_file = config["mesh"]["output"].as<std::string>();
    mfem::Mesh mesh(mesh_file);
-   print_mesh(mesh_file, mesh);
+   SystemTools::print_mesh(mesh_file, mesh);
 
    // 3. The same space and nonlinear form as in the driver, but without
    //    essential dofs, so that Mult gives the internal force
@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
    mfem::FiniteElementSpace fespace(&mesh, &fec, dim, mfem::Ordering::byVDIM);
    mfem::GridFunction disp(&fespace);
    mfem::Vector internal_force(fespace.GetTrueVSize());
-   print_space(order, fespace);
+   SystemTools::print_space(fespace);
 
    const MaterialModel material = get_material_model();
    mfem::NonlinearForm nonlinear_form(&fespace);
@@ -77,14 +77,9 @@ int main(int argc, char *argv[])
    //    from 0 to load_steps, or the given list; the components are given
    //    by name.
    const YAML::Node paras = config["traction_disp"];
-   const int load_steps = config["load_steps"].as<int>();
+   const int load_steps = config["Dirichlet"]["load_steps"].as<int>();
    const std::filesystem::path results_dir = config["output"]["results"].as<std::string>();
    const std::filesystem::path output_dir = paras["output"].as<std::string>();
-
-   // Units of u, F and t = F / A_0, from the units section of config.yaml.
-   const std::array<std::string, 3> units = {config["units"]["length"].as<std::string>(),
-                                             config["units"]["force"].as<std::string>(),
-                                             config["units"]["stress"].as<std::string>()};
    std::filesystem::create_directories(output_dir);
 
    std::vector<int> steps;
@@ -165,7 +160,7 @@ int main(int argc, char *argv[])
    };
 
    // CSV header: step, load factor, then u, F and t = F / A_0 for each
-   // chosen component, with the unit in brackets, e.g. u_x[m].
+   // chosen component, e.g. u_x.
    for (ReportedFace &face : faces)
    {
       face.csv.open(output_dir / (face.name + ".csv"));
@@ -173,8 +168,7 @@ int main(int argc, char *argv[])
       const std::array<std::string, 3> quantities = {"u", "F", "t"};
       for (int qq = 0; qq < 3; qq++)
          for (int component : components)
-            face.csv << ',' << quantities[qq] << '_' << component_names[component]
-                     << '[' << units[qq] << ']';
+            face.csv << ',' << quantities[qq] << '_' << component_names[component];
       face.csv << '\n' << std::scientific << std::setprecision(10);
    }
 
@@ -204,9 +198,9 @@ int main(int argc, char *argv[])
       mfem::out << std::string(74, '=') << '\n'
                 << "Load step " << step << " / " << load_steps << "\n\n"
                 << std::left << std::setw(10) << "face" << std::setw(6) << ""
-                << std::setw(19) << "u_mean [" + units[0] + "]"
-                << std::setw(19) << "F [" + units[1] + "]"
-                << "t = F / A_0 [" + units[2] + "]\n";
+                << std::setw(19) << "u_mean"
+                << std::setw(19) << "F"
+                << "t = F / A_0\n";
 
       for (ReportedFace &face : faces)
       {
@@ -237,7 +231,7 @@ int main(int argc, char *argv[])
 
    mfem::out << std::string(74, '=') << "\n\n";
    for (const ReportedFace &face : faces)
-      print_saved(output_dir / (face.name + ".csv"));
+      SystemTools::print_saved(output_dir / (face.name + ".csv"));
    mfem::out << '\n';
 
    return 0;

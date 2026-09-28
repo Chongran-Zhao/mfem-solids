@@ -92,14 +92,20 @@ public:
    // All constrained dofs, for NonlinearForm::SetEssentialTrueDofs.
    mfem::Array<int> get_ess_tdof_list() const { return ess_tdof_list; }
 
-   // Sets disp at load step n: zero on fixed faces, n / N * target_disp on
-   // driven faces.
-   void apply_Dirichlet_bc(int step, mfem::GridFunction &disp) const
+   // Whether disp_bc is read.
+   bool get_is_disp_load() const { return is_disp_load; }
+
+   // Sets disp to zero on fixed faces.
+   void apply_fixed_bc(mfem::GridFunction &disp) const
    {
       for (const disp_fixed_face &fixed_face : disp_fixed_list)
          for (int dof : fixed_face.dofs)
             disp(dof) = 0.0;
+   }
 
+   // Sets disp at load step n to n / N * target_disp on driven faces.
+   void apply_disp_load_bc(int step, mfem::GridFunction &disp) const
+   {
       const double factor = static_cast<double>(step) / num_load_steps;
       for (const disp_load_face &load_face : disp_load_list)
          for (int dof : load_face.dofs)
@@ -123,11 +129,12 @@ public:
                    << std::setw(12) << "fixed"
                    << fixed_face.dofs.Size() << '\n';
 
-      for (const disp_load_face &load_face : disp_load_list)
-         mfem::out << std::setw(10) << load_face.face
-                   << std::setw(12) << "xyz"[load_face.dir]
-                   << std::setw(12) << load_face.target_disp
-                   << load_face.dofs.Size() << '\n';
+      if (is_disp_load)
+         for (const disp_load_face &load_face : disp_load_list)
+            mfem::out << std::setw(10) << load_face.face
+                      << std::setw(12) << "xyz"[load_face.dir]
+                      << std::setw(12) << load_face.target_disp
+                      << load_face.dofs.Size() << '\n';
 
       mfem::out << std::string(74, '-') << '\n'
                 << std::setw(34) << "constrained unknowns"
@@ -139,7 +146,7 @@ public:
 
 
    // Prints load step n and the displacement of each driven face.
-   void print_disp_load_by_step(int step, const std::string &length_unit) const
+   void print_disp_load_by_step(int step) const
    {
       mfem::out << std::string(74, '=') << '\n'
                 << "Load step " << step << " / " << num_load_steps << '\n';
@@ -149,8 +156,7 @@ public:
          mfem::out << "  " << std::left
                    << std::setw(8) << load_face.face
                    << "displacement u" << "xyz"[load_face.dir]
-                   << " = " << factor * load_face.target_disp
-                   << ' ' << length_unit << '\n';
+                   << " = " << factor * load_face.target_disp << '\n';
    }
 
 private:

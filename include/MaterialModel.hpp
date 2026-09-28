@@ -17,8 +17,7 @@
 using MaterialModel = CompressibleNeoHookean;
 
 // Young's modulus and Poisson's ratio of the reference case, converted to
-// the shear and bulk moduli. The moduli are in the stress unit of
-// config.yaml.
+// the shear and bulk moduli.
 inline MaterialModel get_material_model()
 {
    const double young = 540.0e3;

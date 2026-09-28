@@ -14,7 +14,7 @@
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #include "MaterialModel.hpp"
-#include "PrintInfo.hpp"
+#include "SystemTools.hpp"
 #include "VTK_write.hpp"
 #include "mfem.hpp"
 #include <yaml-cpp/yaml.h>
@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
    //    build/.
    const std::string mesh_file = config["mesh"]["output"].as<std::string>();
    mfem::Mesh mesh(mesh_file);
-   print_mesh(mesh_file, mesh);
+   SystemTools::print_mesh(mesh_file, mesh);
 
    // 3. The stresses written to the VTU files are computed from the
    //    displacement with the material of include/MaterialModel.hpp.
@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
    //    <results>/disp_XXXX.gf. Each file holds its finite element space and
    //    the dof values, so the grid function is built from the mesh and the
    //    file alone. Step n is written at time n / N.
-   const int load_steps = config["load_steps"].as<int>();
+   const int load_steps = config["Dirichlet"]["load_steps"].as<int>();
    const std::filesystem::path results_dir = config["output"]["results"].as<std::string>();
 
    VTK_write output(config["output"]["paraview"].as<std::string>());
@@ -62,14 +62,14 @@ int main(int argc, char *argv[])
 
       mfem::GridFunction disp(&mesh, disp_file);
       if (step == 0)
-         print_space(disp.FESpace()->GetMaxElementOrder(), *disp.FESpace());
+         SystemTools::print_space(*disp.FESpace());
 
       const double time = static_cast<double>(step) / load_steps;
       output.save(step, time, *disp.FESpace(), disp, material);
    }
 
    mfem::out << '\n';
-   print_saved(output.get_pvd_path());
+   SystemTools::print_saved(output.get_pvd_path());
    mfem::out << '\n';
 
    return 0;

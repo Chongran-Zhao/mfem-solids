@@ -14,36 +14,31 @@ mesh:
   output_html: beam_boundary.html
   open_html: true
 
-# Used by the driver and write_traction_disp.
-# Units of the input, only used when printing. The program converts nothing:
-# length is the unit of the mesh coordinates, stress that of the material
-# parameters in include/MaterialModel.hpp, and force must be stress times
-# length squared (Pa m^2 = N).
-units:
-  length: m
-  stress: Pa
-  force: N
-
 space:
   # Order of the continuous shape functions.
   order: 1
 
-# Prescribed displacements. Each condition names a face written by read_mesh
-# (left, right, front, back, bottom, top), the constrained components and
-# their final values.
-dirichlet:
-  - { face: left,  components: [x, y, z], values: [0.0, 0.0, 0.0] }
-  - { face: right, components: [z],       values: [-0.5] }
+# Prescribed displacements. Each entry names a face written by read_mesh
+# (left, right, front, back, bottom, top) and one direction dir (x, y or z).
+#   fixed_bc      the displacement in that direction is zero;
+#   is_disp_load  whether load_steps and disp_bc are read;
+#   disp_bc       the displacement in that direction reaches disp in
+#                 load_steps equal steps.
+Dirichlet:
+  fixed_bc:
+    - { face: left, dir: x }
+    - { face: left, dir: y }
+    - { face: left, dir: z }
+  is_disp_load: true
+  load_steps: 25
+  disp_bc:
+    - { face: right, dir: z, disp: -0.5 }
 
-# The prescribed values are reached in this many equal load steps.
-load_steps: 25
-
-# Newton's method and the CG solver of its linear systems.
+# Newton's method; its linear systems are solved directly with UMFPACK.
 solver:
   newton_rel_tol: 1.0e-8
+  newton_abs_tol: 0.0
   newton_max_iter: 20
-  linear_rel_tol: 1.0e-6
-  linear_max_iter: 500
 
 # Output folders, in the directory the programs run in: the displacement of
 # each step as MFEM grid functions, written by the driver, and the ParaView
