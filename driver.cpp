@@ -3,7 +3,7 @@
 //
 // Hyperelastostatics on the labelled mesh written by read_mesh. Boundary
 // conditions are read from config.yaml and refer to faces by name.
-// 
+//
 // Author: Chongran Zhao
 // Date: Sep. 28, 2026
 // Email: chongran_zhao@brown.edu
@@ -22,20 +22,18 @@
 
 int main(int argc, char *argv[])
 {
-   // 1. By default the config.yaml next to this source file is read.
+   // 1. Read config.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
                  : std::filesystem::path(SOURCE_DIR) / "config.yaml";
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
-   // 2. read_mesh writes the labelled mesh into the directory it runs in, so
-   //    the driver runs in the same directory, normally build/.
+   // 2. Read the mesh file.
    const std::string mesh_file = config["mesh"]["output"].as<std::string>();
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
 
-   // 3. Continuous shape functions of the given order, with three components
-   //    per node.
+   // 3. Set up the finite element space.
    const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    mfem::H1_FECollection fec(order, dim);
@@ -44,27 +42,22 @@ int main(int argc, char *argv[])
    disp = 0.0;
    SystemTools::print_space(fespace);
 
-   // 4. The boundary conditions and the loading of config.yaml, see
-   //    include/boundary/BoundaryManager.hpp. Only one kind of loading:
-   //    prescribed displacement or traction.
+   // 4. Set up the boundary conditions.
    BoundaryManager boundaries(config, fespace);
    const int num_load_steps = boundaries.get_num_load_steps();
    boundaries.print_fixed_bc();
    boundaries.print_load();
 
-   // 5. The material is given in include/material/MaterialModel.hpp, so that
-   //    write_paraview and write_traction_disp use the same one.
+   // 5. Set up the material model.
    const MaterialModel material = get_material_model();
 
-   // 6. The nonlinear form owns the integrator; the material must outlive it.
-   //    Newton's method solves R(d) = 0 from the current disp, with the
-   //    direct solver UMFPACK (SuiteSparse) for the linear systems.
+   // 6. Construct the nonlinear form of the internal force.
    mfem::NonlinearForm nonlinear_form(&fespace);
    nonlinear_form.AddDomainIntegrator(new CompressibleHyperelasticIntegrator(material));
    nonlinear_form.SetEssentialTrueDofs(boundaries.get_ess_tdof_list());
 
+   // 7. Set up the linear solver and Newton's method.
    const YAML::Node solver = config["solver"];
-
    mfem::UMFPackSolver linear_solver;
 
    mfem::NewtonSolver newton_solver;
@@ -76,33 +69,26 @@ int main(int argc, char *argv[])
    newton_solver.SetPrintLevel(-1);
    newton_solver.iterative_mode = true;
 
-   // The Newton iterations are printed by SystemTools::NewtonMonitor.
+   // Monitor the Newton iterations.
    SystemTools::NewtonMonitor newton_monitor;
    newton_solver.SetMonitor(newton_monitor);
 
-   // 7. At load step n of N the boundary displacement is n / N times its
-   //    final value; the other nodes keep the previous solution, which is the
-   //    initial guess of Newton's method.
-
-   // The displacement of each step as an MFEM grid function,
-   // <results>/disp_XXXX.gf, step 0 included, in an emptied folder.
+   // Remove the former results.
    const std::filesystem::path results_dir = config["output"]["results"].as<std::string>();
    SystemTools::make_empty_dir(results_dir);
 
    SystemTools::save_gf(results_dir, "disp", 0, disp);
 
-   // External force f_ak = int N_a T_k dA over the traction faces, assembled
-   // at each load step under traction loading; zero under displacement
-   // loading.
+   // 8. Set up the external force.
    mfem::LinearForm external_force(&fespace);
    external_force = 0.0;
    if (boundaries.is_traction_load())
       boundaries.add_traction_integrators(external_force);
 
-   // The fixed faces are set once: Newton does not change the constrained
-   // dofs.
+   // Set zero displacement on the fixed faces.
    boundaries.apply_fixed_bc(disp);
 
+   // Loading loop.
    for (int step = 1; step <= num_load_steps; step++)
    {
       if (boundaries.is_disp_load())
@@ -117,9 +103,9 @@ int main(int argc, char *argv[])
       boundaries.print_load_by_step(step, disp, external_force);
       SystemTools::print_newton_header();
 
-      // Zero on the constrained dofs, whose residual NonlinearForm sets to
-      // zero; after the print, so that the resultant is the full traction.
+      // Set the external force to zero on the essential dofs.
       external_force.SetSubVector(boundaries.get_ess_tdof_list(), 0.0);
+      // Newton iterations for the displacement.
       newton_solver.Mult(external_force, disp);
       MFEM_VERIFY(newton_solver.GetConverged(), "Newton did not converge at step " << step << ".");
 
