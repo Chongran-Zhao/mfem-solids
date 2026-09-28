@@ -1,15 +1,16 @@
-# Input of read_mesh and of the driver. Input paths are relative to the
-# directory of this file; output paths are relative to the directory the
-# programs run in, normally build/.
+# Input of read_mesh, the driver, write_paraview and write_traction_disp.
+# Read from the source directory, or from the path given as first argument.
 
-# Used by read_mesh.
 mesh:
   # Mesh file in MFEM format.
   file: mesh_files/Beam_coarse-hex.mesh
-  # Number of uniform refinements; each one splits a hexahedron into 8.
+
+  # Number of uniform refinements.
   refine_levels: 0
-  # Mesh file written by read_mesh, with the six faces labelled and named.
+
+  # Name of the mesh file written by read_mesh.
   output: beam.mesh
+
   # Web page showing the named faces in 3D, and whether to open it.
   output_html: beam_boundary.html
   open_html: true
@@ -18,44 +19,38 @@ space:
   # Order of the continuous shape functions.
   order: 1
 
-# Prescribed displacements. Each entry names a face written by read_mesh
-# (left, right, front, back, bottom, top) and one direction dir (x, y or z).
-#   fixed_bc      the displacement in that direction is zero;
-#   is_disp_load  whether load_steps and disp_bc are read;
-#   disp_bc       the displacement in that direction reaches disp in
-#                 load_steps equal steps.
+# Loading settings.
+loading:
+  # Number of load steps; the final load is reached in equal steps.
+  load_steps: 25
+  # Loading type, displacement or traction.
+  type: displacement
+
+# Displacement boundary conditions, one entry per face and direction.
 Dirichlet:
+  # Zero displacement.
   fixed_bc:
     - { face: left, dir: x }
     - { face: left, dir: y }
     - { face: left, dir: z }
-  is_disp_load: true
-  load_steps: 25
+  # Prescribed displacement, given by LoadData::disp_driven.
   disp_bc:
-    - { face: right, dir: z, disp: -0.5 }
+    - { face: right, dir: z }
 
-# Newton's method; its linear systems are solved directly with UMFPACK.
+# Traction faces; the traction is given by LoadData::surface_traction.
+Neumann:
+  faces: []
+# faces: [right, top]
+
+# Newton's method settings.
+# The linear solver is UMFPACK.
 solver:
   newton_rel_tol: 1.0e-8
   newton_abs_tol: 0.0
   newton_max_iter: 20
 
-# Output folders, in the directory the programs run in: the displacement of
-# each step as MFEM grid functions, written by the driver, and the ParaView
-# files, written from them by write_paraview.
+# Output folders.
 output:
   paraview: ParaView
   results: results_gf
-
-# Used by write_traction_disp: for each face, the mean displacement and the
-# resultant force on it at the chosen load steps, from the results of the
-# driver. One CSV file per face, <output>/<face>.csv.
-traction_disp:
-  # Faces written by read_mesh.
-  faces: [left, right]
-  # Load steps: all (0 to load_steps), or a list such as [5, 25].
-  steps: all
-  # Components of the displacement and the force.
-  components: [x, y, z]
-  # Folder of the CSV files, in the directory the program runs in.
-  output: results_csv
+  csv: results_csv
