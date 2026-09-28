@@ -12,7 +12,6 @@
 #define DIRICHLET_BOUNDARY_HPP
 
 #include "LoadData.hpp"
-#include "Vector_3D.hpp"
 #include "mfem.hpp"
 #include <yaml-cpp/yaml.h>
 #include <algorithm>
@@ -30,20 +29,13 @@ public:
    {
       mfem::Mesh &mesh = *fespace.GetMesh();
 
-      // Face name -> marker array of its boundary attributes, e.g.
-      // {"left":   [1, 0, 0, 0, 0, 0],
-      //  "right":  [0, 1, 0, 0, 0, 0],
-      //  "front":  [0, 0, 1, 0, 0, 0],
-      //  "back":   [0, 0, 0, 1, 0, 0],
-      //  "bottom": [0, 0, 0, 0, 1, 0],
-      //  "top":    [0, 0, 0, 0, 0, 1]}
-      std::map<std::string, mfem::Array<int>> face_attribute_map;
+      // Construct face_attribute_map.
       for (const std::string &name :
            mesh.bdr_attribute_sets.GetAttributeSetNames())
          face_attribute_map[name] =
             mesh.bdr_attribute_sets.GetAttributeSetMarker(name);
 
-      // Fixed faces, one entry per direction.
+      // Fixed faces.
       for (const YAML::Node &bc : paras["fixed_bc"])
       {
          const std::string input_face = bc["face"].as<std::string>();
@@ -59,17 +51,7 @@ public:
          disp_fixed_list.push_back(fixed);
       }
 
-      // Reference coordinates of every dof: the identity pt projected onto
-      // the displacement space, so that its three dofs at a node are the
-      // x, y, z of that node.
-      mfem::GridFunction node_coor(&fespace);
-      mfem::VectorFunctionCoefficient identity(3,
-         [](const mfem::Vector &pt, mfem::Vector &out) { out = pt; });
-      node_coor.ProjectCoefficient(identity);
-
-      // Displacement-driven faces. The values come from
-      // LoadData::disp_driven.
-      // One entry per direction.
+      // Displacement-driven faces; the values come from LoadData::disp_driven.
       for (const YAML::Node &bc : paras["disp_bc"])
       {
          const std::string input_face = bc["face"].as<std::string>();
@@ -81,31 +63,21 @@ public:
          fespace.GetEssentialTrueDofs(face_attribute_map.at(input_face),
             load.dofs, load.dir);
 
-         // pt of the node of each dof.
-         for (int dof : load.dofs)
-         {
-            const int node = fespace.VDofToDof(dof);
-            load.coor.push_back(
-               Vector_3D(node_coor(fespace.DofToVDof(node, 0)),
-                         node_coor(fespace.DofToVDof(node, 1)),
-                         node_coor(fespace.DofToVDof(node, 2))));
-         }
-
          ess_tdof_list.Append(load.dofs);
          disp_load_list.push_back(load);
       }
 
       ess_tdof_list.Sort();
       ess_tdof_list.Unique();
-
-      MFEM_VERIFY(LoadData::is_disp_load() || disp_load_list.empty(),
-                  "The loading type is traction, so disp_bc must be empty.");
    }
+
+   // Whether disp_bc has any entry.
+   bool is_disp_load() const { return !disp_load_list.empty(); }
 
    // All constrained dofs, for NonlinearForm::SetEssentialTrueDofs.
    mfem::Array<int> get_ess_tdof_list() const { return ess_tdof_list; }
 
-   // Sets disp to zero on fixed faces.
+   // Set the displacement to zero on the fixed faces.
    void apply_fixed_bc(mfem::GridFunction &disp) const
    {
       for (const disp_fixed &fixed : disp_fixed_list)
@@ -113,20 +85,22 @@ public:
             disp(dof) = 0.0;
    }
 
-   // Sets disp at load step n on driven faces to the dir component of
-   // LoadData::disp_driven(pt, tt) at each dof, tt = n / N.
-   void apply_disp_load_bc(int step, mfem::GridFunction &disp) const
+   // Apply the disp loading given by LoadData::disp_driven(pt, tt).
+   void apply_disp_load_bc(double tt, mfem::GridFunction &disp) const
    {
-      const double tt = LoadData::get_time(step);
       for (const disp_load &load : disp_load_list)
-         for (int ii = 0; ii < load.dofs.Size(); ii++)
-            disp(load.dofs[ii]) = LoadData::disp_driven(
-               load.coor[ii], tt, load.face)(load.dir);
+      {
+         mfem::FunctionCoefficient value([&](const mfem::Vector &pt)
+         { return LoadData::disp_driven(pt, tt, load.face)(load.dir); });
+
+         mfem::Coefficient *coeff[3] = {nullptr, nullptr, nullptr};
+         coeff[load.dir] = &value;
+         disp.ProjectBdrCoefficient(coeff, face_attribute_map.at(load.face));
+      }
    }
 
 
-   // Prints the fixed faces, and the number of all constrained unknowns;
-   // a node on two constrained faces counts once.
+   // Print the fixed faces and the number of all constrained unknowns.
    void print_fixed_bc() const
    {
       mfem::out << "\nFixed boundary\n" << std::left
@@ -145,7 +119,7 @@ public:
                 << ess_tdof_list.Size() << "\n\n";
    }
 
-   // Prints the displacement-driven faces.
+   // Print the displacement-driven faces.
    void print_disp_load() const
    {
       mfem::out << "Displacement loading\n" << std::left
@@ -163,21 +137,17 @@ public:
    }
 
 
-   // Prints the displacement of each driven face at load step n: its value
-   // if uniform over the face, else its range.
-   void print_disp_load_by_step(int step) const
+   // Print the prescribed displacement of each driven face.
+   void print_disp_load_by_step(const mfem::GridFunction &disp) const
    {
-      const double tt = LoadData::get_time(step);
       for (const disp_load &load : disp_load_list)
       {
          double min_disp = std::numeric_limits<double>::max();
          double max_disp = std::numeric_limits<double>::lowest();
-         for (const Vector_3D &pt : load.coor)
+         for (int dof : load.dofs)
          {
-            const double value =
-               LoadData::disp_driven(pt, tt, load.face)(load.dir);
-            min_disp = std::min(min_disp, value);
-            max_disp = std::max(max_disp, value);
+            min_disp = std::min(min_disp, disp(dof));
+            max_disp = std::max(max_disp, disp(dof));
          }
 
          mfem::out << "  " << std::left
@@ -205,13 +175,21 @@ private:
       std::string face;          // face name
       int dir;                   // 0, 1, 2 for x, y, z
       mfem::Array<int> dofs;     // dofs of this direction on the face
-      std::vector<Vector_3D> coor;  // reference coordinates of the dofs
    };
 
    // "x", "y", "z" -> 0, 1, 2
    inline static const std::map<std::string, int> dir_map = {{"x", 0}, {"y", 1}, {"z", 2}};
 
-   mfem::Array<int> ess_tdof_list;                // union of all constrained dofs
+   // Face name -> marker array of its boundary attributes, e.g.
+   // {"left":   [1, 0, 0, 0, 0, 0],
+   //  "right":  [0, 1, 0, 0, 0, 0],
+   //  "front":  [0, 0, 1, 0, 0, 0],
+   //  "back":   [0, 0, 0, 1, 0, 0],
+   //  "bottom": [0, 0, 0, 0, 1, 0],
+   //  "top":    [0, 0, 0, 0, 0, 1]}
+   std::map<std::string, mfem::Array<int>> face_attribute_map;
+
+   mfem::Array<int> ess_tdof_list;           // union of all constrained dofs
    std::vector<disp_fixed> disp_fixed_list;  // one per entry of fixed_bc
    std::vector<disp_load> disp_load_list;    // one per entry of disp_bc
 };
