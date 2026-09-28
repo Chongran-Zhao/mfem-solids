@@ -1,11 +1,6 @@
 // ============================================================================
 // SystemTools.hpp
 //
-// The tables and headers printed by the programs of this project: the mesh,
-// the finite element space, the Newton iterations and the saved files, the
-// output folder and the .gf files. The Dirichlet conditions and the header
-// of a load step are printed by DirichletBoundary.hpp.
-//
 // Author: Chongran Zhao
 // Date: Sep. 26, 2026
 // Email: chongran_zhao@brown.edu
