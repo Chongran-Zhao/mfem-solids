@@ -66,7 +66,7 @@ public:
    //     return Vector_3D(0.0, std::cos(a) * y - std::sin(a) * z - y,
    //                           std::sin(a) * y + std::cos(a) * z - z);
    static Vector_3D disp_driven(const mfem::Vector &pt, double tt,
-                                    const std::string &face)
+                                const std::string &face)
    {
       switch (get_face(face))
       {
@@ -88,7 +88,7 @@ public:
 
 private:
 
-  enum class faces { left, right, front, back, bottom, top };
+   enum class faces { left, right, front, back, bottom, top };
 
    // Face name -> faces.
    static faces get_face(const std::string &face)
