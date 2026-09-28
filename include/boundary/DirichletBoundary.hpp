@@ -11,8 +11,12 @@
 #ifndef DIRICHLET_BOUNDARY_HPP
 #define DIRICHLET_BOUNDARY_HPP
 
+#include "LoadData.hpp"
+#include "Vector_3D.hpp"
 #include "mfem.hpp"
 #include <yaml-cpp/yaml.h>
+#include <algorithm>
+#include <limits>
 #include <map>
 #include <iomanip>
 #include <string>
@@ -23,8 +27,6 @@ class DirichletBoundary
 public:
    // Reads the Dirichlet section of config.yaml.
    DirichletBoundary(const YAML::Node &paras, mfem::FiniteElementSpace &fespace)
-      : is_disp_load(paras["is_disp_load"].as<bool>()),
-        num_load_steps(is_disp_load ? paras["load_steps"].as<int>() : 0)
    {
       mfem::Mesh &mesh = *fespace.GetMesh();
 
@@ -47,121 +49,150 @@ public:
          const std::string input_face = bc["face"].as<std::string>();
          const std::string input_dir = bc["dir"].as<std::string>();
 
-         disp_fixed_face fixed_face;
-         fixed_face.face = input_face;
-         fixed_face.dir = dir_map.at(input_dir);
+         disp_fixed fixed;
+         fixed.face = input_face;
+         fixed.dir = dir_map.at(input_dir);
          fespace.GetEssentialTrueDofs(face_attribute_map.at(input_face)
-            ,fixed_face.dofs, fixed_face.dir);
+            ,fixed.dofs, fixed.dir);
 
-         ess_tdof_list.Append(fixed_face.dofs);
-         disp_fixed_list.push_back(fixed_face);
+         ess_tdof_list.Append(fixed.dofs);
+         disp_fixed_list.push_back(fixed);
       }
 
-      // Displacement-driven faces, read only if is_disp_load.
-      if (is_disp_load)
-         // One entry per direction.
-         for (const YAML::Node &bc : paras["disp_bc"])
+      // Reference coordinates of every dof: the identity pt projected onto
+      // the displacement space, so that its three dofs at a node are the
+      // x, y, z of that node.
+      mfem::GridFunction node_coor(&fespace);
+      mfem::VectorFunctionCoefficient identity(3,
+         [](const mfem::Vector &pt, mfem::Vector &out) { out = pt; });
+      node_coor.ProjectCoefficient(identity);
+
+      // Displacement-driven faces. The values come from
+      // LoadData::disp_driven.
+      // One entry per direction.
+      for (const YAML::Node &bc : paras["disp_bc"])
+      {
+         const std::string input_face = bc["face"].as<std::string>();
+         const std::string input_dir = bc["dir"].as<std::string>();
+
+         disp_load load;
+         load.face = input_face;
+         load.dir = dir_map.at(input_dir);
+         fespace.GetEssentialTrueDofs(face_attribute_map.at(input_face),
+            load.dofs, load.dir);
+
+         // pt of the node of each dof.
+         for (int dof : load.dofs)
          {
-            const std::string input_face = bc["face"].as<std::string>();
-            const std::string input_dir = bc["dir"].as<std::string>();
-            const double input_disp = bc["disp"].as<double>();
-
-            disp_load_face load_face;
-            load_face.face = input_face;
-            load_face.dir = dir_map.at(input_dir);
-            load_face.target_disp = input_disp;
-            fespace.GetEssentialTrueDofs(face_attribute_map.at(input_face),
-               load_face.dofs, load_face.dir);
-
-            ess_tdof_list.Append(load_face.dofs);
-            disp_load_list.push_back(load_face);
+            const int node = fespace.VDofToDof(dof);
+            load.coor.push_back(
+               Vector_3D(node_coor(fespace.DofToVDof(node, 0)),
+                         node_coor(fespace.DofToVDof(node, 1)),
+                         node_coor(fespace.DofToVDof(node, 2))));
          }
+
+         ess_tdof_list.Append(load.dofs);
+         disp_load_list.push_back(load);
+      }
 
       ess_tdof_list.Sort();
       ess_tdof_list.Unique();
-   }
 
-   // Number of load steps; defined only with displacement loading.
-   int get_num_load_steps() const
-   {
-      MFEM_VERIFY(is_disp_load, "is_disp_load is false in config.yaml,"
-         " so there are no displacement load steps.");
-      return num_load_steps;
+      MFEM_VERIFY(LoadData::is_disp_load() || disp_load_list.empty(),
+                  "The loading type is traction, so disp_bc must be empty.");
    }
 
    // All constrained dofs, for NonlinearForm::SetEssentialTrueDofs.
    mfem::Array<int> get_ess_tdof_list() const { return ess_tdof_list; }
 
-   // Whether disp_bc is read.
-   bool get_is_disp_load() const { return is_disp_load; }
-
    // Sets disp to zero on fixed faces.
    void apply_fixed_bc(mfem::GridFunction &disp) const
    {
-      for (const disp_fixed_face &fixed_face : disp_fixed_list)
-         for (int dof : fixed_face.dofs)
+      for (const disp_fixed &fixed : disp_fixed_list)
+         for (int dof : fixed.dofs)
             disp(dof) = 0.0;
    }
 
-   // Sets disp at load step n to n / N * target_disp on driven faces.
+   // Sets disp at load step n on driven faces to the dir component of
+   // LoadData::disp_driven(pt, tt) at each dof, tt = n / N.
    void apply_disp_load_bc(int step, mfem::GridFunction &disp) const
    {
-      const double factor = static_cast<double>(step) / num_load_steps;
-      for (const disp_load_face &load_face : disp_load_list)
-         for (int dof : load_face.dofs)
-            disp(dof) = factor * load_face.target_disp;
+      const double tt = LoadData::get_time(step);
+      for (const disp_load &load : disp_load_list)
+         for (int ii = 0; ii < load.dofs.Size(); ii++)
+            disp(load.dofs[ii]) = LoadData::disp_driven(
+               load.coor[ii], tt, load.face)(load.dir);
    }
 
 
-   // Prints all Dirichlet conditions.
-   void print_Dirichlet_bc() const
+   // Prints the fixed faces, and the number of all constrained unknowns;
+   // a node on two constrained faces counts once.
+   void print_fixed_bc() const
    {
-      mfem::out << "\nDirichlet conditions\n" << std::left
+      mfem::out << "\nFixed boundary\n" << std::left
                 << std::setw(10) << "face"
                 << std::setw(12) << "dir"
-                << std::setw(12) << "disp"
                 << "dofs\n"
                 << std::string(74, '-') << '\n';
 
-      for (const disp_fixed_face &fixed_face : disp_fixed_list)
-         mfem::out << std::setw(10) << fixed_face.face
-                   << std::setw(12) << "xyz"[fixed_face.dir]
-                   << std::setw(12) << "fixed"
-                   << fixed_face.dofs.Size() << '\n';
-
-      if (is_disp_load)
-         for (const disp_load_face &load_face : disp_load_list)
-            mfem::out << std::setw(10) << load_face.face
-                      << std::setw(12) << "xyz"[load_face.dir]
-                      << std::setw(12) << load_face.target_disp
-                      << load_face.dofs.Size() << '\n';
+      for (const disp_fixed &fixed : disp_fixed_list)
+         mfem::out << std::setw(10) << fixed.face
+                   << std::setw(12) << "xyz"[fixed.dir]
+                   << fixed.dofs.Size() << '\n';
 
       mfem::out << std::string(74, '-') << '\n'
                 << std::setw(34) << "constrained unknowns"
-                << ess_tdof_list.Size() << '\n';
-      if (is_disp_load)
-         mfem::out << std::setw(34) << "load steps" << num_load_steps << '\n';
-      mfem::out << '\n';
+                << ess_tdof_list.Size() << "\n\n";
+   }
+
+   // Prints the displacement-driven faces.
+   void print_disp_load() const
+   {
+      mfem::out << "Displacement loading\n" << std::left
+                << std::setw(10) << "face"
+                << std::setw(12) << "dir"
+                << "dofs\n"
+                << std::string(74, '-') << '\n';
+
+      for (const disp_load &load : disp_load_list)
+         mfem::out << std::setw(10) << load.face
+                   << std::setw(12) << "xyz"[load.dir]
+                   << load.dofs.Size() << '\n';
+
+      mfem::out << std::string(74, '-') << "\n\n";
    }
 
 
-   // Prints load step n and the displacement of each driven face.
+   // Prints the displacement of each driven face at load step n: its value
+   // if uniform over the face, else its range.
    void print_disp_load_by_step(int step) const
    {
-      mfem::out << std::string(74, '=') << '\n'
-                << "Load step " << step << " / " << num_load_steps << '\n';
+      const double tt = LoadData::get_time(step);
+      for (const disp_load &load : disp_load_list)
+      {
+         double min_disp = std::numeric_limits<double>::max();
+         double max_disp = std::numeric_limits<double>::lowest();
+         for (const Vector_3D &pt : load.coor)
+         {
+            const double value =
+               LoadData::disp_driven(pt, tt, load.face)(load.dir);
+            min_disp = std::min(min_disp, value);
+            max_disp = std::max(max_disp, value);
+         }
 
-      const double factor = static_cast<double>(step) / num_load_steps;
-      for (const disp_load_face &load_face : disp_load_list)
          mfem::out << "  " << std::left
-                   << std::setw(8) << load_face.face
-                   << "displacement u" << "xyz"[load_face.dir]
-                   << " = " << factor * load_face.target_disp << '\n';
+                   << std::setw(8) << load.face
+                   << "displacement u" << "xyz"[load.dir];
+         if (min_disp == max_disp)
+            mfem::out << " = " << min_disp << '\n';
+         else
+            mfem::out << " in [" << min_disp << ", " << max_disp << "]\n";
+      }
    }
 
 private:
    // One direction on a fixed face.
-   struct disp_fixed_face
+   struct disp_fixed
    {
       std::string face;          // face name
       int dir;                   // 0, 1, 2 for x, y, z
@@ -169,22 +200,20 @@ private:
    };
 
    // One direction on a displacement-driven face.
-   struct disp_load_face
+   struct disp_load
    {
       std::string face;          // face name
       int dir;                   // 0, 1, 2 for x, y, z
-      double target_disp;        // displacement reached at the final step
       mfem::Array<int> dofs;     // dofs of this direction on the face
+      std::vector<Vector_3D> coor;  // reference coordinates of the dofs
    };
 
    // "x", "y", "z" -> 0, 1, 2
    inline static const std::map<std::string, int> dir_map = {{"x", 0}, {"y", 1}, {"z", 2}};
 
-   const bool is_disp_load;                       // whether disp_bc is read
-   const int num_load_steps;
    mfem::Array<int> ess_tdof_list;                // union of all constrained dofs
-   std::vector<disp_fixed_face> disp_fixed_list;  // one per entry of fixed_bc
-   std::vector<disp_load_face> disp_load_list;    // one per entry of disp_bc
+   std::vector<disp_fixed> disp_fixed_list;  // one per entry of fixed_bc
+   std::vector<disp_load> disp_load_list;    // one per entry of disp_bc
 };
 
 #endif
