@@ -2,18 +2,19 @@
 
 Finite-strain hyperelastostatics with [MFEM](https://mfem.org/): a Total Lagrangian
 formulation with a hand-written material model and element integrator, Dirichlet
-conditions on named faces, load stepping and Newton's method.
+and traction conditions on named faces, load stepping and Newton's method.
 
 ## Programs
 
 | Program | Reads | Writes |
 |---|---|---|
 | `read_mesh` | the mesh in `config.yaml` | `beam.mesh` with the six box faces named `left`, `right`, `front`, `back`, `bottom`, `top`, and a 3D view of them, `beam_boundary.html` |
-| `driver` | `beam.mesh`, the Dirichlet conditions and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
+| `driver` | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
 | `write_paraview` | `results_gf/` | `ParaView/`: the deformed mesh with the displacement and the first and second Piola-Kirchhoff stresses |
-| `write_traction_disp` | `results_gf/` | `results_csv/<face>.csv`: mean displacement, resultant force and mean traction on the chosen faces at each step |
+| `write_traction_disp` | `results_gf/` | `results_csv/<face>.csv`: mean displacement, resultant force and mean traction on every named face at each step |
 
-All settings are in `config.yaml`; the material is in `include/material/MaterialModel.hpp`.
+All settings are in `config.yaml`; the material is in `include/material/MaterialModel.hpp`,
+and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
 
 ## Building and running
 
