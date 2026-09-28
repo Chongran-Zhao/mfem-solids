@@ -1,13 +1,13 @@
 // ============================================================================
 // write_traction_disp.cpp
 //
-// For each face named in the traction_disp section of config.yaml: the mean
-// displacement and the resultant force on the face at the chosen load steps,
+// For each face named by read_mesh: the mean
+// displacement and the resultant force on the face at every load step,
 // computed from the displacement saved by the driver.
 // Step 1: read config.yaml.
 // Step 2: read the labelled mesh written by read_mesh.
 // Step 3: create the displacement space and the nonlinear form of the driver.
-// Step 4: collect the faces, steps and components to report.
+// Step 4: collect the faces named by read_mesh.
 // Step 5: for each step, the mean displacement and the resultant force on
 //         each face, printed and written to one CSV file per face.
 //
@@ -15,11 +15,6 @@
 // Date: Sep. 26, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#include "CompressibleHyperelasticIntegrator.hpp"
-#include "MaterialModel.hpp"
-#include "SystemTools.hpp"
-#include "mfem.hpp"
-#include <yaml-cpp/yaml.h>
 #include <array>
 #include <filesystem>
 #include <fstream>
@@ -27,6 +22,11 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <mfem.hpp>
+#include <yaml-cpp/yaml.h>
+#include "CompressibleHyperelasticIntegrator.hpp"
+#include "MaterialModel.hpp"
+#include "SystemTools.hpp"
 
 // One face to report: its name, the marker array of its boundary attributes,
 // the dofs of each component on it, its area and the CSV file.
@@ -73,42 +73,20 @@ int main(int argc, char *argv[])
    nonlinear_form.AddDomainIntegrator(new CompressibleHyperelasticIntegrator(material));
 
    // 4. For each face: its marker, the dofs of each component on it and its
-   //    area A_0 in the reference configuration. The steps are all steps
-   //    from 0 to load_steps, or the given list; the components are given
-   //    by name.
-   const YAML::Node paras = config["traction_disp"];
-   const int load_steps = config["Dirichlet"]["load_steps"].as<int>();
+   //    area A_0 in the reference configuration. All faces named by
+   //    read_mesh, all steps from 0 to load_steps and all components x, y, z
+   //    are reported.
+   const int load_steps = config["loading"]["load_steps"].as<int>();
    const std::filesystem::path results_dir = config["output"]["results"].as<std::string>();
-   const std::filesystem::path output_dir = paras["output"].as<std::string>();
+   const std::filesystem::path output_dir = config["output"]["csv"].as<std::string>();
    std::filesystem::create_directories(output_dir);
 
-   std::vector<int> steps;
-   if (paras["steps"].IsScalar() && paras["steps"].as<std::string>() == "all")
-      for (int step = 0; step <= load_steps; step++)
-         steps.push_back(step);
-   else
-      steps = paras["steps"].as<std::vector<int>>();
-   for (int step : steps)
-      MFEM_VERIFY(step >= 0 && step <= load_steps, "Step " << step << " is not in [0, "
-                  << load_steps << "].");
-
    const std::array<std::string, 3> component_names = {"x", "y", "z"};
-   std::vector<int> components;
-   for (const std::string &name : paras["components"].as<std::vector<std::string>>())
-   {
-      int component = -1;
-      for (int axis = 0; axis < 3; axis++)
-         if (name == component_names[axis])
-            component = axis;
-      MFEM_VERIFY(component >= 0, "Unknown component \"" << name << "\".");
-      components.push_back(component);
-   }
+   const std::vector<int> components = {0, 1, 2};
 
    std::vector<ReportedFace> faces;
-   for (const std::string &name : paras["faces"].as<std::vector<std::string>>())
+   for (const std::string &name : mesh.bdr_attribute_sets.GetAttributeSetNames())
    {
-      MFEM_VERIFY(mesh.bdr_attribute_sets.AttributeSetExists(name),
-                  "Unknown face \"" << name << "\" in config.yaml.");
       ReportedFace face;
       face.name = name;
       face.face_marker = mesh.bdr_attribute_sets.GetAttributeSetMarker(name);
@@ -179,7 +157,7 @@ int main(int argc, char *argv[])
    //       t_k      = F_k / A_0                   mean nominal traction
    //    printed as one table per step and appended to the CSV of the face.
    const mfem::Vector zero_rhs;
-   for (int step : steps)
+   for (int step = 0; step <= load_steps; step++)
    {
       std::ostringstream name;
       name << "disp_" << std::setw(4) << std::setfill('0') << step << ".gf";

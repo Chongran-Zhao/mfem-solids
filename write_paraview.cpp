@@ -13,16 +13,16 @@
 // Date: Sep. 26, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#include "MaterialModel.hpp"
-#include "SystemTools.hpp"
-#include "VTK_write.hpp"
-#include "mfem.hpp"
-#include <yaml-cpp/yaml.h>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <mfem.hpp>
+#include <yaml-cpp/yaml.h>
+#include "MaterialModel.hpp"
+#include "SystemTools.hpp"
+#include "VTK_write.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
    //    <results>/disp_XXXX.gf. Each file holds its finite element space and
    //    the dof values, so the grid function is built from the mesh and the
    //    file alone. Step n is written at time n / N.
-   const int load_steps = config["Dirichlet"]["load_steps"].as<int>();
+   const int load_steps = config["loading"]["load_steps"].as<int>();
    const std::filesystem::path results_dir = config["output"]["results"].as<std::string>();
 
    VTK_write output(config["output"]["paraview"].as<std::string>());
