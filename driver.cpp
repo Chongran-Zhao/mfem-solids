@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
    newton_solver.SetMonitor(newton_monitor);
 
    // Remove the former results.
-   const std::filesystem::path results_dir = config["output"]["results"].as<std::string>();
+   const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    SystemTools::make_empty_dir(results_dir);
 
    SystemTools::save_gf(results_dir, "disp", 0, disp);

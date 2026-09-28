@@ -57,7 +57,7 @@ target_include_directories(vtu_writer PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIR
 target_link_libraries(vtu_writer PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
 target_compile_definitions(vtu_writer PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
-add_executable(write_traction_disp write_traction_disp.cpp)
-target_include_directories(write_traction_disp PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
-target_link_libraries(write_traction_disp PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
-target_compile_definitions(write_traction_disp PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_executable(csv_writer csv_writer.cpp)
+target_include_directories(csv_writer PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
+target_link_libraries(csv_writer PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
+target_compile_definitions(csv_writer PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")

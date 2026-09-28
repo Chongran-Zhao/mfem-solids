@@ -2,7 +2,7 @@
 // MaterialModel.hpp
 //
 // The material of the problems in this project, shared by the driver,
-// vtu_writer and write_traction_disp. MaterialModel is the model class, get_material_model gives
+// vtu_writer and csv_writer. MaterialModel is the model class, and get_material_model gives
 // it with its parameters; changing the material means changing this file.
 //
 // Author: Chongran Zhao

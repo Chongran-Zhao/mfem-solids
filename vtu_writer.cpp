@@ -17,7 +17,7 @@
 #include <yaml-cpp/yaml.h>
 #include "MaterialModel.hpp"
 #include "SystemTools.hpp"
-#include "VTUWriter.hpp"
+#include "VTK_Tools.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -37,9 +37,9 @@ int main(int argc, char *argv[])
 
    // 4. Read the displacement of each step and write it.
    const int load_steps = config["loading"]["load_steps"].as<int>();
-   const std::filesystem::path results_dir = config["output"]["results"].as<std::string>();
+   const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
 
-   VTUWriter output(config["output"]["paraview"].as<std::string>());
+   VTK_Tools output(config["output"]["vtu"].as<std::string>());
 
    for (int step = 0; step <= load_steps; step++)
    {

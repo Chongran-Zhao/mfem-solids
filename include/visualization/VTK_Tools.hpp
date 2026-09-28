@@ -1,5 +1,5 @@
 // ============================================================================
-// VTUWriter.hpp
+// VTK_Tools.hpp
 //
 // Writes one VTU file per load step on the deformed mesh, and a PVD file
 // listing them, for ParaView.
@@ -8,8 +8,8 @@
 // Date: Sep. 26, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef VTU_WRITER_HPP
-#define VTU_WRITER_HPP
+#ifndef VTK_TOOLS_HPP
+#define VTK_TOOLS_HPP
 
 #include <filesystem>
 #include <fstream>
@@ -21,11 +21,11 @@
 #include <mfem.hpp>
 #include "HyperelasticMaterialModel.hpp"
 
-class VTUWriter
+class VTK_Tools
 {
 public:
    // Create the output folder.
-   VTUWriter(const std::string &input_dir) : dir(input_dir)
+   VTK_Tools(const std::string &input_dir) : dir(input_dir)
    {
       std::filesystem::create_directories(dir);
    }
@@ -36,7 +36,7 @@ public:
    {
       mfem::Mesh &mesh = *fespace.GetMesh();
       MFEM_VERIFY(fespace.GetMaxElementOrder() == 1,
-                  "VTUWriter writes the vertices only, so it needs order 1.");
+                  "VTK_Tools writes the vertices only, so it needs order 1.");
 
       std::ostringstream file_name;
       file_name << "step_" << std::setw(4) << std::setfill('0') << step << ".vtu";

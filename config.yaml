@@ -1,4 +1,4 @@
-# Input of read_mesh, the driver, vtu_writer and write_traction_disp.
+# Input of read_mesh, the driver, vtu_writer and csv_writer.
 # Read from the source directory, or from the path given as first argument.
 
 mesh:
@@ -49,8 +49,15 @@ solver:
   newton_abs_tol: 0.0
   newton_max_iter: 20
 
-# Output folders.
+# Faces and directions reported by csv_writer, one entry per face and
+# direction; F is the reaction on a constrained face and the load on a
+# traction face.
+csv_writer:
+  - { face: left, dir: z }
+  - { face: right, dir: z }
+
+# Output folders, in the directory the programs run in.
 output:
-  paraview: ParaView
-  results: results_gf
+  vtu: results_vtu
+  gf: results_gf
   csv: results_csv
