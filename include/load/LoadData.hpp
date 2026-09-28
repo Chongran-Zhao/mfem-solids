@@ -1,7 +1,7 @@
 // ============================================================================
 // LoadData.hpp
 //
-// Apply loading (body forces, displacemen driven and traction)
+// Defines the loading (body force, prescribed displacement and traction).
 //
 // Author: Chongran Zhao
 // Date: Sep. 27, 2026
@@ -18,24 +18,24 @@
 class LoadData
 {
 public:
-   // Body force per unit reference volume, rho_0 b(pt, tt)
+   // Body force per unit reference volume, rho_0 b(pt, tt).
    // Examples:
    //   gravity along -z, rho_0 = 1000:
    //     return Vector_3D(0.0, 0.0, -1000.0 * 9.81 * tt);
    //   growing linearly with x:
    //     return Vector_3D(0.0, 0.0, -100.0 * pt(0) * tt);
-   static Vector_3D body_force(const Vector_3D &pt, double tt)
+   static Vector_3D body_force(const mfem::Vector &pt, double tt)
    {
       return Vector_3D(0.0, 0.0, 0.0);
    }
 
-   // Nominal traction (force per reference area) on the named face
+   // Nominal traction (force per reference area) on the named face.
    // Examples:
    //   uniform, along -z:
    //     return Vector_3D(0.0, 0.0, -2275.0 * tt);
    //   linear in y over the face y in [0, 0.1], bending about x:
    //     return Vector_3D(0.0, 0.0, -2275.0 * (pt(1) - 0.05) / 0.05 * tt);
-   static Vector_3D surface_traction(const Vector_3D &pt, double tt,
+   static Vector_3D surface_traction(const mfem::Vector &pt, double tt,
                                      const std::string &face)
    {
       switch (get_face(face))
@@ -56,7 +56,7 @@ public:
       return Vector_3D(0.0, 0.0, 0.0);
    }
 
-   // Prescribed displacement on the face along selected diretion
+   // Prescribed displacement on the named face, along the selected direction.
    // Examples:
    //   uniform, along -z:
    //     return Vector_3D(0.0, 0.0, -0.5 * tt);
@@ -65,7 +65,7 @@ public:
    //     const double y = pt(1) - 0.05, z = pt(2) - 0.05;
    //     return Vector_3D(0.0, std::cos(a) * y - std::sin(a) * z - y,
    //                           std::sin(a) * y + std::cos(a) * z - z);
-   static Vector_3D disp_driven(const Vector_3D &pt, double tt,
+   static Vector_3D disp_driven(const mfem::Vector &pt, double tt,
                                     const std::string &face)
    {
       switch (get_face(face))
