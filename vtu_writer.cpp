@@ -1,13 +1,8 @@
 // ============================================================================
-// write_paraview.cpp
+// vtu_writer.cpp
 //
-// Writes the results of the driver for ParaView: one VTU file per load step
-// on the deformed mesh, with the displacement and the first and second
-// Piola-Kirchhoff stresses, and a PVD file listing them.
-// Step 1: read config.yaml.
-// Step 2: read the labelled mesh written by read_mesh.
-// Step 3: define the material, the same as in the driver.
-// Step 4: read the displacement of each step and write it for ParaView.
+// Writes the displacement and the first and second Piola-Kirchhoff stresses
+// of each load step for ParaView.
 //
 // Author: Chongran Zhao
 // Date: Sep. 26, 2026
@@ -22,35 +17,29 @@
 #include <yaml-cpp/yaml.h>
 #include "MaterialModel.hpp"
 #include "SystemTools.hpp"
-#include "VTK_write.hpp"
+#include "VTUWriter.hpp"
 
 int main(int argc, char *argv[])
 {
-   // 1. By default the config.yaml next to this source file is read.
+   // 1. Read config.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
                  : std::filesystem::path(SOURCE_DIR) / "config.yaml";
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
-   // 2. Like the driver, this program runs in the directory of the mesh
-   //    written by read_mesh and of the results of the driver, normally
-   //    build/.
+   // 2. Read the mesh file.
    const std::string mesh_file = config["mesh"]["output"].as<std::string>();
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
 
-   // 3. The stresses written to the VTU files are computed from the
-   //    displacement with the material of include/material/MaterialModel.hpp.
+   // 3. Set up the material model.
    const MaterialModel material = get_material_model();
 
-   // 4. The driver saved step 0 and each of the load steps as
-   //    <results>/disp_XXXX.gf. Each file holds its finite element space and
-   //    the dof values, so the grid function is built from the mesh and the
-   //    file alone. Step n is written at time n / N.
+   // 4. Read the displacement of each step and write it.
    const int load_steps = config["loading"]["load_steps"].as<int>();
    const std::filesystem::path results_dir = config["output"]["results"].as<std::string>();
 
-   VTK_write output(config["output"]["paraview"].as<std::string>());
+   VTUWriter output(config["output"]["paraview"].as<std::string>());
 
    for (int step = 0; step <= load_steps; step++)
    {

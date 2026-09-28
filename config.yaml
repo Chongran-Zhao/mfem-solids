@@ -1,4 +1,4 @@
-# Input of read_mesh, the driver, write_paraview and write_traction_disp.
+# Input of read_mesh, the driver, vtu_writer and write_traction_disp.
 # Read from the source directory, or from the path given as first argument.
 
 mesh:

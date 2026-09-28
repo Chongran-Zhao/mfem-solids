@@ -1,18 +1,15 @@
 // ============================================================================
-// VTK_write.hpp
+// VTUWriter.hpp
 //
-// Writes one ASCII VTU file per step and a PVD file listing them, for
-// ParaView. The mesh is written in the deformed configuration x = X + u, with
-// the displacement at the vertices and the first and second Piola-Kirchhoff
-// stresses at the element centers. Components are named x, y, z and xx, xy,
-// ... instead of 0, 1, 2.
+// Writes one VTU file per load step on the deformed mesh, and a PVD file
+// listing them, for ParaView.
 //
 // Author: Chongran Zhao
 // Date: Sep. 26, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef VTK_WRITE_HPP
-#define VTK_WRITE_HPP
+#ifndef VTU_WRITER_HPP
+#define VTU_WRITER_HPP
 
 #include <filesystem>
 #include <fstream>
@@ -24,22 +21,22 @@
 #include <mfem.hpp>
 #include "HyperelasticMaterialModel.hpp"
 
-class VTK_write
+class VTUWriter
 {
 public:
-   // The files are written into input_dir, which is created if needed.
-   VTK_write(const std::string &input_dir) : dir(input_dir)
+   // Create the output folder.
+   VTUWriter(const std::string &input_dir) : dir(input_dir)
    {
       std::filesystem::create_directories(dir);
    }
 
-   // Writes step_<step>.vtu and rewrites the PVD file with all steps so far.
+   // Write step_XXXX.vtu and update the PVD file.
    void save(int step, double time, mfem::FiniteElementSpace &fespace,
              const mfem::GridFunction &disp, const HyperelasticMaterialModel &material)
    {
       mfem::Mesh &mesh = *fespace.GetMesh();
       MFEM_VERIFY(fespace.GetMaxElementOrder() == 1,
-                  "VTK_write writes the vertices only, so it needs order 1.");
+                  "VTUWriter writes the vertices only, so it needs order 1.");
 
       std::ostringstream file_name;
       file_name << "step_" << std::setw(4) << std::setfill('0') << step << ".vtu";
@@ -52,8 +49,7 @@ public:
           << "<Piece NumberOfPoints=\"" << mesh.GetNV()
           << "\" NumberOfCells=\"" << mesh.GetNE() << "\">\n";
 
-      // Displacement at the vertices; with linear elements the dofs of a
-      // scalar field are the vertices.
+      // Displacement at the vertices.
       out << "<PointData Vectors=\"displacement\">\n";
       begin_array(out, "displacement", {"x", "y", "z"});
       for (int vv = 0; vv < mesh.GetNV(); vv++)
@@ -81,7 +77,7 @@ public:
       }
       out << "</DataArray>\n";
 
-      // Symmetric, so only the 6 independent components, in ParaView's order.
+      // Only the 6 independent components, in ParaView's order.
       begin_array(out, "second_PK_stress", {"xx", "yy", "zz", "xy", "yz", "xz"});
       for (int ee = 0; ee < mesh.GetNE(); ee++)
          out << PK2[ee](0, 0) << ' ' << PK2[ee](1, 1) << ' ' << PK2[ee](2, 2) << ' '
@@ -99,9 +95,8 @@ public:
       }
       out << "</DataArray>\n</Points>\n";
 
-      // Elements: vertex numbers, the running end of each element in that
-      // list, and the VTK cell type. MFEM and VTK order the vertices of
-      // linear hexahedra, tetrahedra and wedges the same way.
+      // Elements; MFEM and VTK order the vertices of linear elements the
+      // same way.
       mfem::Array<int> elem_vertices;
       std::ostringstream connectivity, offsets, types;
       int offset = 0;
@@ -175,7 +170,7 @@ private:
       elem.CalcDShape(center, dN_dxi);
       mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
 
-      // Element vector ordered by component: x of all nodes, then y, then z.
+      // Element displacement: x of all nodes, then y, then z.
       mfem::Array<int> vdofs;
       mfem::Vector elem_disp;
       fespace.GetElementVDofs(ee, vdofs);
@@ -189,7 +184,7 @@ private:
       return F;
    }
 
-   // Lists every step with its time; ParaView plays them in this order.
+   // List every step with its time.
    void write_pvd() const
    {
       std::ofstream out(get_pvd_path());
