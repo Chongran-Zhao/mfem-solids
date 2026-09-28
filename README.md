@@ -13,7 +13,7 @@ conditions on named faces, load stepping and Newton's method.
 | `write_paraview` | `results_gf/` | `ParaView/`: the deformed mesh with the displacement and the first and second Piola-Kirchhoff stresses |
 | `write_traction_disp` | `results_gf/` | `results_csv/<face>.csv`: mean displacement, resultant force and mean traction on the chosen faces at each step |
 
-All settings are in `config.yaml`; the material is in `include/MaterialModel.hpp`.
+All settings are in `config.yaml`; the material is in `include/material/MaterialModel.hpp`.
 
 ## Building and running
 

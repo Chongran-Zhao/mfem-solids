@@ -5,7 +5,7 @@
 # Used by read_mesh.
 mesh:
   # Mesh file in MFEM format.
-  file: meshes/Beam_coarse-hex.mesh
+  file: mesh_files/Beam_coarse-hex.mesh
   # Number of uniform refinements; each one splits a hexahedron into 8.
   refine_levels: 0
   # Mesh file written by read_mesh, with the six faces labelled and named.

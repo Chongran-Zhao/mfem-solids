@@ -34,22 +34,30 @@ if(MFEM_USE_MPI)
   list(APPEND mfem_libraries MPI::MPI_CXX)
 endif()
 
+# Headers of this project, one folder per kind.
+set(include_dirs
+  include/boundary
+  include/integrator
+  include/material
+  include/system
+  include/visualization)
+
 add_executable(read_mesh read_mesh.cpp)
 target_include_directories(read_mesh PRIVATE ${MFEM_INCLUDE_DIRS})
 target_link_libraries(read_mesh PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
 target_compile_definitions(read_mesh PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_executable(driver driver.cpp)
-target_include_directories(driver PRIVATE include ${MFEM_INCLUDE_DIRS})
+target_include_directories(driver PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
 target_link_libraries(driver PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
 target_compile_definitions(driver PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_executable(write_paraview write_paraview.cpp)
-target_include_directories(write_paraview PRIVATE include ${MFEM_INCLUDE_DIRS})
+target_include_directories(write_paraview PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
 target_link_libraries(write_paraview PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
 target_compile_definitions(write_paraview PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_executable(write_traction_disp write_traction_disp.cpp)
-target_include_directories(write_traction_disp PRIVATE include ${MFEM_INCLUDE_DIRS})
+target_include_directories(write_traction_disp PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
 target_link_libraries(write_traction_disp PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
 target_compile_definitions(write_traction_disp PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")

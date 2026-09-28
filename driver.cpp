@@ -54,11 +54,11 @@ int main(int argc, char *argv[])
    SystemTools::print_space(fespace);
 
    // 4. The Dirichlet conditions of config.yaml: the constrained dofs and
-   //    the final boundary displacement, see include/DirichletBoundary.hpp.
+   //    the final boundary displacement, see include/boundary/DirichletBoundary.hpp.
    const DirichletBoundary dirichlet(config["Dirichlet"], fespace);
    dirichlet.print_Dirichlet_bc();
 
-   // 5. The material is given in include/MaterialModel.hpp, so that
+   // 5. The material is given in include/material/MaterialModel.hpp, so that
    //    write_paraview and write_traction_disp use the same one.
    const MaterialModel material = get_material_model();
 

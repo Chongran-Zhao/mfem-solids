@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
    SystemTools::print_mesh(mesh_file, mesh);
 
    // 3. The stresses written to the VTU files are computed from the
-   //    displacement with the material of include/MaterialModel.hpp.
+   //    displacement with the material of include/material/MaterialModel.hpp.
    const MaterialModel material = get_material_model();
 
    // 4. The driver saved step 0 and each of the load steps as
