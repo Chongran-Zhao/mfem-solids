@@ -11,12 +11,12 @@
 #ifndef BOUNDARY_MANAGER_HPP
 #define BOUNDARY_MANAGER_HPP
 
+#include <string>
+#include <mfem.hpp>
+#include <yaml-cpp/yaml.h>
 #include "DirichletBoundary.hpp"
 #include "LoadData.hpp"
 #include "NeumannBoundary.hpp"
-#include "mfem.hpp"
-#include <yaml-cpp/yaml.h>
-#include <string>
 
 class BoundaryManager
 {

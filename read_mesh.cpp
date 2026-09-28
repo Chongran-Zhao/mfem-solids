@@ -14,8 +14,6 @@
 // Date: Sep. 26, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#include "mfem.hpp"
-#include <yaml-cpp/yaml.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -27,6 +25,8 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <mfem.hpp>
+#include <yaml-cpp/yaml.h>
 
 int main(int argc, char *argv[])
 {

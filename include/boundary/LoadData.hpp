@@ -10,10 +10,10 @@
 #ifndef LOAD_DATA_HPP
 #define LOAD_DATA_HPP
 
-#include "Vector_3D.hpp"
-#include "mfem.hpp"
 #include <map>
 #include <string>
+#include <mfem.hpp>
+#include "Vector_3D.hpp"
 
 class LoadData
 {

@@ -11,9 +11,9 @@
 #ifndef COMPRESSIBLE_HYPERELASTIC_INTEGRATOR_HPP
 #define COMPRESSIBLE_HYPERELASTIC_INTEGRATOR_HPP
 
+#include <mfem.hpp>
 #include "HyperelasticMaterialModel.hpp"
 #include "Tensor2_3D.hpp"
-#include "mfem.hpp"
 
 class CompressibleHyperelasticIntegrator : public mfem::NonlinearFormIntegrator
 {

@@ -10,8 +10,8 @@
 #ifndef TENSOR2_3D_HPP
 #define TENSOR2_3D_HPP
 
-#include "Vector_3D.hpp"
 #include <array>
+#include "Vector_3D.hpp"
 
 class Tensor2_3D
 {

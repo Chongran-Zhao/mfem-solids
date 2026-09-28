@@ -8,12 +8,12 @@
 #ifndef SYSTEM_TOOLS_HPP
 #define SYSTEM_TOOLS_HPP
 
-#include "mfem.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <mfem.hpp>
 
 class SystemTools
 {

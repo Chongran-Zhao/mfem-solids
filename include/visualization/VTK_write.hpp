@@ -14,8 +14,6 @@
 #ifndef VTK_WRITE_HPP
 #define VTK_WRITE_HPP
 
-#include "HyperelasticMaterialModel.hpp"
-#include "mfem.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -23,6 +21,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <mfem.hpp>
+#include "HyperelasticMaterialModel.hpp"
 
 class VTK_write
 {

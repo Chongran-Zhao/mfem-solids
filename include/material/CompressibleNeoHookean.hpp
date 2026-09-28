@@ -11,8 +11,8 @@
 #ifndef COMPRESSIBLE_NEO_HOOKEAN_HPP
 #define COMPRESSIBLE_NEO_HOOKEAN_HPP
 
-#include "HyperelasticMaterialModel.hpp"
 #include <cmath>
+#include "HyperelasticMaterialModel.hpp"
 
 class CompressibleNeoHookean : public HyperelasticMaterialModel
 {

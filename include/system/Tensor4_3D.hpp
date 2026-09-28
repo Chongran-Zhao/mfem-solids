@@ -10,9 +10,9 @@
 #ifndef TENSOR4_3D_HPP
 #define TENSOR4_3D_HPP
 
-#include "Tensor2_3D.hpp"
-#include "mfem.hpp"
 #include <array>
+#include <mfem.hpp>
+#include "Tensor2_3D.hpp"
 
 class Tensor4_3D
 {
