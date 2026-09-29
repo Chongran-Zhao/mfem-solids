@@ -12,13 +12,13 @@
 #define COMPRESSIBLE_HYPERELASTIC_INTEGRATOR_HPP
 
 #include <mfem.hpp>
-#include "HyperelasticMaterialModel.hpp"
+#include "MaterialModel_Hyperelasticity.hpp"
 #include "Tensor2_3D.hpp"
 
 class CompressibleHyperelasticIntegrator : public mfem::NonlinearFormIntegrator
 {
 public:
-   CompressibleHyperelasticIntegrator(const HyperelasticMaterialModel &input_material)
+   CompressibleHyperelasticIntegrator(const MaterialModel_Hyperelasticity &input_material)
       : material(input_material) {}
 
    // a is the nodal point index, k is the dimension index (x, y, z)
@@ -131,7 +131,7 @@ public:
    }
 
 private:
-   const HyperelasticMaterialModel &material;
+   const MaterialModel_Hyperelasticity &material;
 
    // Shared by the residual and the tangent, so that both use the same points.
    static const mfem::IntegrationRule &get_quad_rule(

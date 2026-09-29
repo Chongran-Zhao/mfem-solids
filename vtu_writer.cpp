@@ -15,7 +15,7 @@
 #include <string>
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
-#include "MaterialModel.hpp"
+#include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
 #include "VTK_Tools.hpp"
 
@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
    SystemTools::print_mesh(mesh_file, mesh);
 
    // 3. Set up the material model.
-   const MaterialModel material = get_material_model();
+   const MaterialModel_Hyperelasticity material = get_material_model();
 
    // 4. Read the displacement of each step and write it.
    const int load_steps = config["loading"]["load_steps"].as<int>();

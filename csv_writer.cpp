@@ -21,7 +21,7 @@
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 #include "CompressibleHyperelasticIntegrator.hpp"
-#include "MaterialModel.hpp"
+#include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
 
 // One reported face.
@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
    mfem::Vector internal_force(fespace.GetTrueVSize());
    SystemTools::print_space(fespace);
 
-   const MaterialModel material = get_material_model();
+   const MaterialModel_Hyperelasticity material = get_material_model();
    mfem::NonlinearForm nonlinear_form(&fespace);
    nonlinear_form.AddDomainIntegrator(new CompressibleHyperelasticIntegrator(material));
 

@@ -17,7 +17,7 @@
 #include <yaml-cpp/yaml.h>
 #include "BoundaryManager.hpp"
 #include "CompressibleHyperelasticIntegrator.hpp"
-#include "MaterialModel.hpp"
+#include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
 
 int main(int argc, char *argv[])
@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
    boundaries.print_load();
 
    // 5. Set up the material model.
-   const MaterialModel material = get_material_model();
+   const MaterialModel_Hyperelasticity material = get_material_model();
 
    // 6. Construct the nonlinear form of the internal force.
    mfem::NonlinearForm nonlinear_form(&fespace);

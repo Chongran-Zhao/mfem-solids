@@ -13,7 +13,7 @@ and traction conditions on named faces, load stepping and Newton's method.
 | `vtu_writer` | `results_gf/` | `results_vtu/`: the deformed mesh with the displacement and the first and second Piola-Kirchhoff stresses; open `results_vtu.pvd` in ParaView |
 | `csv_writer` | `results_gf/` | `results_csv/<face>.csv`: mean displacement, resultant force and mean traction on the faces and directions of `csv_writer` in `config.yaml`, at each step |
 
-All settings are in `config.yaml`; the material is in `include/material/MaterialModel.hpp`,
+All settings are in `config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
 and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
 
 ## Setting up a problem
