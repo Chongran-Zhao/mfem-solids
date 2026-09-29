@@ -16,7 +16,7 @@
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 #include "BoundaryManager.hpp"
-#include "CompressibleHyperelasticIntegrator.hpp"
+#include "HyperelasticIntegrator_Displacement.hpp"
 #include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
 
@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
 
    // 6. Construct the nonlinear form of the internal force.
    mfem::NonlinearForm nonlinear_form(&fespace);
-   nonlinear_form.AddDomainIntegrator(new CompressibleHyperelasticIntegrator(material));
+   nonlinear_form.AddDomainIntegrator(new HyperelasticIntegrator_Displacement(material));
    nonlinear_form.SetEssentialTrueDofs(boundaries.get_ess_tdof_list());
 
    // 7. Set up the linear solver and Newton's method.
