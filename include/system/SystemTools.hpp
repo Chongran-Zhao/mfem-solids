@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <mfem.hpp>
@@ -72,6 +73,41 @@ public:
 
    private:
       double initial_norm = 1.0;
+   };
+
+   // Direct solver for the block tangent of BlockNonlinearForm, set by
+   // NewtonSolver at every iteration: the blocks, as many as there are
+   // fields, are copied into one SparseMatrix, which UMFPACK factors.
+   class BlockUMFPackSolver : public mfem::Solver
+   {
+   public:
+      void SetOperator(const mfem::Operator &op) override
+      {
+         const auto &block_op = dynamic_cast<const mfem::BlockOperator &>(op);
+
+         // The blocks stay owned by the BlockNonlinearForm; BlockMatrix only
+         // points to them.
+         mfem::BlockMatrix block_mat(block_op.RowOffsets(), block_op.ColOffsets());
+         for (int ii = 0; ii < block_op.NumRowBlocks(); ii++)
+            for (int jj = 0; jj < block_op.NumColBlocks(); jj++)
+               if (!block_op.IsZeroBlock(ii, jj))
+                  block_mat.SetBlock(ii, jj, const_cast<mfem::SparseMatrix *>(
+                     &dynamic_cast<const mfem::SparseMatrix &>(block_op.GetBlock(ii, jj))));
+
+         monolithic.reset(block_mat.CreateMonolithic());
+         umfpack.SetOperator(*monolithic);
+         height = width = monolithic->Height();
+      }
+
+      // x = K^-1 b
+      void Mult(const mfem::Vector &b, mfem::Vector &x) const override
+      {
+         umfpack.Mult(b, x);
+      }
+
+   private:
+      std::unique_ptr<mfem::SparseMatrix> monolithic;  // UMFPACK keeps a pointer to it
+      mfem::UMFPackSolver umfpack;
    };
 
    // Creates an empty folder; an existing one is emptied first, so that no
