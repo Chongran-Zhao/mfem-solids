@@ -30,27 +30,27 @@ public:
       return vol_model->get_energy(F.det()) + ich_model->get_energy(F);
    }
 
-   // Second Piola-Kirchhoff stress S = J sigma_vol C^-1 + S_ich.
+   // Second Piola-Kirchhoff stress S = -J p C^-1 + S_ich.
    Tensor2_3D get_2nd_PK_stress(const Tensor2_3D &F) const
    {
       const double J = F.det();
       const Tensor2_3D C_inv = (F.transpose() * F).inverse();
 
-      return J * vol_model->get_vol_stress(J) * C_inv + ich_model->get_2nd_PK_stress(F);
+      return -J * vol_model->get_p(J) * C_inv + ich_model->get_2nd_PK_stress(F);
    }
 
    // Second elasticity tensor CC = 2 dS/dC,
-   // CC = J (sigma_vol + J dsigma_vol/dJ) C^-1 otimes C^-1
-   //    - 2 J sigma_vol C^-1 odot C^-1 + CC_ich.
+   // CC = -J (p + J dp/dJ) C^-1 otimes C^-1
+   //    + 2 J p C^-1 odot C^-1 + CC_ich.
    Tensor4_3D get_2nd_elasticity_tensor(const Tensor2_3D &F) const
    {
       const double J = F.det();
       const Tensor2_3D C_inv = (F.transpose() * F).inverse();
-      const double vol_stress = vol_model->get_vol_stress(J);
-      const double dvol_stress_dJ = vol_model->get_dvol_stress_dJ(J);
+      const double p = vol_model->get_p(J);
+      const double dp_dJ = vol_model->get_dp_dJ(J);
 
-      return J * (vol_stress + J * dvol_stress_dJ) * otimes(C_inv, C_inv)
-             - 2.0 * J * vol_stress * odot(C_inv, C_inv)
+      return -J * (p + J * dp_dJ) * otimes(C_inv, C_inv)
+             + 2.0 * J * p * odot(C_inv, C_inv)
              + ich_model->get_2nd_elasticity_tensor(F);
    }
 
@@ -60,13 +60,35 @@ public:
       return F * get_2nd_PK_stress(F);
    }
 
-   // First elasticity tensor AA = dP/dF,
-   // AA_iJkL = F_iM CC_MJNL F_kN + delta_ik S_JL.
+   // First elasticity tensor AA = dP/dF.
    Tensor4_3D get_1st_elasticity_tensor(const Tensor2_3D &F) const
    {
-      const Tensor2_3D PK2 = get_2nd_PK_stress(F);
-      const Tensor4_3D CC = get_2nd_elasticity_tensor(F);
+      return from_CC_to_AA(F, get_2nd_PK_stress(F), get_2nd_elasticity_tensor(F));
+   }
 
+   // Isochoric first Piola-Kirchhoff stress P_ich = F S_ich, for the mixed
+   // formulation, where the pressure is a separate field.
+   Tensor2_3D get_1st_PK_stress_ich(const Tensor2_3D &F) const
+   {
+      return F * ich_model->get_2nd_PK_stress(F);
+   }
+
+   // Isochoric first elasticity tensor AA_ich = dP_ich/dF.
+   Tensor4_3D get_1st_elasticity_tensor_ich(const Tensor2_3D &F) const
+   {
+      return from_CC_to_AA(F, ich_model->get_2nd_PK_stress(F),
+                           ich_model->get_2nd_elasticity_tensor(F));
+   }
+
+   // Volume ratio J(p) and dJ/dp of the volumetric model.
+   double get_J(double p) const { return vol_model->get_J(p); }
+   double get_dJ_dp(double p) const { return vol_model->get_dJ_dp(p); }
+
+private:
+   // AA from S and CC: AA_iJkL = F_iM CC_MJNL F_kN + delta_ik S_JL.
+   static Tensor4_3D from_CC_to_AA(const Tensor2_3D &F, const Tensor2_3D &PK2,
+                                   const Tensor4_3D &CC)
+   {
       // F_iM CC_MJNL
       Tensor4_3D F_CC;
       for (int ii = 0; ii < 3; ii++)
@@ -93,7 +115,6 @@ public:
       return AA;
    }
 
-private:
    std::unique_ptr<IMaterialModel_vol> vol_model;  // Psi_vol(J)
    std::unique_ptr<IMaterialModel_ich> ich_model;  // Psi_ich(F)
 };

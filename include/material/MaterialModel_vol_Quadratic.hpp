@@ -26,11 +26,17 @@ public:
    // Psi_vol = kappa/2 (J - 1)^2
    double get_energy(double J) const override { return 0.5 * kappa * (J - 1.0) * (J - 1.0); }
 
-   // sigma_vol = dPsi_vol/dJ = kappa (J - 1)
-   double get_vol_stress(double J) const override { return kappa * (J - 1.0); }
+   // p = -dPsi_vol/dJ = -kappa (J - 1)
+   double get_p(double J) const override { return -kappa * (J - 1.0); }
 
-   // dsigma_vol/dJ = d^2Psi_vol/dJ^2 = kappa
-   double get_dvol_stress_dJ(double J) const override { return kappa; }
+   // dp/dJ = -d^2Psi_vol/dJ^2 = -kappa
+   double get_dp_dJ(double J) const override { return -kappa; }
+
+   // J = 1 - p/kappa
+   double get_J(double p) const override { return 1.0 - p / kappa; }
+
+   // dJ/dp = -1/kappa
+   double get_dJ_dp(double p) const override { return -1.0 / kappa; }
 
 private:
    const double kappa;

@@ -2,8 +2,9 @@
 // IMaterialModel_vol.hpp
 //
 // Interface of the volumetric part of a hyperelastic material: given the
-// volume ratio J, return its strain energy Psi_vol(J) and its first two
-// derivatives.
+// volume ratio J, return its strain energy Psi_vol(J), the pressure p(J) and
+// dp/dJ; given the pressure p, return the inverse J(p) and dJ/dp, used by
+// the mixed formulation.
 //
 // Author: Chongran Zhao
 // Date: Sep. 29, 2026
@@ -20,11 +21,17 @@ public:
    // Volumetric strain energy Psi_vol per reference volume.
    virtual double get_energy(double J) const = 0;
 
-   // Volumetric stress sigma_vol = dPsi_vol/dJ = -p.
-   virtual double get_vol_stress(double J) const = 0;
+   // Pressure p = -dPsi_vol/dJ, positive in compression.
+   virtual double get_p(double J) const = 0;
 
-   // dsigma_vol/dJ = d^2Psi_vol/dJ^2.
-   virtual double get_dvol_stress_dJ(double J) const = 0;
+   // dp/dJ = -d^2Psi_vol/dJ^2.
+   virtual double get_dp_dJ(double J) const = 0;
+
+   // Volume ratio J at pressure p, the inverse of get_p.
+   virtual double get_J(double p) const = 0;
+
+   // dJ/dp, the derivative of get_J.
+   virtual double get_dJ_dp(double p) const = 0;
 };
 
 #endif
