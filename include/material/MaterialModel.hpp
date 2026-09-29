@@ -1,5 +1,5 @@
 // ============================================================================
-// MaterialModel_Hyperelasticity.hpp
+// MaterialModel.hpp
 //
 // Hyperelastic material split into a volumetric and an isochoric part,
 // Psi = Psi_vol(J) + Psi_ich(F), each given by its own model.
@@ -8,8 +8,8 @@
 // Date: Sep. 29, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef MATERIAL_MODEL_HYPERELASTICITY_HPP
-#define MATERIAL_MODEL_HYPERELASTICITY_HPP
+#ifndef MATERIAL_MODEL_HPP
+#define MATERIAL_MODEL_HPP
 
 #include <memory>
 #include "IMaterialModel_ich.hpp"
@@ -17,11 +17,11 @@
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
 
-class MaterialModel_Hyperelasticity
+class MaterialModel
 {
 public:
-   MaterialModel_Hyperelasticity(std::unique_ptr<IMaterialModel_vol> input_vol_model,
-                             std::unique_ptr<IMaterialModel_ich> input_ich_model)
+   MaterialModel(std::unique_ptr<IMaterialModel_vol> input_vol_model,
+                 std::unique_ptr<IMaterialModel_ich> input_ich_model)
       : vol_model(std::move(input_vol_model)), ich_model(std::move(input_ich_model)) {}
 
    // Strain energy Psi = Psi_vol + Psi_ich per reference volume.

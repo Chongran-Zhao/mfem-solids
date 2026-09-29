@@ -20,7 +20,7 @@
 #include <vector>
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
-#include "HyperelasticIntegrator_Displacement.hpp"
+#include "Integrator_Displacement.hpp"
 #include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
 
@@ -60,9 +60,9 @@ int main(int argc, char *argv[])
    mfem::Vector internal_force(fespace.GetTrueVSize());
    SystemTools::print_space(fespace);
 
-   const MaterialModel_Hyperelasticity material = get_material_model();
+   const MaterialModel material = get_material_model();
    mfem::NonlinearForm nonlinear_form(&fespace);
-   nonlinear_form.AddDomainIntegrator(new HyperelasticIntegrator_Displacement(material));
+   nonlinear_form.AddDomainIntegrator(new Integrator_Displacement(material));
 
    // 4. Collect the faces and directions of the csv_writer section.
    const int load_steps = config["loading"]["load_steps"].as<int>();

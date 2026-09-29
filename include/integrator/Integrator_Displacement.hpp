@@ -1,5 +1,5 @@
 // ============================================================================
-// HyperelasticIntegrator_Displacement.hpp
+// Integrator_Displacement.hpp
 //
 // Element residual and tangent of compressible hyperelasticity in the
 // Total Lagrangian form. The unknown is the displacement.
@@ -8,18 +8,18 @@
 // Date: Sep. 25, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef HYPERELASTIC_INTEGRATOR_DISPLACEMENT_HPP
-#define HYPERELASTIC_INTEGRATOR_DISPLACEMENT_HPP
+#ifndef INTEGRATOR_DISPLACEMENT_HPP
+#define INTEGRATOR_DISPLACEMENT_HPP
 
 #include <mfem.hpp>
 #include "IntegratorTools.hpp"
-#include "MaterialModel_Hyperelasticity.hpp"
+#include "MaterialModel.hpp"
 #include "Tensor2_3D.hpp"
 
-class HyperelasticIntegrator_Displacement : public mfem::NonlinearFormIntegrator
+class Integrator_Displacement : public mfem::NonlinearFormIntegrator
 {
 public:
-   HyperelasticIntegrator_Displacement(const MaterialModel_Hyperelasticity &input_material)
+   Integrator_Displacement(const MaterialModel &input_material)
       : material(input_material) {}
 
    // a is the node index and k the direction (x, y, z).
@@ -132,7 +132,7 @@ public:
    }
 
 private:
-   const MaterialModel_Hyperelasticity &material;
+   const MaterialModel &material;
 };
 
 #endif

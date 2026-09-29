@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 #include <mfem.hpp>
-#include "MaterialModel_Hyperelasticity.hpp"
+#include "MaterialModel.hpp"
 
 class VTK_Tools
 {
@@ -32,7 +32,7 @@ public:
 
    // Write step_XXXX.vtu and update the PVD file.
    void save(int step, double time, mfem::FiniteElementSpace &fespace,
-             const mfem::GridFunction &disp, const MaterialModel_Hyperelasticity &material)
+             const mfem::GridFunction &disp, const MaterialModel &material)
    {
       mfem::Mesh &mesh = *fespace.GetMesh();
       MFEM_VERIFY(fespace.GetMaxElementOrder() == 1,
