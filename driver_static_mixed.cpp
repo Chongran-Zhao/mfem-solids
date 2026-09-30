@@ -1,5 +1,5 @@
 // ============================================================================
-// driver_mixed.cpp
+// driver_static_mixed.cpp
 //
 // Hyperelastostatics in the mixed displacement-pressure (u/p) form, with
 // Taylor-Hood elements. Boundary conditions are read from config.yaml and
@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
    //    order below the displacement.
    const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
-   MFEM_VERIFY(order >= 2, "driver_mixed needs space.order >= 2 for Taylor-Hood elements.");
+   MFEM_VERIFY(order >= 2, "driver_static_mixed needs space.order >= 2 for Taylor-Hood elements.");
    mfem::H1_FECollection fec_u(order, dim), fec_p(order - 1, dim);
    mfem::FiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
    mfem::FiniteElementSpace space_p(&mesh, &fec_p);

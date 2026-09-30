@@ -4,7 +4,7 @@
 % Plots the CSV files written by csv_writer against the load factor: for
 % each face, one figure of the mean displacement u and one of the mean
 % nominal traction t = F / A_0, with one panel per reported direction. The
-% result folders listed below, e.g. of driver_displacement and driver_mixed,
+% result folders listed below, e.g. of driver_static_displacement and driver_static_mixed,
 % are overlaid in the same panels.
 %
 % Author: Chongran Zhao
