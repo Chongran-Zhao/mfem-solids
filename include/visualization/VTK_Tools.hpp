@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 #include <mfem.hpp>
-#include "MaterialModel.hpp"
+#include "IntegratorTools.hpp"
 
 class VTK_Tools
 {
@@ -30,13 +30,20 @@ public:
       std::filesystem::create_directories(dir);
    }
 
-   // Write step_XXXX.vtu and update the PVD file.
-   void save(int step, double time, mfem::FiniteElementSpace &fespace,
-             const mfem::GridFunction &disp, const MaterialModel &material)
+   // Write step_XXXX.vtu and update the PVD file. pres is nodal in H1 from
+   // driver_mixed, or p(J) at the element centers from driver_displacement;
+   // stress holds P at the element centers.
+   void save(int step, double time, const mfem::GridFunction &disp,
+             const mfem::GridFunction &pres, const mfem::GridFunction &stress)
    {
-      mfem::Mesh &mesh = *fespace.GetMesh();
-      MFEM_VERIFY(fespace.GetMaxElementOrder() == 1,
-                  "VTK_Tools writes the vertices only, so it needs order 1.");
+      const mfem::FiniteElementSpace &fespace = *disp.FESpace();
+      const mfem::Mesh &mesh = *fespace.GetMesh();
+      // Only the vertex values are written; in an H1 space of any order, the
+      // first dofs are those of the vertices.
+      MFEM_VERIFY(dynamic_cast<const mfem::H1_FECollection *>(fespace.FEColl()),
+                  "VTK_Tools needs the displacement in an H1 space.");
+      const bool is_nodal_pres =
+         dynamic_cast<const mfem::H1_FECollection *>(pres.FESpace()->FEColl()) != nullptr;
 
       std::ostringstream file_name;
       file_name << "step_" << std::setw(4) << std::setfill('0') << step << ".vtu";
@@ -55,18 +62,41 @@ public:
       for (int vv = 0; vv < mesh.GetNV(); vv++)
          out << disp(fespace.DofToVDof(vv, 0)) << ' ' << disp(fespace.DofToVDof(vv, 1))
              << ' ' << disp(fespace.DofToVDof(vv, 2)) << '\n';
-      out << "</DataArray>\n</PointData>\n";
+      out << "</DataArray>\n";
 
-      // Stresses at the element centers.
+      // Nodal pressure at the vertices.
+      if (is_nodal_pres)
+      {
+         begin_array(out, "pressure", {"p"});
+         for (int vv = 0; vv < mesh.GetNV(); vv++)
+            out << pres(vv) << '\n';
+         out << "</DataArray>\n";
+      }
+      out << "</PointData>\n";
+
+      // Stresses at the element centers: P from the drivers, S = F^-1 P.
       std::vector<Tensor2_3D> PK1(mesh.GetNE()), PK2(mesh.GetNE());
+      const mfem::FiniteElementSpace &space_stress = *stress.FESpace();
       for (int ee = 0; ee < mesh.GetNE(); ee++)
       {
-         const Tensor2_3D F = get_center_deformation_gradient(fespace, disp, ee);
-         PK2[ee] = material.get_2nd_PK_stress(F);
-         PK1[ee] = F * PK2[ee];
+         for (int ii = 0; ii < 3; ii++)
+            for (int JJ = 0; JJ < 3; JJ++)
+               PK1[ee](ii, JJ) = stress(space_stress.DofToVDof(ee, 3 * ii + JJ));
+         const Tensor2_3D F = IntegratorTools::get_center_deformation_gradient(fespace, disp, ee);
+         PK2[ee] = F.inverse() * PK1[ee];
       }
 
       out << "<CellData>\n";
+
+      // Pressure at the element centers.
+      if (!is_nodal_pres)
+      {
+         begin_array(out, "pressure", {"p"});
+         for (int ee = 0; ee < mesh.GetNE(); ee++)
+            out << pres(ee) << '\n';
+         out << "</DataArray>\n";
+      }
+
       begin_array(out, "first_PK_stress", {"xx", "xy", "xz", "yx", "yy", "yz", "zx", "zy", "zz"});
       for (int ee = 0; ee < mesh.GetNE(); ee++)
       {
@@ -154,34 +184,6 @@ private:
          default: MFEM_ABORT("Unsupported element geometry for VTU output.");
       }
       return 0;
-   }
-
-   // F_kJ = delta_kJ + d_ak N_a,J at the center of element ee.
-   static Tensor2_3D get_center_deformation_gradient(mfem::FiniteElementSpace &fespace,
-                                                     const mfem::GridFunction &disp, int ee)
-   {
-      const mfem::FiniteElement &elem = *fespace.GetFE(ee);
-      mfem::ElementTransformation &elem_map = *fespace.GetElementTransformation(ee);
-      const mfem::IntegrationPoint &center = mfem::Geometries.GetCenter(elem.GetGeomType());
-      elem_map.SetIntPoint(&center);
-
-      const int num_nodes = elem.GetDof();
-      mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
-      elem.CalcDShape(center, dN_dxi);
-      mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
-
-      // Element displacement: x of all nodes, then y, then z.
-      mfem::Array<int> vdofs;
-      mfem::Vector elem_disp;
-      fespace.GetElementVDofs(ee, vdofs);
-      disp.GetSubVector(vdofs, elem_disp);
-
-      Tensor2_3D F = Tensor2_3D::identity();
-      for (int kk = 0; kk < 3; kk++)
-         for (int JJ = 0; JJ < 3; JJ++)
-            for (int aa = 0; aa < num_nodes; aa++)
-               F(kk, JJ) += elem_disp(aa + kk * num_nodes) * dN_dX(aa, JJ);
-      return F;
    }
 
    // List every step with its time.

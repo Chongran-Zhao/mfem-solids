@@ -14,6 +14,7 @@
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 #include "BoundaryManager.hpp"
+#include "IntegratorTools.hpp"
 #include "Integrator_Displacement.hpp"
 #include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
@@ -64,6 +65,14 @@ int main(int argc, char *argv[])
    internal_force_form.AddDomainIntegrator(new Integrator_Displacement(material));
    mfem::GridFunction internal_force(&space_u);
 
+   // Pressure p(J) and first Piola-Kirchhoff stress P at the element centers,
+   // for vtu_writer: piecewise constant, P with the 9 components P_xx, P_xy,
+   // ..., P_zz.
+   mfem::L2_FECollection fec_center(0, dim);
+   mfem::FiniteElementSpace space_pres(&mesh, &fec_center);
+   mfem::FiniteElementSpace space_stress(&mesh, &fec_center, 9, mfem::Ordering::byVDIM);
+   mfem::GridFunction pres(&space_pres), stress(&space_stress);
+
    // 7. Set up the linear solver and Newton's method.
    const YAML::Node solver = config["solver"];
    mfem::UMFPackSolver linear_solver;
@@ -85,9 +94,28 @@ int main(int argc, char *argv[])
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    SystemTools::make_empty_dir(results_dir);
 
-   SystemTools::save_gf(results_dir, "disp", 0, disp);
-   internal_force_form.Mult(disp, internal_force);
-   SystemTools::save_gf(results_dir, "internal_force", 0, internal_force);
+   // Saves the displacement, the internal force, the pressure and the stress
+   // of a step.
+   auto save_results = [&](int step)
+   {
+      SystemTools::save_gf(results_dir, "disp", step, disp);
+
+      internal_force_form.Mult(disp, internal_force);
+      SystemTools::save_gf(results_dir, "internal_force", step, internal_force);
+
+      for (int ee = 0; ee < mesh.GetNE(); ee++)
+      {
+         const Tensor2_3D F = IntegratorTools::get_center_deformation_gradient(space_u, disp, ee);
+         pres(ee) = material.get_p(F.det());
+         const Tensor2_3D PK1 = material.get_1st_PK_stress(F);
+         for (int ii = 0; ii < 3; ii++)
+            for (int JJ = 0; JJ < 3; JJ++)
+               stress(space_stress.DofToVDof(ee, 3 * ii + JJ)) = PK1(ii, JJ);
+      }
+      SystemTools::save_gf(results_dir, "pres", step, pres);
+      SystemTools::save_gf(results_dir, "stress", step, stress);
+   };
+   save_results(0);
 
    // 8. Set up the external force.
    mfem::LinearForm external_force(&space_u);
@@ -152,9 +180,7 @@ int main(int argc, char *argv[])
 
       mfem::out << "converged in " << newton_solver.GetNumIterations() << " iterations\n";
 
-      SystemTools::save_gf(results_dir, "disp", step, disp);
-      internal_force_form.Mult(disp, internal_force);
-      SystemTools::save_gf(results_dir, "internal_force", step, internal_force);
+      save_results(step);
    }
 
    mfem::out << std::string(74, '=') << "\n\n";

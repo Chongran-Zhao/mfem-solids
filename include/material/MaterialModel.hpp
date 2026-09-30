@@ -80,6 +80,9 @@ public:
                            ich_model->get_2nd_elasticity_tensor(F));
    }
 
+   // Pressure p(J) of the volumetric model.
+   double get_p(double J) const { return vol_model->get_p(J); }
+
    // Volume ratio J(p) and dJ/dp of the volumetric model.
    double get_J(double p) const { return vol_model->get_J(p); }
    double get_dJ_dp(double p) const { return vol_model->get_dJ_dp(p); }

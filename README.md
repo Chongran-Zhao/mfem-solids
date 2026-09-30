@@ -9,9 +9,9 @@ and traction conditions on named faces, load stepping and Newton's method.
 | Program | Reads | Writes |
 |---|---|---|
 | `read_mesh` | the mesh in `config.yaml` | `beam.mesh` with the six box faces named `left`, `right`, `front`, `back`, `bottom`, `top`, and a 3D view of them, `beam_boundary.html` |
-| `driver_displacement` | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement and the nodal internal force of each load step, `results_gf/disp_XXXX.gf` and `internal_force_XXXX.gf` |
-| `driver_mixed` | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | the same, and the pressure, `results_gf/pres_XXXX.gf` |
-| `vtu_writer` | `results_gf/` | `results_vtu/`: the deformed mesh with the displacement and the first and second Piola-Kirchhoff stresses; open `results_vtu.pvd` in ParaView |
+| `driver_displacement` | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement, the nodal internal force, and the pressure p(J) and the first Piola-Kirchhoff stress at the element centers of each load step, `results_gf/disp_XXXX.gf`, `internal_force_XXXX.gf`, `pres_XXXX.gf` and `stress_XXXX.gf` |
+| `driver_mixed` | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | the same, the pressure being the nodal unknown |
+| `vtu_writer` | `results_gf/` | `results_vtu/`: the deformed mesh with the displacement, the pressure, and the first and second Piola-Kirchhoff stresses; open `results_vtu.pvd` in ParaView |
 | `csv_writer` | `results_gf/` | `results_csv/<face>.csv`: mean displacement, resultant force and mean traction on the faces and directions of `csv_writer` in `config.yaml`, at each step |
 
 All settings are in `config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
