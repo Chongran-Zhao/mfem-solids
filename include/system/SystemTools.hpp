@@ -34,17 +34,38 @@ public:
       mfem::out << '\n' << std::string(74, '-') << '\n';
    }
 
-   // Finite element space.
+   // Finite element space. The element is named by its polynomial space,
+   // e.g. Q2 hexahedron, since the name of an MFEM collection, e.g.
+   // H1_3D_P2, gives the order only. The ordering is left out for a scalar
+   // field, where byNODES and byVDIM are the same.
    static void print_space(const mfem::FiniteElementSpace &fespace)
    {
       const bool by_vdim = (fespace.GetOrdering() == mfem::Ordering::byVDIM);
       mfem::out << "\nFinite Element Space\n" << std::string(74, '-') << '\n' << std::left
-                << std::setw(20) << "space" << fespace.FEColl()->Name() << '\n'
-                << std::setw(20) << "order" << fespace.GetMaxElementOrder() << '\n'
+                << std::setw(20) << "element" << get_element_name(fespace) << '\n'
+                << std::setw(20) << "components" << fespace.GetVDim() << '\n'
                 << std::setw(20) << "nodes per element" << fespace.GetFE(0)->GetDof() << '\n'
-                << std::setw(20) << "unknowns" << fespace.GetTrueVSize() << '\n'
-                << std::setw(20) << "ordering" << (by_vdim ? "byVDIM" : "byNODES") << '\n'
-                << std::string(74, '-') << '\n';
+                << std::setw(20) << "unknowns" << fespace.GetTrueVSize() << '\n';
+      if (fespace.GetVDim() > 1)
+         mfem::out << std::setw(20) << "ordering" << (by_vdim ? "byVDIM" : "byNODES") << '\n';
+      mfem::out << std::string(74, '-') << '\n';
+   }
+
+   // Q_k on a hexahedron, degree <= k in each variable; P_k on a
+   // tetrahedron, total degree <= k. Any other element keeps the name of its
+   // collection.
+   static std::string get_element_name(const mfem::FiniteElementSpace &fespace)
+   {
+      const int order = fespace.GetMaxElementOrder();
+      const bool is_h1 = dynamic_cast<const mfem::H1_FECollection *>(fespace.FEColl()) != nullptr;
+      if (is_h1)
+         switch (fespace.GetFE(0)->GetGeomType())
+         {
+            case mfem::Geometry::CUBE:        return "Q" + std::to_string(order) + " hexahedron";
+            case mfem::Geometry::TETRAHEDRON: return "P" + std::to_string(order) + " tetrahedron";
+            default: break;
+         }
+      return fespace.FEColl()->Name();
    }
 
    // Header of the Newton iterations printed by NewtonMonitor.
