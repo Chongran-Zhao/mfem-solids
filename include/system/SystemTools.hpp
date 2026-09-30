@@ -8,6 +8,8 @@
 #ifndef SYSTEM_TOOLS_HPP
 #define SYSTEM_TOOLS_HPP
 
+#include <array>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -52,6 +54,14 @@ public:
                 << "||R|| / ||R_0||\n";
    }
 
+   // Header of the Newton iterations printed by BlockNewtonMonitor.
+   static void print_block_newton_header()
+   {
+      mfem::out << '\n' << std::left << std::setw(11) << "iteration"
+                << std::setw(15) << "||R_u||" << std::setw(15) << "/ ||R_u,0||"
+                << std::setw(15) << "||R_p||" << "/ ||R_p,0||\n";
+   }
+
    // Prints the residual norm of every Newton iteration, absolute and
    // relative to the first iteration of the load step. NewtonSolver calls
    // MonitorResidual once per iteration, and once more with final = true,
@@ -73,6 +83,51 @@ public:
 
    private:
       double initial_norm = 1.0;
+   };
+
+   // As NewtonMonitor, for a residual of two blocks, the displacement R_u
+   // and the pressure R_p, whose scales differ by orders of magnitude: the
+   // norm of each block, absolute and relative to the first iteration of the
+   // load step. A relative norm is left out when its first norm is zero.
+   class BlockNewtonMonitor : public mfem::IterativeSolverMonitor
+   {
+   public:
+      BlockNewtonMonitor(const mfem::Array<int> &input_offsets) : offsets(input_offsets) {}
+
+      void MonitorResidual(int it, mfem::real_t, const mfem::Vector &r,
+                           bool final) override
+      {
+         if (final)
+            return;
+
+         // ||R_u|| and ||R_p||, the norms of r over the two blocks.
+         std::array<double, 2> norm = {0.0, 0.0};
+         for (int bb = 0; bb < 2; bb++)
+         {
+            for (int ii = offsets[bb]; ii < offsets[bb + 1]; ii++)
+               norm[bb] += r(ii) * r(ii);
+            norm[bb] = std::sqrt(norm[bb]);
+         }
+         if (it == 0)
+            initial_norm = norm;
+
+         mfem::out << std::left << std::setw(11) << it << std::scientific << std::setprecision(6);
+         for (int bb = 0; bb < 2; bb++)
+         {
+            // No padding after the last column.
+            const int width = (bb == 0) ? 15 : 0;
+            mfem::out << std::setw(15) << norm[bb];
+            if (initial_norm[bb] > 0.0)
+               mfem::out << std::setw(width) << norm[bb] / initial_norm[bb];
+            else
+               mfem::out << std::setw(width) << "-";
+         }
+         mfem::out << std::defaultfloat << '\n';
+      }
+
+   private:
+      const mfem::Array<int> offsets;             // [0, n_u, n_u + n_p]
+      std::array<double, 2> initial_norm = {1.0, 1.0};
    };
 
    // Direct solver for the block tangent of BlockNonlinearForm, set by
