@@ -12,6 +12,7 @@
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #include <filesystem>
+#include <iomanip>
 #include <string>
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
@@ -23,6 +24,12 @@
 
 int main(int argc, char *argv[])
 {
+   // Wall-clock time of the whole run.
+   mfem::StopWatch total_timer;
+   total_timer.Start();
+   mfem::out << "\nJob started on " << SystemTools::get_time() << ' '
+             << SystemTools::get_date() << '\n';
+
    // 1. Read config.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
@@ -159,8 +166,12 @@ int main(int argc, char *argv[])
    mfem::BlockVector predictor_rhs(offsets), predicted_increment(offsets);
 
    // Loading loop.
+   mfem::StopWatch step_timer;
    for (int step = 1; step <= num_load_steps; step++)
    {
+      // Wall-clock time of the step, up to the convergence.
+      step_timer.Restart();
+
       if (boundaries.is_traction_load())
       {
          boundaries.update_traction(step);
@@ -210,12 +221,18 @@ int main(int argc, char *argv[])
       newton_solver.Mult(rhs, sol);
       MFEM_VERIFY(newton_solver.GetConverged(), "Newton did not converge at step " << step << ".");
 
-      mfem::out << "converged in " << newton_solver.GetNumIterations() << " iterations\n";
+      mfem::out << "converged in " << newton_solver.GetNumIterations()
+                << " iterations. Time taken: " << std::fixed << std::setprecision(2)
+                << step_timer.RealTime() << " sec. " << SystemTools::get_time()
+                << std::defaultfloat << '\n';
 
       save_results(step);
    }
 
    mfem::out << std::string(74, '=') << "\n\n";
+   mfem::out << "Job finished on " << SystemTools::get_time() << ' ' << SystemTools::get_date()
+             << ". Time taken: " << std::fixed << std::setprecision(2) << total_timer.RealTime()
+             << " sec.\n\n" << std::defaultfloat;
    SystemTools::print_saved(results_dir);
    mfem::out << '\n';
 

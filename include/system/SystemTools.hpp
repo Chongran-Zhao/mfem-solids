@@ -9,7 +9,9 @@
 #define SYSTEM_TOOLS_HPP
 
 #include <array>
+#include <chrono>
 #include <cmath>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -21,6 +23,18 @@
 class SystemTools
 {
 public:
+   // Present local time as HH:MM:SS.
+   static std::string get_time()
+   {
+      return format_now("%H:%M:%S");
+   }
+
+   // Present local date as YYYY-MM-DD.
+   static std::string get_date()
+   {
+      return format_now("%Y-%m-%d");
+   }
+
    // Mesh file, number of elements and boundary elements, and the face names.
    static void print_mesh(const std::string &mesh_file, mfem::Mesh &mesh)
    {
@@ -204,6 +218,15 @@ public:
       std::ofstream gf_file(dir / file_name.str());
       gf_file.precision(16);
       gf.Save(gf_file);
+   }
+
+   // Present local time in a strftime format.
+   static std::string format_now(const char *format)
+   {
+      const std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+      std::ostringstream out;
+      out << std::put_time(std::localtime(&now), format);
+      return out.str();
    }
 
    // "saved  <absolute path>" for a file or folder a program has written.
