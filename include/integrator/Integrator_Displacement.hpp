@@ -1,5 +1,5 @@
 // ============================================================================
-// CompressibleHyperelasticIntegrator.hpp
+// Integrator_Displacement.hpp
 //
 // Element residual and tangent of compressible hyperelasticity in the
 // Total Lagrangian form. The unknown is the displacement.
@@ -8,20 +8,21 @@
 // Date: Sep. 25, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef COMPRESSIBLE_HYPERELASTIC_INTEGRATOR_HPP
-#define COMPRESSIBLE_HYPERELASTIC_INTEGRATOR_HPP
+#ifndef INTEGRATOR_DISPLACEMENT_HPP
+#define INTEGRATOR_DISPLACEMENT_HPP
 
 #include <mfem.hpp>
-#include "MaterialModel_Hyperelasticity.hpp"
+#include "IntegratorTools.hpp"
+#include "MaterialModel.hpp"
 #include "Tensor2_3D.hpp"
 
-class CompressibleHyperelasticIntegrator : public mfem::NonlinearFormIntegrator
+class Integrator_Displacement : public mfem::NonlinearFormIntegrator
 {
 public:
-   CompressibleHyperelasticIntegrator(const MaterialModel_Hyperelasticity &input_material)
+   Integrator_Displacement(const MaterialModel &input_material)
       : material(input_material) {}
 
-   // a is the nodal point index, k is the dimension index (x, y, z)
+   // a is the node index and k the direction (x, y, z).
    // R^a_k = int N_a,J P_kJ dV over the element in the reference configuration.
    // disp and residual store component k of node aa at aa + k * num_nodes.
    void AssembleElementVector(const mfem::FiniteElement &elem,
@@ -35,7 +36,7 @@ public:
       residual.SetSize(3 * num_nodes);
       residual = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
+      const mfem::IntegrationRule &quad_rule = IntegratorTools::get_quad_rule(elem, elem_map);
 
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
@@ -47,7 +48,7 @@ public:
          // N_a,J = dN/dX = dN/dxi (dX/dxi)^-1.
          mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
 
-         const Tensor2_3D F = get_deformation_gradient(disp, dN_dX);
+         const Tensor2_3D F = IntegratorTools::get_deformation_gradient(disp, dN_dX);
 
          const Tensor2_3D PK1 = material.get_1st_PK_stress(F);
 
@@ -85,7 +86,7 @@ public:
       tangent.SetSize(3*num_nodes);
       tangent = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
+      const mfem::IntegrationRule &quad_rule = IntegratorTools::get_quad_rule(elem, elem_map);
 
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
@@ -97,7 +98,7 @@ public:
          // N_a,J = dN/dX = dN/dxi (dX/dxi)^-1.
          mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
 
-         const Tensor2_3D F = get_deformation_gradient(disp, dN_dX);
+         const Tensor2_3D F = IntegratorTools::get_deformation_gradient(disp, dN_dX);
 
          const Tensor4_3D AA = material.get_1st_elasticity_tensor(F);
 
@@ -131,39 +132,7 @@ public:
    }
 
 private:
-   const MaterialModel_Hyperelasticity &material;
-
-   // Shared by the residual and the tangent, so that both use the same points.
-   static const mfem::IntegrationRule &get_quad_rule(
-      const mfem::FiniteElement &elem, mfem::ElementTransformation &elem_map)
-   {
-      return mfem::IntRules.Get(elem.GetGeomType(), 2 * elem_map.OrderGrad(&elem));
-   }
-
-   // F_kJ = delta_kJ + d_ak N_a,J.
-   static Tensor2_3D get_deformation_gradient(const mfem::Vector &disp,
-                                              const mfem::DenseMatrix &dN_dX)
-   {
-      const int num_nodes = dN_dX.Height();
-      Tensor2_3D F = Tensor2_3D::identity();
-      for (int aa = 0; aa < num_nodes; aa++)
-      {
-         const double disp_x = disp(aa);
-         const double disp_y = disp(aa+num_nodes);
-         const double disp_z = disp(aa+2*num_nodes);
-
-         F(0, 0) += disp_x * dN_dX(aa, 0);
-         F(0, 1) += disp_x * dN_dX(aa, 1);
-         F(0, 2) += disp_x * dN_dX(aa, 2);
-         F(1, 0) += disp_y * dN_dX(aa, 0);
-         F(1, 1) += disp_y * dN_dX(aa, 1);
-         F(1, 2) += disp_y * dN_dX(aa, 2);
-         F(2, 0) += disp_z * dN_dX(aa, 0);
-         F(2, 1) += disp_z * dN_dX(aa, 1);
-         F(2, 2) += disp_z * dN_dX(aa, 2);
-      }
-      return F;
-   }
+   const MaterialModel &material;
 };
 
 #endif

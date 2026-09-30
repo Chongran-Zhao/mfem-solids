@@ -20,8 +20,6 @@
 #include <vector>
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
-#include "CompressibleHyperelasticIntegrator.hpp"
-#include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
 
 // One reported face.
@@ -40,7 +38,7 @@ int main(int argc, char *argv[])
    // 1. Read config.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
-                 : std::filesystem::path(SOURCE_DIR) / "config.yaml";
+                 : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
    // 2. Read the mesh file.
@@ -48,10 +46,8 @@ int main(int argc, char *argv[])
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
 
-   // 3. Set up the space and the nonlinear form of the driver, without
-   //    essential dofs, so that Mult gives the internal force at every node
-   //       R^a_k = int N_a,J P_kJ dV,
-   //    which is the reaction at a constrained node.
+   // 3. Set up the displacement space of the driver; the internal force
+   //    lives in the same space.
    const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    mfem::H1_FECollection fec(order, dim);
@@ -59,10 +55,6 @@ int main(int argc, char *argv[])
    mfem::GridFunction disp(&fespace);
    mfem::Vector internal_force(fespace.GetTrueVSize());
    SystemTools::print_space(fespace);
-
-   const MaterialModel_Hyperelasticity material = get_material_model();
-   mfem::NonlinearForm nonlinear_form(&fespace);
-   nonlinear_form.AddDomainIntegrator(new CompressibleHyperelasticIntegrator(material));
 
    // 4. Collect the faces and directions of the csv_writer section.
    const int load_steps = config["loading"]["load_steps"].as<int>();
@@ -174,7 +166,24 @@ int main(int argc, char *argv[])
       face.csv << '\n' << std::scientific << std::setprecision(10);
    }
 
-   // 5. Read the displacement of each step and write, for each face,
+   // Reads <results>/<prefix>_XXXX.gf of a step into target, whose size must
+   // match that of the file.
+   auto read_gf = [&](const std::string &prefix, int step, mfem::Vector &target)
+   {
+      std::ostringstream name;
+      name << prefix << '_' << std::setw(4) << std::setfill('0') << step << ".gf";
+      std::ifstream gf_file(results_dir / name.str());
+      MFEM_VERIFY(gf_file, "Cannot open " << (results_dir / name.str()).string()
+                  << "; run the driver first.");
+
+      mfem::GridFunction file_gf(&mesh, gf_file);
+      MFEM_VERIFY(file_gf.Size() == target.Size(),
+                  "The space in " << name.str() << " differs from that of config.yaml.");
+      target = file_gf;
+   };
+
+   // 5. Read the displacement and the internal force R^a_k of each step,
+   //    saved by the driver, and write, for each face,
    //       u_mean_k = (1 / A_0) int u_k dA        mean displacement
    //       F_k      = sum_{a on face} R^a_k       resultant force
    //       t_k      = F_k / A_0                   mean nominal traction
@@ -183,17 +192,8 @@ int main(int argc, char *argv[])
    //    with constrained faces, so it has no meaning there.
    for (int step = 0; step <= load_steps; step++)
    {
-      std::ostringstream name;
-      name << "disp_" << std::setw(4) << std::setfill('0') << step << ".gf";
-      std::ifstream disp_file(results_dir / name.str());
-      MFEM_VERIFY(disp_file, "Cannot open " << (results_dir / name.str()).string()
-                  << "; run the driver first.");
-
-      mfem::GridFunction file_disp(&mesh, disp_file);
-      MFEM_VERIFY(file_disp.Size() == disp.Size(),
-                  "The space in " << name.str() << " differs from that of config.yaml.");
-      disp = file_disp;
-      nonlinear_form.Mult(disp, internal_force);
+      read_gf("disp", step, disp);
+      read_gf("internal_force", step, internal_force);
 
       const double factor = static_cast<double>(step) / load_steps;
 

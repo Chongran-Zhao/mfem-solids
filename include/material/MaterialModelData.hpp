@@ -12,7 +12,7 @@
 #define MATERIAL_MODEL_DATA_HPP
 
 #include <memory>
-#include "MaterialModel_Hyperelasticity.hpp"
+#include "MaterialModel.hpp"
 #include "MaterialModel_ich_NeoHookean.hpp"
 #include "MaterialModel_vol_Quadratic.hpp"
 
@@ -35,9 +35,9 @@ inline std::unique_ptr<IMaterialModel_ich> create_ich_model()
 }
 
 // The material: the volumetric and the isochoric model together.
-inline MaterialModel_Hyperelasticity get_material_model()
+inline MaterialModel get_material_model()
 {
-   return MaterialModel_Hyperelasticity(create_vol_model(), create_ich_model());
+   return MaterialModel(create_vol_model(), create_ich_model());
 }
 
 #endif

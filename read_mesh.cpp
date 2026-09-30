@@ -32,17 +32,16 @@ int main(int argc, char *argv[])
 {
    // 1. The mesh section of config.yaml gives the mesh file, the number of
    //    uniform refinements and the output file. By default the config.yaml
-   //    next to this source file is read. Input paths in it are relative to
-   //    the directory of config.yaml; output paths are relative to the
-   //    directory the program runs in, normally build/.
+   //    of the directory the program runs in is read, the copy CMake puts in
+   //    build/. The mesh file is relative to the source directory; output
+   //    paths are relative to the directory the program runs in.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
-                 : std::filesystem::path(SOURCE_DIR) / "config.yaml";
-   const std::filesystem::path config_dir = yaml_file.parent_path();
+                 : std::filesystem::path("config.yaml");
 
    const YAML::Node paras = YAML::LoadFile(yaml_file.string())["mesh"];
    const std::string mesh_file =
-      (config_dir / paras["file"].as<std::string>()).lexically_normal().string();
+      (std::filesystem::path(SOURCE_DIR) / paras["file"].as<std::string>()).lexically_normal().string();
    const int refine_levels = paras["refine_levels"].as<int>();
    const std::string output_mesh = paras["output"].as<std::string>();
    const std::string output_html = paras["output_html"].as<std::string>();

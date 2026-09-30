@@ -1,6 +1,6 @@
 *.dSYM/
 *.o
-build/
 compile_commands.json
 bd/
+build*/
 .DS_Store
