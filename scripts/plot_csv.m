@@ -1,11 +1,11 @@
 % ============================================================================
 % plot_csv.m
 %
-% Plots the CSV files written by csv_writer, one figure per face and one
-% panel per reported direction: the resultant force F against the mean
-% displacement u, or against the load factor on a face whose u stays zero,
-% e.g. a fixed one. The result folders listed below, e.g. of
-% driver_displacement and driver_mixed, are overlaid in the same panels.
+% Plots the CSV files written by csv_writer against the load factor: for
+% each face, one figure of the mean displacement u and one of the mean
+% nominal traction t = F / A_0, with one panel per reported direction. The
+% result folders listed below, e.g. of driver_displacement and driver_mixed,
+% are overlaid in the same panels.
 %
 % Author: Chongran Zhao
 % Date: Sep. 30, 2026
@@ -41,36 +41,32 @@ for ff = 1:numel(files)
    columns = results{1}.Properties.VariableNames;
    dirs = erase(columns(startsWith(columns, 'u_')), 'u_');
 
-   figure('Name', face);
-   tiledlayout(1, numel(dirs));
-   for kk = 1:numel(dirs)
-      disp_name = ['u_' dirs{kk}];
-      force_name = ['F_' dirs{kk}];
+   % One marker per folder, so that the curves stay apart where they overlap.
+   markers = {'o', 's', '^', 'd', 'v', 'x', '+', '*'};
 
-      % On a face that does not move, F is plotted against the load factor.
-      is_fixed = all(results{1}.(disp_name) == 0);
+   % One figure per quantity: u, then t.
+   quantities = {'u', 't'};
+   for qq = 1:numel(quantities)
+      figure('Name', sprintf('%s_%s', face, quantities{qq}));
+      tiledlayout(1, numel(dirs));
+      for kk = 1:numel(dirs)
+         column = [quantities{qq} '_' dirs{kk}];
 
-      nexttile;
-      hold on;
-      for dd = 1:numel(results)
-         if is_fixed
-            x_data = results{dd}.load_factor;
-         else
-            x_data = results{dd}.(disp_name);
+         nexttile;
+         hold on;
+         for dd = 1:numel(results)
+            marker = markers{mod(dd - 1, numel(markers)) + 1};
+            plot(results{dd}.load_factor, results{dd}.(column), ['-' marker], ...
+                 'DisplayName', labels{dd});
          end
-         plot(x_data, results{dd}.(force_name), 'o-', 'DisplayName', labels{dd});
-      end
-      hold off;
-      box on;
-      grid on;
+         hold off;
+         box on;
+         grid on;
 
-      if is_fixed
          xlabel('load factor');
-      else
-         xlabel(disp_name, 'Interpreter', 'none');
+         ylabel(column, 'Interpreter', 'none');
+         title(sprintf('%s, %s', face, column), 'Interpreter', 'none');
+         legend('Location', 'best', 'Interpreter', 'none');
       end
-      ylabel(force_name, 'Interpreter', 'none');
-      title(sprintf('%s, %s', face, dirs{kk}), 'Interpreter', 'none');
-      legend('Location', 'best', 'Interpreter', 'none');
    end
 end
