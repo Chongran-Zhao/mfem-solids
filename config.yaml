@@ -1,5 +1,7 @@
 # Input of read_mesh, the driver, vtu_writer and csv_writer.
-# Read from the source directory, or from the path given as first argument.
+# CMake copies it into build/, and the programs read the copy of the directory
+# they run in, or the file given as first argument. mesh.file is relative to
+# the source directory.
 
 mesh:
   # Mesh file in MFEM format.

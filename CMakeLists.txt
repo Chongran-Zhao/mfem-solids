@@ -42,6 +42,10 @@ set(include_dirs
   include/system
   include/visualization)
 
+# config.yaml is copied into the build directory, again whenever it changes;
+# the programs read the copy of the directory they run in.
+configure_file(config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
+
 add_executable(read_mesh read_mesh.cpp)
 target_include_directories(read_mesh PRIVATE ${MFEM_INCLUDE_DIRS})
 target_link_libraries(read_mesh PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
@@ -50,19 +54,15 @@ target_compile_definitions(read_mesh PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_
 add_executable(driver_displacement driver_displacement.cpp)
 target_include_directories(driver_displacement PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
 target_link_libraries(driver_displacement PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
-target_compile_definitions(driver_displacement PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_executable(driver_mixed driver_mixed.cpp)
 target_include_directories(driver_mixed PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
 target_link_libraries(driver_mixed PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
-target_compile_definitions(driver_mixed PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_executable(vtu_writer vtu_writer.cpp)
 target_include_directories(vtu_writer PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
 target_link_libraries(vtu_writer PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
-target_compile_definitions(vtu_writer PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_executable(csv_writer csv_writer.cpp)
 target_include_directories(csv_writer PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
 target_link_libraries(csv_writer PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
-target_compile_definitions(csv_writer PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")

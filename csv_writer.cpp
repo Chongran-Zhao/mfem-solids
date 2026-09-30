@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
    // 1. Read config.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
-                 : std::filesystem::path(SOURCE_DIR) / "config.yaml";
+                 : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
    // 2. Read the mesh file.

@@ -67,5 +67,6 @@ The programs run in `build/`, in this order:
 cd build && ./read_mesh && ./driver_displacement && ./vtu_writer && ./csv_writer
 ```
 
-Each program reads `config.yaml` from the source directory, or the file given as its
-first argument.
+CMake copies `config.yaml` into `build/`, again whenever it changes; each program reads
+the `config.yaml` of the directory it runs in, or the file given as its first argument.
+`mesh.file` is relative to the source directory.
