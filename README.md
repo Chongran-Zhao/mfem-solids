@@ -10,6 +10,7 @@ and traction conditions on named faces, load stepping and Newton's method.
 |---|---|---|
 | `read_mesh` | the mesh in `config.yaml` | `beam.mesh` with the six box faces named `left`, `right`, `front`, `back`, `bottom`, `top`, and a 3D view of them, `beam_boundary.html` |
 | `driver_displacement` | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement and the nodal internal force of each load step, `results_gf/disp_XXXX.gf` and `internal_force_XXXX.gf` |
+| `driver_mixed` | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | the same, and the pressure, `results_gf/pres_XXXX.gf` |
 | `vtu_writer` | `results_gf/` | `results_vtu/`: the deformed mesh with the displacement and the first and second Piola-Kirchhoff stresses; open `results_vtu.pvd` in ParaView |
 | `csv_writer` | `results_gf/` | `results_csv/<face>.csv`: mean displacement, resultant force and mean traction on the faces and directions of `csv_writer` in `config.yaml`, at each step |
 

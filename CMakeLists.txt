@@ -52,6 +52,11 @@ target_include_directories(driver_displacement PRIVATE ${include_dirs} ${MFEM_IN
 target_link_libraries(driver_displacement PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
 target_compile_definitions(driver_displacement PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
+add_executable(driver_mixed driver_mixed.cpp)
+target_include_directories(driver_mixed PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
+target_link_libraries(driver_mixed PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
+target_compile_definitions(driver_mixed PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
 add_executable(vtu_writer vtu_writer.cpp)
 target_include_directories(vtu_writer PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
 target_link_libraries(vtu_writer PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
