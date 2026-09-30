@@ -9,7 +9,7 @@ and traction conditions on named faces, load stepping and Newton's method.
 | Program | Reads | Writes |
 |---|---|---|
 | `read_mesh` | the mesh in `config.yaml` | `beam.mesh` with the six box faces named `left`, `right`, `front`, `back`, `bottom`, `top`, and a 3D view of them, `beam_boundary.html` |
-| `driver` | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
+| `driver_displacement` | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement and the nodal internal force of each load step, `results_gf/disp_XXXX.gf` and `internal_force_XXXX.gf` |
 | `vtu_writer` | `results_gf/` | `results_vtu/`: the deformed mesh with the displacement and the first and second Piola-Kirchhoff stresses; open `results_vtu.pvd` in ParaView |
 | `csv_writer` | `results_gf/` | `results_csv/<face>.csv`: mean displacement, resultant force and mean traction on the faces and directions of `csv_writer` in `config.yaml`, at each step |
 
@@ -63,7 +63,7 @@ cmake --build build
 The programs run in `build/`, in this order:
 
 ```bash
-cd build && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
+cd build && ./read_mesh && ./driver_displacement && ./vtu_writer && ./csv_writer
 ```
 
 Each program reads `config.yaml` from the source directory, or the file given as its
