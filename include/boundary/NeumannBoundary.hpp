@@ -79,8 +79,8 @@ public:
       mfem::out << std::string(74, '-') << "\n\n";
    }
 
-   // Print the traction load at each step, as the resultant force.
-   void print_traction_load_by_step(const mfem::LinearForm &traction_force) const
+   // Print the traction load at the current time, as the resultant force.
+   void print_traction_load_time(const mfem::LinearForm &traction_force) const
    {
       // LinearForm::operator() is the action on a GridFunction, so the
       // entries are read through the Vector.

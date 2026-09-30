@@ -66,9 +66,9 @@ int main(int argc, char *argv[])
 
    // 4. Set up the boundary conditions, on the displacement only.
    BoundaryManager boundaries(config, space_u);
-   const int num_load_steps = boundaries.get_num_load_steps();
+   const int num_load_steps = config["loading"]["load_steps"].as<int>();
    boundaries.print_fixed_bc();
-   boundaries.print_load();
+   boundaries.print_load_faces();
 
    // 5. Set up the material model.
    const MaterialModel material = get_material_model();
@@ -172,9 +172,12 @@ int main(int argc, char *argv[])
       // Wall-clock time of the step, up to the convergence.
       step_timer.Restart();
 
+      // Load factor t = n / N, the time of the loading functions.
+      const double load_factor = static_cast<double>(step) / num_load_steps;
+
       if (boundaries.is_traction_load())
       {
-         boundaries.update_traction(step);
+         boundaries.update_traction(load_factor);
          external_force.Assemble();
       }
       rhs.GetBlock(0) = external_force;
@@ -188,7 +191,7 @@ int main(int argc, char *argv[])
       // is predicted as well.
       disp_target = disp;
       if (boundaries.is_disp_load())
-         boundaries.apply_disp_load_bc(step, disp_target);
+         boundaries.apply_disp_load_bc(load_factor, disp_target);
       prescribed_increment = 0.0;
       prescribed_increment.GetBlock(0) = disp_target;
       prescribed_increment.GetBlock(0) -= disp;
@@ -208,9 +211,11 @@ int main(int argc, char *argv[])
       sol += predicted_increment;
       // Set the prescribed values exactly, free of round-off.
       if (boundaries.is_disp_load())
-         boundaries.apply_disp_load_bc(step, disp);
+         boundaries.apply_disp_load_bc(load_factor, disp);
 
-      boundaries.print_load_by_step(step, disp, external_force);
+      mfem::out << std::string(74, '=') << '\n'
+                << "Load step " << step << " / " << num_load_steps << '\n';
+      boundaries.print_load(disp, external_force);
       SystemTools::print_block_newton_header();
 
       // Set the external force to zero on the essential dofs.

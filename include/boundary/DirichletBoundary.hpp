@@ -138,7 +138,7 @@ public:
 
 
    // Print the prescribed displacement of each driven face.
-   void print_disp_load_by_step(const mfem::GridFunction &disp) const
+   void print_disp_load_time(const mfem::GridFunction &disp) const
    {
       for (const disp_load &load : disp_load_list)
       {

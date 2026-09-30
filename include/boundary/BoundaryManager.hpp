@@ -24,8 +24,7 @@ public:
 
    // Constructor.
    BoundaryManager(const YAML::Node &config, mfem::FiniteElementSpace &fespace)
-      : num_load_steps(config["loading"]["load_steps"].as<int>()),
-        dirichlet(config["Dirichlet"], fespace),
+      : dirichlet(config["Dirichlet"], fespace),
         neumann(config["Neumann"], fespace)
    {
       const std::string loading_type = config["loading"]["type"].as<std::string>();
@@ -45,9 +44,6 @@ public:
          MFEM_ABORT("Unknown loading type \"" << loading_type << "\".");
    }
 
-   // Number of load steps defined in config.yaml.
-   int get_num_load_steps() const { return num_load_steps; }
-
    // All constrained dofs of the Dirichlet bc.
    mfem::Array<int> get_ess_tdof_list() const { return dirichlet.get_ess_tdof_list(); }
 
@@ -61,10 +57,10 @@ public:
    void apply_fixed_bc(mfem::GridFunction &disp) const
    { dirichlet.apply_fixed_bc(disp); }
 
-   // Set the prescribed disp on the displacement-driven dofs.
-   void apply_disp_load_bc(int step, mfem::GridFunction &disp) const
+   // Set the prescribed disp at time tt on the displacement-driven dofs.
+   void apply_disp_load_bc(double tt, mfem::GridFunction &disp) const
    {
-      dirichlet.apply_disp_load_bc(static_cast<double>(step) / num_load_steps, disp);
+      dirichlet.apply_disp_load_bc(tt, disp);
    }
 
    // Add the traction integrators to the LinearForm of the external force.
@@ -73,15 +69,15 @@ public:
       neumann.add_traction_integrators(external_force);
    }
 
-   // Update the tractions to the given load step.
-   void update_traction(int step)
-   { neumann.set_time(static_cast<double>(step) / num_load_steps); }
+   // Update the tractions to time tt.
+   void update_traction(double tt)
+   { neumann.set_time(tt); }
 
    // Print the fixed faces.
    void print_fixed_bc() const { dirichlet.print_fixed_bc(); }
 
    // Print the loaded faces (displacement or traction).
-   void print_load() const
+   void print_load_faces() const
    {
       if (is_disp_load())
          dirichlet.print_disp_load();
@@ -89,21 +85,17 @@ public:
          neumann.print_traction_load();
    }
 
-   // Print the header of the load step and the load value at that step.
-   void print_load_by_step(int step, const mfem::GridFunction &disp,
-                           const mfem::LinearForm &traction_force) const
+   // Print the load value: the prescribed disp, or the resultant traction force.
+   void print_load(const mfem::GridFunction &disp,
+                         const mfem::LinearForm &traction_force) const
    {
-      mfem::out << std::string(74, '=') << '\n'
-                << "Load step " << step << " / " << get_num_load_steps() << '\n';
-
       if (is_disp_load())
-         dirichlet.print_disp_load_by_step(disp);
+         dirichlet.print_disp_load_time(disp);
       else
-         neumann.print_traction_load_by_step(traction_force);
+         neumann.print_traction_load_time(traction_force);
    }
 
 private:
-   const int num_load_steps;                      // number of load steps N
    DirichletBoundary dirichlet;                   // Dirichlet section
    NeumannBoundary neumann;                       // Neumann section
 };
