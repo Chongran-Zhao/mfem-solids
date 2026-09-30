@@ -14,6 +14,9 @@ and traction conditions on named faces, load stepping and Newton's method.
 | `vtu_writer` | `results_gf/` | `results_vtu/`: the deformed mesh with the displacement, the pressure, and the first and second Piola-Kirchhoff stresses; open `results_vtu.pvd` in ParaView |
 | `csv_writer` | `results_gf/` | `results_csv/<face>.csv`: mean displacement, resultant force and mean traction on the faces and directions of `csv_writer` in `config.yaml`, at each step |
 
+`scripts/plot_csv.m` (MATLAB) plots the CSV files of `csv_writer` against the load factor,
+overlaying the result folders listed at its top.
+
 All settings are in `config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
 and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
 
@@ -41,7 +44,13 @@ and the prescribed displacements and tractions are in `include/boundary/LoadData
   reactions of the edges it shares with constrained faces, so it has no meaning there.
 - F is a resultant only: applying F / A_0 as a uniform traction does not reproduce a
   prescribed displacement, since the distribution of the reaction is lost.
-- `vtu_writer` writes the vertices only, so it needs linear elements (`space.order: 1`).
+- `vtu_writer` writes the values at the vertices only: with `space.order: 2` the midside
+  nodes are left out and ParaView draws the elements as linear.
+- `driver_mixed` needs a volumetric model with the pressure form J(p): `Quadratic`, or
+  `Incompressible` for J = 1, set in `MaterialModelData.hpp`. `SimoPister` has none and
+  aborts.
+- With `Incompressible`, the pressure is fixed only up to a constant when displacements
+  are prescribed on every face; the drivers do not handle that case.
 - Linear hexahedra lock in bending: on a coarse mesh the stresses are poor. Quadratic
   elements (`space.order: 2`) remove most of this.
 - Large prescribed displacements on a refined mesh may need more load steps for Newton
@@ -66,6 +75,9 @@ The programs run in `build/`, in this order:
 ```bash
 cd build && ./read_mesh && ./driver_displacement && ./vtu_writer && ./csv_writer
 ```
+
+For the mixed form, set `space.order: 2` and run `./driver_mixed` in place of
+`./driver_displacement`.
 
 CMake copies `config.yaml` into `build/`, again whenever it changes; each program reads
 the `config.yaml` of the directory it runs in, or the file given as its first argument.
