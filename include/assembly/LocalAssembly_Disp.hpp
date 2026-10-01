@@ -27,6 +27,9 @@ public:
    LocalAssembly_Disp(std::unique_ptr<const MaterialModel> input_material)
       : material(std::move(input_material)) {}
 
+   // The material this local assembly owns.
+   const MaterialModel &get_material() const { return *material; }
+
    // a is the node index and k the direction (x, y, z).
    // R^a_k = int N_a,J P_kJ dV over the element in the reference configuration.
    // disp and residual store component k of node aa at aa + k * num_nodes.

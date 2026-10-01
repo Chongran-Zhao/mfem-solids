@@ -13,9 +13,11 @@
 #include <iomanip>
 #include <memory>
 #include <string>
+#include <utility>
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 #include "BoundaryManager.hpp"
+#include "GlobalAssembly_Disp.hpp"
 #include "LocalAssemblyTools.hpp"
 #include "LocalAssembly_Disp.hpp"
 #include "MaterialModelData.hpp"
@@ -55,25 +57,18 @@ int main(int argc, char *argv[])
    boundaries.print_fixed_bc();
    boundaries.print_load();
 
-   // 5. Set up the material model for the output of the stress; each local
-   //    assembly creates and owns its own.
-   const std::unique_ptr<const MaterialModel> material = get_material_model();
+   // 5. Set up the material model.
+   std::unique_ptr<MaterialModel> material = get_material_model();
 
-   // 6. Construct the nonlinear form; its essential dofs are the constrained
-   //    displacements.
-   mfem::NonlinearForm nonlinear_form(&space_u);
-   nonlinear_form.AddDomainIntegrator(
-      std::make_unique<LocalAssembly_Disp>(get_material_model()).release());
-
+   // 6. Set up the assembly: the material goes to the local assembly, and the
+   //    local assembly to the global one, which owns them.
    const mfem::Array<int> ess_u = boundaries.get_ess_tdof_list();
-   nonlinear_form.SetEssentialTrueDofs(ess_u);
+   auto local_assembly = std::make_unique<LocalAssembly_Disp>(std::move(material));
+   auto global_assembly =
+      std::make_unique<GlobalAssembly_Disp>(space_u, std::move(local_assembly), ess_u);
 
-   // Internal force R^a_k = int N_a,J P_kJ dV at every node, from a second
-   // form without essential dofs: the reaction on the constrained dofs, the
-   // load on the others.
-   mfem::NonlinearForm internal_force_form(&space_u);
-   internal_force_form.AddDomainIntegrator(
-      std::make_unique<LocalAssembly_Disp>(get_material_model()).release());
+   // Internal force R^a_k = int N_a,J P_kJ dV at every node: the reaction on
+   // the constrained dofs, the load on the others.
    mfem::GridFunction internal_force(&space_u);
 
    // Pressure p(J) and first Piola-Kirchhoff stress P at the element centers,
@@ -89,7 +84,7 @@ int main(int argc, char *argv[])
    mfem::UMFPackSolver linear_solver;
 
    mfem::NewtonSolver newton_solver;
-   newton_solver.SetOperator(nonlinear_form);
+   newton_solver.SetOperator(*global_assembly);
    newton_solver.SetSolver(linear_solver);
    newton_solver.SetRelTol(solver["newton_rel_tol"].as<double>());
    newton_solver.SetAbsTol(solver["newton_abs_tol"].as<double>());
@@ -111,14 +106,14 @@ int main(int argc, char *argv[])
    {
       SystemTools::save_gf(results_dir, "disp", step, disp);
 
-      internal_force_form.Mult(disp, internal_force);
+      global_assembly->get_internal_force(disp, internal_force);
       SystemTools::save_gf(results_dir, "internal_force", step, internal_force);
 
       for (int ee = 0; ee < mesh.GetNE(); ee++)
       {
          const Tensor2_3D F = LocalAssemblyTools::get_center_deformation_gradient(space_u, disp, ee);
-         pres(ee) = material->get_p(F.det());
-         const Tensor2_3D PK1 = material->get_1st_PK_stress(F);
+         pres(ee) = global_assembly->get_material().get_p(F.det());
+         const Tensor2_3D PK1 = global_assembly->get_material().get_1st_PK_stress(F);
          for (int ii = 0; ii < 3; ii++)
             for (int JJ = 0; JJ < 3; JJ++)
                stress(space_stress.DofToVDof(ee, 3 * ii + JJ)) = PK1(ii, JJ);
@@ -160,24 +155,24 @@ int main(int argc, char *argv[])
       // interior follows the prescribed boundary increment du_e instead of
       // only the boundary nodes moving,
       //    K_ff du_f = [f_ext - R_int(u)]_f - K_fe du_e,
-      // with the full tangent of internal_force_form for K_fe.
+      // with the full stiffness for K_fe.
       disp_target = disp;
       if (boundaries.is_disp_load())
          boundaries.apply_disp_load_bc(step, disp_target);
       prescribed_increment = disp_target;
       prescribed_increment -= disp;
 
-      internal_force_form.Mult(disp, predictor_rhs);
-      internal_force_form.GetGradient(disp).Mult(prescribed_increment, coupling);
+      global_assembly->get_internal_force(disp, predictor_rhs);
+      global_assembly->get_stiffness(disp).Mult(prescribed_increment, coupling);
       predictor_rhs.Neg();
       predictor_rhs += external_force;
       predictor_rhs -= coupling;
-      // The tangent of nonlinear_form is the identity on the constrained dofs,
-      // so their increment is du_e itself.
+      // The tangent of the global assembly is the identity on the constrained
+      // dofs, so their increment is du_e itself.
       for (int dof : ess_u)
          predictor_rhs(dof) = prescribed_increment(dof);
 
-      linear_solver.SetOperator(nonlinear_form.GetGradient(disp));
+      linear_solver.SetOperator(global_assembly->GetGradient(disp));
       linear_solver.Mult(predictor_rhs, predicted_increment);
       disp += predicted_increment;
       // Set the prescribed values exactly, free of round-off.
