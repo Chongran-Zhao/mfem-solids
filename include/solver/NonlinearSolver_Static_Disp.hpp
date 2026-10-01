@@ -18,8 +18,9 @@
 #include <utility>
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
-#include "BoundaryManager.hpp"
+#include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Disp.hpp"
+#include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 
 class NonlinearSolver_Static_Disp : public mfem::Operator
@@ -42,23 +43,28 @@ public:
       newton_solver.SetMonitor(newton_monitor);
    }
 
-   // Solves load step n from the converged disp of step n - 1, and returns
-   // the number of Newton iterations.
-   int solve(int step, mfem::GridFunction &disp)
+   // Solves the load at time tt from the converged disp of the previous
+   // step, and returns the number of Newton iterations.
+   int solve(double tt, mfem::GridFunction &disp)
    {
-      BoundaryManager &boundaries = global_assembly->get_boundaries();
+      const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
+      const NeumannBoundary &neumann = global_assembly->get_neumann();
 
-      if (boundaries.is_traction_load())
-         global_assembly->set_traction_load(step);
+      if (neumann.is_traction_load())
+         global_assembly->set_traction_load(tt);
 
-      initial_guess(step, disp);
+      initial_guess(tt, disp);
 
-      boundaries.print_load_by_step(step, disp);
+      // The load value: the prescribed displacement, or the traction faces.
+      if (dirichlet.is_disp_load())
+         dirichlet.print_disp_load_by_step(disp);
+      else
+         neumann.print_traction_load_by_step();
       SystemTools::print_newton_header();
 
       // Newton iterations for R(d) = 0; the empty right-hand side means zero.
       newton_solver.Mult(mfem::Vector(), disp);
-      MFEM_VERIFY(newton_solver.GetConverged(), "Newton did not converge at step " << step << ".");
+      MFEM_VERIFY(newton_solver.GetConverged(), "Newton did not converge at t = " << tt << ".");
       return newton_solver.GetNumIterations();
    }
 
@@ -88,16 +94,16 @@ private:
    // the boundary nodes moving,
    //    K_ff du_f = -R_f(d) - K_fe g,
    // with K_fe g moved to the right-hand side by set_essential_bdr.
-   void initial_guess(int step, mfem::GridFunction &disp)
+   void initial_guess(double tt, mfem::GridFunction &disp)
    {
-      BoundaryManager &boundaries = global_assembly->get_boundaries();
+      const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
 
-      // Zero on the fixed faces, the prescribed values of step n on the
+      // Zero on the fixed faces, the prescribed values at time tt on the
       // displacement-driven ones; g is their difference from disp.
       mfem::GridFunction disp_target(disp);
-      boundaries.apply_fixed_bc(disp_target);
-      if (boundaries.is_disp_load())
-         boundaries.apply_disp_load_bc(step, disp_target);
+      dirichlet.apply_fixed_bc(disp_target);
+      if (dirichlet.is_disp_load())
+         dirichlet.apply_disp_load_bc(tt, disp_target);
       mfem::Vector prescribed_increment(disp_target);
       prescribed_increment -= disp;
 
@@ -113,9 +119,9 @@ private:
       disp += predicted_increment;
 
       // Set the prescribed values exactly, free of round-off.
-      boundaries.apply_fixed_bc(disp);
-      if (boundaries.is_disp_load())
-         boundaries.apply_disp_load_bc(step, disp);
+      dirichlet.apply_fixed_bc(disp);
+      if (dirichlet.is_disp_load())
+         dirichlet.apply_disp_load_bc(tt, disp);
    }
 
    // newton_solver points to this operator, the linear solver and the

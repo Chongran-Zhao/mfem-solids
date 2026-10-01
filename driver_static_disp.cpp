@@ -16,11 +16,11 @@
 #include <utility>
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
-#include "BoundaryManager.hpp"
+#include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Disp.hpp"
-#include "LocalAssemblyTools.hpp"
 #include "LocalAssembly_Disp.hpp"
 #include "MaterialModelData.hpp"
+#include "NeumannBoundary.hpp"
 #include "NonlinearSolver_Static_Disp.hpp"
 #include "TimeSolver_Static_Disp.hpp"
 #include "SystemTools.hpp"
@@ -54,10 +54,31 @@ int main(int argc, char *argv[])
    SystemTools::print_space(space_u);
 
    // 4. Set up the boundary conditions.
-   auto boundary_manager = std::make_unique<BoundaryManager>(config, space_u);
-   const int num_load_steps = boundary_manager->get_num_load_steps();
-   boundary_manager->print_fixed_bc();
-   boundary_manager->print_load();
+   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
+
+   // The loading is either a prescribed displacement or a traction.
+   const std::string loading_type = config["loading"]["type"].as<std::string>();
+   if (loading_type == "displacement")
+   {
+      MFEM_VERIFY(dirichlet->is_disp_load() && !neumann->is_traction_load(),
+                  "The loading type is displacement, so disp_bc must have an "
+                  "entry and Neumann no face.");
+   }
+   else if (loading_type == "traction")
+   {
+      MFEM_VERIFY(neumann->is_traction_load() && !dirichlet->is_disp_load(),
+                  "The loading type is traction, so Neumann must have a face "
+                  "and disp_bc no entry.");
+   }
+   else
+      MFEM_ABORT("Unknown loading type \"" << loading_type << "\".");
+
+   dirichlet->print_fixed_bc();
+   if (dirichlet->is_disp_load())
+      dirichlet->print_disp_load();
+   else
+      neumann->print_traction_load();
 
    // 5. Set up the material model.
    std::unique_ptr<MaterialModel> material = get_material_model();
@@ -67,51 +88,19 @@ int main(int argc, char *argv[])
    //    owns them.
    auto local_assembly = std::make_unique<LocalAssembly_Disp>(std::move(material));
    auto global_assembly = std::make_unique<GlobalAssembly_Disp>(
-      space_u, std::move(local_assembly), std::move(boundary_manager));
-
-   // The material of the stress output; it holds no state, so the output
-   // creates its own.
-   const std::unique_ptr<const MaterialModel> output_material = get_material_model();
-
-   // Pressure p(J) and first Piola-Kirchhoff stress P at the element centers,
-   // for vtu_writer: piecewise constant, P with the 9 components P_xx, P_xy,
-   // ..., P_zz.
-   mfem::L2_FECollection fec_center(0, dim);
-   mfem::FiniteElementSpace space_pres(&mesh, &fec_center);
-   mfem::FiniteElementSpace space_stress(&mesh, &fec_center, 9, mfem::Ordering::byVDIM);
-   mfem::GridFunction pres(&space_pres), stress(&space_stress);
+      space_u, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
    // 7. Set up the nonlinear solver, which owns the global assembly, and the
    //    time solver, which owns the nonlinear solver.
    auto nonlinear_solver = std::make_unique<NonlinearSolver_Static_Disp>(
       std::move(global_assembly), config["solver"]);
-   auto time_solver =
-      std::make_unique<TimeSolver_Static_Disp>(std::move(nonlinear_solver), num_load_steps);
-
-   // Remove the former results.
+   const int num_load_steps = config["loading"]["load_steps"].as<int>();
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
-   SystemTools::make_empty_dir(results_dir);
-
-   // Saves the displacement, the pressure and the stress of a step.
-   auto save_results = [&](int step)
-   {
-      SystemTools::save_gf(results_dir, "disp", step, disp);
-
-      for (int ee = 0; ee < mesh.GetNE(); ee++)
-      {
-         const Tensor2_3D F = LocalAssemblyTools::get_center_deformation_gradient(space_u, disp, ee);
-         pres(ee) = output_material->get_p(F.det());
-         const Tensor2_3D PK1 = output_material->get_1st_PK_stress(F);
-         for (int ii = 0; ii < 3; ii++)
-            for (int JJ = 0; JJ < 3; JJ++)
-               stress(space_stress.DofToVDof(ee, 3 * ii + JJ)) = PK1(ii, JJ);
-      }
-      SystemTools::save_gf(results_dir, "pres", step, pres);
-      SystemTools::save_gf(results_dir, "stress", step, stress);
-   };
+   auto time_solver = std::make_unique<TimeSolver_Static_Disp>(
+      std::move(nonlinear_solver), num_load_steps, results_dir);
 
    // 8. Solve the load steps.
-   time_solver->run(disp, save_results);
+   time_solver->run(disp);
 
    mfem::out << std::string(74, '=') << "\n\n";
    mfem::out << "Job finished on " << SystemTools::get_time() << ' ' << SystemTools::get_date()

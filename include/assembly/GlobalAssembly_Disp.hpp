@@ -1,8 +1,8 @@
 // ============================================================================
 // GlobalAssembly_Disp.hpp
 //
-// Global assembly of the displacement form, with the boundary conditions of
-// BoundaryManager:
+// Global assembly of the displacement form, with the Dirichlet and the
+// Neumann boundary conditions:
 //    external force  F_ext, from the tractions;
 //    residual        R(d) = int N_a,J P_kJ dV - F_ext, from one NonlinearForm
 //                    over LocalAssembly_Disp;
@@ -21,8 +21,9 @@
 #include <memory>
 #include <utility>
 #include <mfem.hpp>
-#include "BoundaryManager.hpp"
+#include "DirichletBoundary.hpp"
 #include "LocalAssembly_Disp.hpp"
+#include "NeumannBoundary.hpp"
 
 class GlobalAssembly_Disp
 {
@@ -31,27 +32,27 @@ public:
    // conditions; the global_assembly only borrows the local assembly.
    GlobalAssembly_Disp(mfem::FiniteElementSpace &space,
                        std::unique_ptr<LocalAssembly_Disp> input_local_assembly,
-                       std::unique_ptr<BoundaryManager> input_boundaries)
+                       std::unique_ptr<DirichletBoundary> input_dirichlet,
+                       std::unique_ptr<NeumannBoundary> input_neumann)
       : local_assembly(std::move(input_local_assembly)),
-        boundaries(std::move(input_boundaries)),
+        dirichlet(std::move(input_dirichlet)),
+        neumann(std::move(input_neumann)),
         global_assembly(&space),
         external_force(&space),
-        ess_tdof_list(boundaries->get_ess_tdof_list())
+        ess_tdof_list(dirichlet->get_ess_tdof_list())
    {
       global_assembly.UseExternalIntegrators();
       global_assembly.AddDomainIntegrator(local_assembly.get());
 
       external_force = 0.0;
-      if (boundaries->is_traction_load())
-         boundaries->add_traction_integrators(external_force);
+      if (neumann->is_traction_load())
+         neumann->add_traction_integrators(external_force);
    }
 
-   // Set the tractions to the given load step and assemble F_ext.
-   void set_traction_load(int step)
+   // Set the tractions to time tt and assemble F_ext.
+   void set_traction_load(double tt)
    {
-      if (!boundaries->is_traction_load())
-         return;
-      boundaries->update_traction(step);
+      neumann->set_time(tt);
       external_force.Assemble();
    }
 
@@ -96,14 +97,18 @@ public:
          tangent.EliminateRowCol(dof, prescribed_increment(dof), rhs);
    }
 
-   // The boundary conditions.
-   BoundaryManager &get_boundaries() { return *boundaries; }
+   // The Dirichlet boundary conditions, whose values the nonlinear solver sets.
+   const DirichletBoundary &get_dirichlet() const { return *dirichlet; }
+
+   // The Neumann boundary conditions.
+   const NeumannBoundary &get_neumann() const { return *neumann; }
 
 private:
    // Declared before global_assembly, so that global_assembly, which
    // borrows it, goes first.
    const std::unique_ptr<LocalAssembly_Disp> local_assembly;
-   const std::unique_ptr<BoundaryManager> boundaries;     // Dirichlet and Neumann
+   const std::unique_ptr<DirichletBoundary> dirichlet;    // constrained dofs and their values
+   const std::unique_ptr<NeumannBoundary> neumann;        // tractions
    mfem::NonlinearForm global_assembly;                   // R + F_ext and K, without constraints
    mfem::LinearForm external_force;                       // F_ext
    const mfem::Array<int> ess_tdof_list;                  // constrained dofs
