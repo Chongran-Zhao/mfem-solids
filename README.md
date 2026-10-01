@@ -17,7 +17,7 @@ and traction conditions on named faces, load stepping and Newton's method.
 `scripts/plot_csv.m` (MATLAB) plots the CSV files of `csv_writer` against the load factor,
 overlaying the result folders listed at its top.
 
-All settings are in `config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
+All settings are in `static_disp/config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
 and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
 
 ## Setting up a problem
@@ -75,6 +75,7 @@ cd build/static_disp && ./read_mesh && ./driver_static_disp && ./vtu_writer && .
 For the mixed form, `build/static_mixed/` has only `driver_static_mixed`; it needs
 `space.order: 2` and the `beam.mesh` of `read_mesh` in the directory it runs in.
 
-CMake copies `config.yaml` into both folders of `build/`, again whenever it changes; each program reads
-the `config.yaml` of the directory it runs in, or the file given as its first argument.
-`mesh.file` is relative to the source directory.
+Each folder has its own `config.yaml`, which CMake copies into the same folder of `build/`,
+again whenever it changes; each program reads the `config.yaml` of the directory it runs in,
+or the file given as its first argument. `mesh.file` is relative to the project directory,
+whose `mesh_files/` both formulations share.

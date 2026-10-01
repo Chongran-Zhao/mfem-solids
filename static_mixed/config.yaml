@@ -1,8 +1,7 @@
-# Input of read_mesh, the drivers, vtu_writer and csv_writer.
-# CMake copies it into build/static_disp/ and build/static_mixed/, and the
-# programs read the copy of the directory
-# they run in, or the file given as first argument. mesh.file is relative to
-# the source directory.
+# Input of driver_static_mixed.
+# CMake copies it into build/static_mixed/, and the driver reads the copy of
+# the directory it runs in, or the file given as first argument. The mesh is
+# the beam.mesh of read_mesh, in that directory.
 
 mesh:
   # Mesh file in MFEM format.
@@ -20,7 +19,7 @@ mesh:
 
 space:
   # Order of the continuous shape functions.
-  order: 1
+  order: 2
 
 # Loading settings.
 loading:
