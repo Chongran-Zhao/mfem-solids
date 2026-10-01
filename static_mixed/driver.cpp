@@ -18,11 +18,11 @@
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 #include "DirichletBoundary.hpp"
-#include "LocalAssemblyTools.hpp"
 #include "LocalAssembly_Mixed.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
+#include "VTK_Tools.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -151,7 +151,7 @@ int main(int argc, char *argv[])
 
       for (int ee = 0; ee < mesh.GetNE(); ee++)
       {
-         const Tensor2_3D F = LocalAssemblyTools::get_center_deformation_gradient(space_u, disp, ee);
+         const Tensor2_3D F = VTK_Tools::get_center_deformation_gradient(space_u, disp, ee);
          const double p = pres.GetValue(ee, mfem::Geometries.GetCenter(mesh.GetElementGeometry(ee)));
          const Tensor2_3D PK1 = material->get_1st_PK_stress_ich(F)
                                 - p * F.det() * F.inverse().transpose();

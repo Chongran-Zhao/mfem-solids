@@ -30,11 +30,12 @@ public:
       std::filesystem::create_directories(dir);
    }
 
-   // Write step_XXXX.vtu and update the PVD file. pres is nodal in H1 from
-   // the mixed driver, or p(J) at the element centers from the displacement form;
-   // stress holds P at the element centers.
+   // Write step_XXXX.vtu and update the PVD file. pres is nodal in H1, or
+   // one value per element; PK1 and PK2, the first and second
+   // Piola-Kirchhoff stresses, have one value per element.
    void save(int step, double time, const mfem::GridFunction &disp,
-             const mfem::GridFunction &pres, const mfem::GridFunction &stress)
+             const mfem::GridFunction &pres, const std::vector<Tensor2_3D> &PK1,
+             const std::vector<Tensor2_3D> &PK2)
    {
       const mfem::FiniteElementSpace &fespace = *disp.FESpace();
       const mfem::Mesh &mesh = *fespace.GetMesh();
@@ -73,18 +74,6 @@ public:
          out << "</DataArray>\n";
       }
       out << "</PointData>\n";
-
-      // Stresses at the element centers: P from the drivers, S = F^-1 P.
-      std::vector<Tensor2_3D> PK1(mesh.GetNE()), PK2(mesh.GetNE());
-      const mfem::FiniteElementSpace &space_stress = *stress.FESpace();
-      for (int ee = 0; ee < mesh.GetNE(); ee++)
-      {
-         for (int ii = 0; ii < 3; ii++)
-            for (int JJ = 0; JJ < 3; JJ++)
-               PK1[ee](ii, JJ) = stress(space_stress.DofToVDof(ee, 3 * ii + JJ));
-         const Tensor2_3D F = LocalAssemblyTools::get_center_deformation_gradient(fespace, disp, ee);
-         PK2[ee] = F.inverse() * PK1[ee];
-      }
 
       out << "<CellData>\n";
 
@@ -151,6 +140,29 @@ public:
 
       steps.emplace_back(time, file_name.str());
       write_pvd();
+   }
+
+   // F at the center of element ee, for the output of the stress.
+   static Tensor2_3D get_center_deformation_gradient(const mfem::FiniteElementSpace &fespace,
+                                                     const mfem::GridFunction &disp, int ee)
+   {
+      const mfem::FiniteElement &elem = *fespace.GetFE(ee);
+      mfem::ElementTransformation &elem_map = *fespace.GetElementTransformation(ee);
+      const mfem::IntegrationPoint &center = mfem::Geometries.GetCenter(elem.GetGeomType());
+      elem_map.SetIntPoint(&center);
+
+      const int num_nodes = elem.GetDof();
+      mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
+      elem.CalcDShape(center, dN_dxi);
+      mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
+
+      // Element displacement: x of all nodes, then y, then z.
+      mfem::Array<int> vdofs;
+      mfem::Vector elem_disp;
+      fespace.GetElementVDofs(ee, vdofs);
+      disp.GetSubVector(vdofs, elem_disp);
+
+      return LocalAssemblyTools::get_deformation_gradient(elem_disp, dN_dX);
    }
 
    // Path of the PVD file, the one to open in ParaView.
