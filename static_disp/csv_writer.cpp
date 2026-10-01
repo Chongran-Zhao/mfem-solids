@@ -1,8 +1,12 @@
 // ============================================================================
 // csv_writer.cpp
 //
-// Writes the mean displacement on the faces and directions of the csv_writer
-// section of config.yaml at each load step, one CSV file per face.
+// Writes the mean displacement and the reaction force on the faces and
+// directions of the csv_writer section of config.yaml at each load step, one
+// CSV file per face. The reaction is the residual R(d) = F_int(d) - F_ext at
+// the saved displacement, on the constrained dofs: the force the supports
+// exert; it is computed with the material of MaterialModelData, which must be
+// the one the driver ran with.
 //
 // Author: Chongran Zhao
 // Date: Sep. 26, 2026
@@ -14,11 +18,18 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
+#include "DirichletBoundary.hpp"
+#include "GlobalAssembly_Disp.hpp"
+#include "LocalAssembly_Disp.hpp"
+#include "MaterialModelData.hpp"
+#include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 
 // One reported face.
@@ -27,6 +38,7 @@ struct reported_face
    std::string name;                                // face name
    mfem::Array<int> face_marker;                    // marker of its boundary attributes
    std::vector<int> dirs;                           // reported directions, 0, 1, 2 for x, y, z
+   std::array<mfem::Array<int>, 3> component_dofs;  // dofs of x, y, z on the face
    double area;                                     // reference area A_0
    std::ofstream csv;                               // CSV file of the face
 };
@@ -51,6 +63,17 @@ int main(int argc, char *argv[])
    mfem::FiniteElementSpace fespace(&mesh, &fec, dim, mfem::Ordering::byVDIM);
    mfem::GridFunction disp(&fespace);
    SystemTools::print_space(fespace);
+
+   // The global assembly of the driver, for the residual R(d): the material
+   // and the boundary conditions are created anew from MaterialModelData and
+   // config.yaml.
+   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], fespace);
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], fespace);
+   const bool is_traction_load = neumann->is_traction_load();
+   auto local_assembly = std::make_unique<LocalAssembly_Disp>(set_material_model());
+   auto global_assembly = std::make_unique<GlobalAssembly_Disp>(
+      fespace, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
+   mfem::Vector residual(fespace.GetTrueVSize());
 
    // 4. Collect the faces and directions of the csv_writer section.
    const int load_steps = config["loading"]["load_steps"].as<int>();
@@ -102,6 +125,8 @@ int main(int argc, char *argv[])
          reported_face face;
          face.name = input_face;
          face.face_marker = mesh.bdr_attribute_sets.GetAttributeSetMarker(input_face);
+         for (int axis = 0; axis < 3; axis++)
+            fespace.GetEssentialTrueDofs(face.face_marker, face.component_dofs[axis], axis);
          face.area = get_area(face.face_marker);
          faces.push_back(std::move(face));
          found = faces.end() - 1;
@@ -147,13 +172,16 @@ int main(int argc, char *argv[])
       return out;
    };
 
-   // CSV header: step, load factor, then u in the reported directions.
+   // CSV header: step, load factor, then u, F and t = F / A_0 in the
+   // reported directions.
    for (reported_face &face : faces)
    {
       face.csv.open(output_dir / (face.name + ".csv"));
       face.csv << "step,load_factor";
-      for (int dir : face.dirs)
-         face.csv << ",u_" << component_names[dir];
+      const std::array<std::string, 3> quantities = {"u", "F", "t"};
+      for (int qq = 0; qq < 3; qq++)
+         for (int dir : face.dirs)
+            face.csv << ',' << quantities[qq] << '_' << component_names[dir];
       face.csv << '\n' << std::scientific << std::setprecision(10);
    }
 
@@ -173,32 +201,54 @@ int main(int argc, char *argv[])
       target = file_gf;
    };
 
-   // 5. Read the displacement of each step, saved by the driver, and write
-   //    the mean displacement u_mean_k = (1 / A_0) int u_k dA of each face.
+   // 5. Read the displacement of each step, saved by the driver, and write,
+   //    for each face,
+   //       u_mean_k = (1 / A_0) int u_k dA        mean displacement
+   //       F_k      = sum_{a on face} R^a_k       reaction force
+   //       t_k      = F_k / A_0                   mean nominal traction
+   //    F is the force the supports exert on a constrained face; on a free
+   //    face, a traction face included, it is the residual of Newton's method,
+   //    zero up to its tolerance, except for the dofs it shares with
+   //    constrained faces.
    for (int step = 0; step <= load_steps; step++)
    {
       read_gf("disp", step, disp);
 
       const double factor = static_cast<double>(step) / load_steps;
+      if (is_traction_load)
+         global_assembly->set_traction_load(factor);
+      global_assembly->set_residual(disp, residual);
 
       mfem::out << std::string(74, '=') << '\n'
                 << "Load step " << step << " / " << load_steps << "\n\n"
                 << std::left << std::setw(10) << "face" << std::setw(6) << ""
-                << "u_mean\n";
+                << std::setw(19) << "u_mean"
+                << std::setw(19) << "F"
+                << "t = F / A_0\n";
 
       for (reported_face &face : faces)
       {
          const std::array<double, 3> mean_disp = get_mean_disp(face);
 
+         std::array<double, 3> force = {0.0, 0.0, 0.0};
+         for (int kk = 0; kk < 3; kk++)
+            for (int dof : face.component_dofs[kk])
+               force[kk] += residual(dof);
+
          face.csv << step << ',' << factor;
          for (int dir : face.dirs)
             face.csv << ',' << mean_disp[dir];
+         for (int dir : face.dirs)
+            face.csv << ',' << force[dir];
+         for (int dir : face.dirs)
+            face.csv << ',' << force[dir] / face.area;
          face.csv << '\n';
 
          for (int dir : face.dirs)
             mfem::out << std::left << std::setw(10) << (dir == face.dirs[0] ? face.name : "")
                       << std::setw(6) << component_names[dir] << std::scientific
-                      << std::setprecision(6) << mean_disp[dir]
+                      << std::setprecision(6) << std::setw(19) << mean_disp[dir]
+                      << std::setw(19) << force[dir] << force[dir] / face.area
                       << std::defaultfloat << '\n';
       }
    }

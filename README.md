@@ -12,7 +12,7 @@ and traction conditions on named faces, load stepping and Newton's method.
 | `driver` (`static_disp/`) | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
 | `driver` (`static_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | the same, the pressure being the nodal unknown |
 | `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with the displacement, and the pressure p(J) and the first and second Piola-Kirchhoff stresses at the element centers; open `results_vtu.pvd` in ParaView |
-| `csv_writer` | `results_gf/` | `results_csv/<face>.csv`: mean displacement on the faces and directions of `csv_writer` in `config.yaml`, at each step |
+| `csv_writer` | `results_gf/` and the material | `results_csv/<face>.csv`: mean displacement, reaction force F and F / A_0 on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the residual R(d) on the constrained dofs of the face |
 
 `scripts/plot_csv.m` (MATLAB) plots the CSV files of `csv_writer` against the load factor,
 overlaying the result folders listed at its top.
