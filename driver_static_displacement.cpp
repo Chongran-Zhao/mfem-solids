@@ -15,8 +15,8 @@
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 #include "BoundaryManager.hpp"
-#include "IntegratorTools.hpp"
-#include "Integrator_Displacement.hpp"
+#include "LocalAssemblyTools.hpp"
+#include "LocalAssembly_Disp.hpp"
 #include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
 
@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
    // 6. Construct the nonlinear form; its essential dofs are the constrained
    //    displacements.
    mfem::NonlinearForm nonlinear_form(&space_u);
-   nonlinear_form.AddDomainIntegrator(new Integrator_Displacement(material));
+   nonlinear_form.AddDomainIntegrator(new LocalAssembly_Disp(material));
 
    const mfem::Array<int> ess_u = boundaries.get_ess_tdof_list();
    nonlinear_form.SetEssentialTrueDofs(ess_u);
@@ -69,7 +69,7 @@ int main(int argc, char *argv[])
    // form without essential dofs: the reaction on the constrained dofs, the
    // load on the others.
    mfem::NonlinearForm internal_force_form(&space_u);
-   internal_force_form.AddDomainIntegrator(new Integrator_Displacement(material));
+   internal_force_form.AddDomainIntegrator(new LocalAssembly_Disp(material));
    mfem::GridFunction internal_force(&space_u);
 
    // Pressure p(J) and first Piola-Kirchhoff stress P at the element centers,
@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
 
       for (int ee = 0; ee < mesh.GetNE(); ee++)
       {
-         const Tensor2_3D F = IntegratorTools::get_center_deformation_gradient(space_u, disp, ee);
+         const Tensor2_3D F = LocalAssemblyTools::get_center_deformation_gradient(space_u, disp, ee);
          pres(ee) = material.get_p(F.det());
          const Tensor2_3D PK1 = material.get_1st_PK_stress(F);
          for (int ii = 0; ii < 3; ii++)

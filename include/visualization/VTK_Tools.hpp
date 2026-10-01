@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 #include <mfem.hpp>
-#include "IntegratorTools.hpp"
+#include "LocalAssemblyTools.hpp"
 
 class VTK_Tools
 {
@@ -82,7 +82,7 @@ public:
          for (int ii = 0; ii < 3; ii++)
             for (int JJ = 0; JJ < 3; JJ++)
                PK1[ee](ii, JJ) = stress(space_stress.DofToVDof(ee, 3 * ii + JJ));
-         const Tensor2_3D F = IntegratorTools::get_center_deformation_gradient(fespace, disp, ee);
+         const Tensor2_3D F = LocalAssemblyTools::get_center_deformation_gradient(fespace, disp, ee);
          PK2[ee] = F.inverse() * PK1[ee];
       }
 

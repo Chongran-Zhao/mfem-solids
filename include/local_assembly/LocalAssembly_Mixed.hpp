@@ -1,28 +1,30 @@
 // ============================================================================
-// Integrator_Mixed.hpp
+// LocalAssembly_Mixed.hpp
 //
-// Element residual and tangent of hyperelasticity in the mixed
-// displacement-pressure (u/p) form, Total Lagrangian. The unknowns are the
-// displacement and the pressure; the volumetric model enters only through
-// J(p), so the same integrator covers compressible and fully incompressible
-// materials.
+// Local (element) assembly of hyperelasticity in the mixed
+// displacement-pressure (u/p) form, Total Lagrangian: the element residual and
+// tangent. The unknowns are the displacement and the pressure; the volumetric
+// model enters only through J(p), so the same local assembly covers
+// compressible and fully incompressible materials. It is an MFEM
+// BlockNonlinearFormIntegrator, called by BlockNonlinearForm, which assembles
+// the global residual and tangent.
 //
 // Author: Chongran Zhao
 // Date: Sep. 29, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef INTEGRATOR_MIXED_HPP
-#define INTEGRATOR_MIXED_HPP
+#ifndef LOCAL_ASSEMBLY_MIXED_HPP
+#define LOCAL_ASSEMBLY_MIXED_HPP
 
 #include <mfem.hpp>
-#include "IntegratorTools.hpp"
+#include "LocalAssemblyTools.hpp"
 #include "MaterialModel.hpp"
 #include "Tensor2_3D.hpp"
 
-class Integrator_Mixed : public mfem::BlockNonlinearFormIntegrator
+class LocalAssembly_Mixed : public mfem::BlockNonlinearFormIntegrator
 {
 public:
-   Integrator_Mixed(const MaterialModel &input_material)
+   LocalAssembly_Mixed(const MaterialModel &input_material)
       : material(input_material) {}
 
    // Block 0 is the displacement, block 1 the pressure.
@@ -50,7 +52,7 @@ public:
       residual_p.SetSize(num_nodes_p);
       residual_p = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = IntegratorTools::get_quad_rule(elem_u, elem_map);
+      const mfem::IntegrationRule &quad_rule = LocalAssemblyTools::get_quad_rule(elem_u, elem_map);
 
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
@@ -65,7 +67,7 @@ public:
          elem_p.CalcShape(quad_pt, M);
 
          // Interpolate the deformation gradient F.
-         const Tensor2_3D F = IntegratorTools::get_deformation_gradient(disp, dN_dX);
+         const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
          const double J = F.det();
 
          // Interpolate the pressure p = M_c p_c;
@@ -136,7 +138,7 @@ public:
       K_pp.SetSize(num_nodes_p, num_nodes_p);
       K_pp = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = IntegratorTools::get_quad_rule(elem_u, elem_map);
+      const mfem::IntegrationRule &quad_rule = LocalAssemblyTools::get_quad_rule(elem_u, elem_map);
 
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
@@ -151,7 +153,7 @@ public:
          elem_p.CalcShape(quad_pt, M);
 
          // Interpolate the deformation gradient F.
-         const Tensor2_3D F = IntegratorTools::get_deformation_gradient(disp, dN_dX);
+         const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
          const double J = F.det();
          const Tensor2_3D F_inv = F.inverse();
 

@@ -37,7 +37,7 @@ endif()
 # Headers of this project, one folder per kind.
 set(include_dirs
   include/boundary
-  include/integrator
+  include/local_assembly
   include/material
   include/system
   include/visualization)

@@ -17,8 +17,8 @@
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 #include "BoundaryManager.hpp"
-#include "IntegratorTools.hpp"
-#include "Integrator_Mixed.hpp"
+#include "LocalAssemblyTools.hpp"
+#include "LocalAssembly_Mixed.hpp"
 #include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
 
@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
    // 6. Construct the block nonlinear form; the pressure has no essential
    //    dofs.
    mfem::BlockNonlinearForm nonlinear_form(spaces);
-   nonlinear_form.AddDomainIntegrator(new Integrator_Mixed(material));
+   nonlinear_form.AddDomainIntegrator(new LocalAssembly_Mixed(material));
 
    // Constrained dofs per block; the pressure has none, but MFEM needs a list
    // for every space.
@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
    // node, the displacement block of a second form without essential dofs:
    // the reaction on the constrained dofs, the load on the others.
    mfem::BlockNonlinearForm internal_force_form(spaces);
-   internal_force_form.AddDomainIntegrator(new Integrator_Mixed(material));
+   internal_force_form.AddDomainIntegrator(new LocalAssembly_Mixed(material));
    mfem::BlockVector internal_force_blocks(offsets);
    mfem::GridFunction internal_force(&space_u);
 
@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
 
       for (int ee = 0; ee < mesh.GetNE(); ee++)
       {
-         const Tensor2_3D F = IntegratorTools::get_center_deformation_gradient(space_u, disp, ee);
+         const Tensor2_3D F = LocalAssemblyTools::get_center_deformation_gradient(space_u, disp, ee);
          const double p = pres.GetValue(ee, mfem::Geometries.GetCenter(mesh.GetElementGeometry(ee)));
          const Tensor2_3D PK1 = material.get_1st_PK_stress_ich(F)
                                 - p * F.det() * F.inverse().transpose();

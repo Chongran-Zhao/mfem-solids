@@ -1,25 +1,27 @@
 // ============================================================================
-// Integrator_Displacement.hpp
+// LocalAssembly_Disp.hpp
 //
-// Element residual and tangent of compressible hyperelasticity in the
-// Total Lagrangian form. The unknown is the displacement.
+// Local (element) assembly of compressible hyperelasticity in the Total
+// Lagrangian form: the element residual and tangent. The unknown is the
+// displacement. It is an MFEM NonlinearFormIntegrator, called by
+// NonlinearForm, which assembles the global residual and tangent.
 //
 // Author: Chongran Zhao
 // Date: Sep. 25, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef INTEGRATOR_DISPLACEMENT_HPP
-#define INTEGRATOR_DISPLACEMENT_HPP
+#ifndef LOCAL_ASSEMBLY_DISP_HPP
+#define LOCAL_ASSEMBLY_DISP_HPP
 
 #include <mfem.hpp>
-#include "IntegratorTools.hpp"
+#include "LocalAssemblyTools.hpp"
 #include "MaterialModel.hpp"
 #include "Tensor2_3D.hpp"
 
-class Integrator_Displacement : public mfem::NonlinearFormIntegrator
+class LocalAssembly_Disp : public mfem::NonlinearFormIntegrator
 {
 public:
-   Integrator_Displacement(const MaterialModel &input_material)
+   LocalAssembly_Disp(const MaterialModel &input_material)
       : material(input_material) {}
 
    // a is the node index and k the direction (x, y, z).
@@ -36,7 +38,7 @@ public:
       residual.SetSize(3 * num_nodes);
       residual = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = IntegratorTools::get_quad_rule(elem, elem_map);
+      const mfem::IntegrationRule &quad_rule = LocalAssemblyTools::get_quad_rule(elem, elem_map);
 
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
@@ -48,7 +50,7 @@ public:
          // N_a,J = dN/dX = dN/dxi (dX/dxi)^-1.
          mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
 
-         const Tensor2_3D F = IntegratorTools::get_deformation_gradient(disp, dN_dX);
+         const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
 
          const Tensor2_3D PK1 = material.get_1st_PK_stress(F);
 
@@ -86,7 +88,7 @@ public:
       tangent.SetSize(3*num_nodes);
       tangent = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = IntegratorTools::get_quad_rule(elem, elem_map);
+      const mfem::IntegrationRule &quad_rule = LocalAssemblyTools::get_quad_rule(elem, elem_map);
 
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
@@ -98,7 +100,7 @@ public:
          // N_a,J = dN/dX = dN/dxi (dX/dxi)^-1.
          mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
 
-         const Tensor2_3D F = IntegratorTools::get_deformation_gradient(disp, dN_dX);
+         const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
 
          const Tensor4_3D AA = material.get_1st_elasticity_tensor(F);
 

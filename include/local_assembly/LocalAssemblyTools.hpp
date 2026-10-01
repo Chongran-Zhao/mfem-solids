@@ -1,7 +1,7 @@
 // ============================================================================
-// IntegratorTools.hpp
+// LocalAssemblyTools.hpp
 //
-// Tools shared by the element integrators: the quadrature rule and the
+// Tools shared by the local assemblies: the quadrature rule and the
 // deformation gradient at a quadrature point, and at the element center for
 // the output of the stress.
 //
@@ -9,13 +9,13 @@
 // Date: Sep. 29, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef INTEGRATOR_TOOLS_HPP
-#define INTEGRATOR_TOOLS_HPP
+#ifndef LOCAL_ASSEMBLY_TOOLS_HPP
+#define LOCAL_ASSEMBLY_TOOLS_HPP
 
 #include <mfem.hpp>
 #include "Tensor2_3D.hpp"
 
-class IntegratorTools
+class LocalAssemblyTools
 {
 public:
    // Shared by the residual and the tangent, so that both use the same points.
