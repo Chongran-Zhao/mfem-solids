@@ -12,6 +12,8 @@
 #define MATERIAL_MODEL_HPP
 
 #include <memory>
+#include <utility>
+
 #include "IMaterialModel_ich.hpp"
 #include "IMaterialModel_vol.hpp"
 #include "Tensor2_3D.hpp"

@@ -18,10 +18,14 @@
 
 #include <memory>
 #include <utility>
+
 #include <mfem.hpp>
+
 #include "LocalAssemblyTools.hpp"
 #include "MaterialModel.hpp"
 #include "Tensor2_3D.hpp"
+#include "Tensor4_3D.hpp"
+#include "Vector_3D.hpp"
 
 class LocalAssembly_Mixed : public mfem::BlockNonlinearFormIntegrator
 {

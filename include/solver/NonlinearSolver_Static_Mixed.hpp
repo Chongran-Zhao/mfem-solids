@@ -14,9 +14,13 @@
 
 #include <memory>
 #include <utility>
+
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
+
+#include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
+#include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 
 class NonlinearSolver_Static_Mixed : public mfem::Operator

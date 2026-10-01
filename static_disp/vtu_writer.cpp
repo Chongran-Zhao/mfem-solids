@@ -18,10 +18,14 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
+
+#include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
+#include "Tensor2_3D.hpp"
 #include "VTK_Tools.hpp"
 
 int main(int argc, char *argv[])

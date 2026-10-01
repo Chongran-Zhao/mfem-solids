@@ -12,6 +12,9 @@
 #define MATERIAL_MODEL_DATA_HPP
 
 #include <memory>
+
+#include "IMaterialModel_ich.hpp"
+#include "IMaterialModel_vol.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModel_ich_NeoHookean.hpp"
 #include "MaterialModel_vol_Quadratic.hpp"

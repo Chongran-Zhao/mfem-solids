@@ -11,6 +11,7 @@
 #ifndef VTK_TOOLS_HPP
 #define VTK_TOOLS_HPP
 
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -18,8 +19,11 @@
 #include <string>
 #include <utility>
 #include <vector>
+
 #include <mfem.hpp>
+
 #include "LocalAssemblyTools.hpp"
+#include "Tensor2_3D.hpp"
 
 class VTK_Tools
 {

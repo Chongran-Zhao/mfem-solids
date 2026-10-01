@@ -15,9 +15,13 @@
 
 #include <filesystem>
 #include <iomanip>
+#include <ios>
 #include <memory>
+#include <string>
 #include <utility>
+
 #include <mfem.hpp>
+
 #include "NonlinearSolver_Static_Mixed.hpp"
 #include "SystemTools.hpp"
 

@@ -12,6 +12,7 @@
 #define LOCAL_ASSEMBLY_TOOLS_HPP
 
 #include <mfem.hpp>
+
 #include "Tensor2_3D.hpp"
 
 class LocalAssemblyTools
