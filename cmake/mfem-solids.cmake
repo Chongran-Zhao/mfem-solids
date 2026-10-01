@@ -1,12 +1,12 @@
 # ============================================================================
-# mfem-solids
+# mfem-solids.cmake
 #
-# Build:
-#   cmake -B build
-#   cmake --build build
+# Settings shared by the folders of this project; each folder's
+# CMakeLists.txt includes it after its own project() call:
+#    project_dir     the root of mfem-solids
+#    mfem_libraries  MFEM, with MPI when MFEM uses it, and yaml-cpp
+#    include_dirs    the header folders under include/
 # ============================================================================
-cmake_minimum_required(VERSION 3.20)
-project(mfem-solids LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,8 +16,11 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
+# The root of mfem-solids, the parent of this file's folder.
+get_filename_component(project_dir "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+
 # Libraries installed in MFEM/lib.
-set(lib_dir "${CMAKE_CURRENT_SOURCE_DIR}/../../lib")
+set(lib_dir "${project_dir}/../../lib")
 
 find_package(MFEM REQUIRED HINTS "${lib_dir}/mfem/build")
 message(STATUS "MFEM ${MFEM_VERSION} at ${MFEM_DIR}")
@@ -29,21 +32,17 @@ endif()
 find_package(yaml-cpp REQUIRED CONFIG HINTS "${lib_dir}/yaml-cpp/lib/cmake/yaml-cpp")
 message(STATUS "yaml-cpp at ${yaml-cpp_DIR}")
 
-set(mfem_libraries ${MFEM_LIBRARIES})
+set(mfem_libraries ${MFEM_LIBRARIES} yaml-cpp::yaml-cpp)
 if(MFEM_USE_MPI)
   list(APPEND mfem_libraries MPI::MPI_CXX)
 endif()
 
 # Headers of this project, one folder per kind.
 set(include_dirs
-  ${PROJECT_SOURCE_DIR}/include/assembly
-  ${PROJECT_SOURCE_DIR}/include/boundary
-  ${PROJECT_SOURCE_DIR}/include/material
-  ${PROJECT_SOURCE_DIR}/include/solver
-  ${PROJECT_SOURCE_DIR}/include/system
-  ${PROJECT_SOURCE_DIR}/include/visualization)
-
-# One folder per formulation, each with its own programs and CMakeLists.txt;
-# the programs of a folder are built into the same folder of the build tree.
-add_subdirectory(static_disp)
-add_subdirectory(static_mixed)
+  ${project_dir}/include/assembly
+  ${project_dir}/include/boundary
+  ${project_dir}/include/material
+  ${project_dir}/include/solver
+  ${project_dir}/include/system
+  ${project_dir}/include/visualization
+  ${MFEM_INCLUDE_DIRS})

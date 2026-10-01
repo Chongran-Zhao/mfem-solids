@@ -4,7 +4,7 @@
 % Plots the CSV files written by csv_writer against the load factor: for
 % each face, one figure of the mean displacement u, with one panel per
 % reported direction. The
-% result folders listed below, e.g. of driver_static_disp and driver_static_mixed,
+% result folders listed below, e.g. of the displacement and the mixed drivers,
 % are overlaid in the same panels.
 %
 % Author: Chongran Zhao

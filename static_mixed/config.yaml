@@ -1,5 +1,5 @@
-# Input of driver_static_mixed.
-# CMake copies it into build/static_mixed/, and the driver reads the copy of
+# Input of the driver of static_mixed.
+# CMake copies it into static_mixed/build/, and the driver reads the copy of
 # the directory it runs in, or the file given as first argument. The mesh is
 # the beam.mesh of read_mesh, in that directory.
 
