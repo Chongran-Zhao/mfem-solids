@@ -21,6 +21,7 @@
 #include "LocalAssemblyTools.hpp"
 #include "LocalAssembly_Disp.hpp"
 #include "MaterialModelData.hpp"
+#include "NonlinearSolver_Static_Disp.hpp"
 #include "SystemTools.hpp"
 
 int main(int argc, char *argv[])
@@ -67,8 +68,9 @@ int main(int argc, char *argv[])
    auto global_assembly = std::make_unique<GlobalAssembly_Disp>(
       space_u, std::move(local_assembly), std::move(boundary_manager));
 
-   // Borrowed from the global assembly.
-   BoundaryManager &boundaries = global_assembly->get_boundaries();
+   // The material of the stress output; it holds no state, so the output
+   // creates its own.
+   const std::unique_ptr<const MaterialModel> output_material = get_material_model();
 
    // Pressure p(J) and first Piola-Kirchhoff stress P at the element centers,
    // for vtu_writer: piecewise constant, P with the 9 components P_xx, P_xy,
@@ -78,22 +80,9 @@ int main(int argc, char *argv[])
    mfem::FiniteElementSpace space_stress(&mesh, &fec_center, 9, mfem::Ordering::byVDIM);
    mfem::GridFunction pres(&space_pres), stress(&space_stress);
 
-   // 7. Set up the linear solver and Newton's method.
-   const YAML::Node solver = config["solver"];
-   mfem::UMFPackSolver linear_solver;
-
-   mfem::NewtonSolver newton_solver;
-   newton_solver.SetOperator(*global_assembly);
-   newton_solver.SetSolver(linear_solver);
-   newton_solver.SetRelTol(solver["newton_rel_tol"].as<double>());
-   newton_solver.SetAbsTol(solver["newton_abs_tol"].as<double>());
-   newton_solver.SetMaxIter(solver["newton_max_iter"].as<int>());
-   newton_solver.SetPrintLevel(-1);
-   newton_solver.iterative_mode = true;
-
-   // Monitor the Newton iterations.
-   SystemTools::NewtonMonitor newton_monitor;
-   newton_solver.SetMonitor(newton_monitor);
+   // 7. Set up the nonlinear solver, which owns the global assembly.
+   auto nonlinear_solver = std::make_unique<NonlinearSolver_Static_Disp>(
+      std::move(global_assembly), config["solver"]);
 
    // Remove the former results.
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
@@ -107,8 +96,8 @@ int main(int argc, char *argv[])
       for (int ee = 0; ee < mesh.GetNE(); ee++)
       {
          const Tensor2_3D F = LocalAssemblyTools::get_center_deformation_gradient(space_u, disp, ee);
-         pres(ee) = global_assembly->get_material().get_p(F.det());
-         const Tensor2_3D PK1 = global_assembly->get_material().get_1st_PK_stress(F);
+         pres(ee) = output_material->get_p(F.det());
+         const Tensor2_3D PK1 = output_material->get_1st_PK_stress(F);
          for (int ii = 0; ii < 3; ii++)
             for (int JJ = 0; JJ < 3; JJ++)
                stress(space_stress.DofToVDof(ee, 3 * ii + JJ)) = PK1(ii, JJ);
@@ -118,51 +107,16 @@ int main(int argc, char *argv[])
    };
    save_results(0);
 
-   // 8. Set zero displacement on the fixed faces.
-   boundaries.apply_fixed_bc(disp);
-
-   // Work vectors of the consistent predictor.
-   mfem::GridFunction disp_target(&space_u);
-   mfem::Vector prescribed_increment(space_u.GetTrueVSize());
-   mfem::Vector predictor_rhs(space_u.GetTrueVSize()), predicted_increment(space_u.GetTrueVSize());
-
-   // Loading loop.
+   // 8. Loading loop.
    mfem::StopWatch step_timer;
    for (int step = 1; step <= num_load_steps; step++)
    {
       // Wall-clock time of the step, up to the convergence.
       step_timer.Restart();
 
-      global_assembly->set_load_step(step);
+      const int iterations = nonlinear_solver->solve(step, disp);
 
-      // Consistent predictor: the initial guess of Newton's method is one
-      // linear step from the converged state u with the new load, so that the
-      // interior follows the prescribed boundary increment du_e instead of
-      // only the boundary nodes moving,
-      //    K_ff du_f = -R_f(u) - K_fe du_e,
-      // which the global assembly sets up.
-      disp_target = disp;
-      if (boundaries.is_disp_load())
-         boundaries.apply_disp_load_bc(step, disp_target);
-      prescribed_increment = disp_target;
-      prescribed_increment -= disp;
-
-      linear_solver.SetOperator(
-         global_assembly->get_predictor_system(disp, prescribed_increment, predictor_rhs));
-      linear_solver.Mult(predictor_rhs, predicted_increment);
-      disp += predicted_increment;
-      // Set the prescribed values exactly, free of round-off.
-      if (boundaries.is_disp_load())
-         boundaries.apply_disp_load_bc(step, disp);
-
-      global_assembly->print_load(step, disp);
-      SystemTools::print_newton_header();
-
-      // Newton iterations for R(u) = 0; the empty right-hand side means zero.
-      newton_solver.Mult(mfem::Vector(), disp);
-      MFEM_VERIFY(newton_solver.GetConverged(), "Newton did not converge at step " << step << ".");
-
-      mfem::out << "converged in " << newton_solver.GetNumIterations()
+      mfem::out << "converged in " << iterations
                 << " iterations. Time taken: " << std::fixed << std::setprecision(2)
                 << step_timer.RealTime() << " sec. " << SystemTools::get_time()
                 << std::defaultfloat << '\n';

@@ -39,6 +39,7 @@ set(include_dirs
   include/assembly
   include/boundary
   include/material
+  include/solver
   include/system
   include/visualization)
 

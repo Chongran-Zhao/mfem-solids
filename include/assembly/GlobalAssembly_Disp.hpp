@@ -6,11 +6,10 @@
 //    external force  F_ext, from the tractions;
 //    residual        R(d) = int N_a,J P_kJ dV - F_ext, from one NonlinearForm
 //                    over LocalAssembly_Disp;
-//    stiffness       K(d) = dR/dd.
-// NewtonSolver gets R zero and K the identity on the constrained dofs, the
-// tangent, through Mult and GetGradient; the consistent predictor gets the
-// tangent with the constrained columns moved to the right-hand side, through
-// get_predictor_system.
+//    tangent         K(d) = dR/dd, assembled from the element tangents.
+// set_essential_bdr sets R to zero and K to the identity on the constrained
+// dofs, and, with an increment of the prescribed displacement, also moves
+// the constrained columns of K to the right-hand side.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -24,25 +23,23 @@
 #include <mfem.hpp>
 #include "BoundaryManager.hpp"
 #include "LocalAssembly_Disp.hpp"
-#include "MaterialModel.hpp"
 
-class GlobalAssembly_Disp : public mfem::Operator
+class GlobalAssembly_Disp
 {
 public:
    // Takes the ownership of the local assembly and of the boundary
-   // conditions; the form only borrows the local assembly.
+   // conditions; the global_assembly only borrows the local assembly.
    GlobalAssembly_Disp(mfem::FiniteElementSpace &space,
                        std::unique_ptr<LocalAssembly_Disp> input_local_assembly,
                        std::unique_ptr<BoundaryManager> input_boundaries)
-      : mfem::Operator(space.GetTrueVSize()),
-        local_assembly(std::move(input_local_assembly)),
+      : local_assembly(std::move(input_local_assembly)),
         boundaries(std::move(input_boundaries)),
-        form(&space),
+        global_assembly(&space),
         external_force(&space),
         ess_tdof_list(boundaries->get_ess_tdof_list())
    {
-      form.UseExternalIntegrators();
-      form.AddDomainIntegrator(local_assembly.get());
+      global_assembly.UseExternalIntegrators();
+      global_assembly.AddDomainIntegrator(local_assembly.get());
 
       external_force = 0.0;
       if (boundaries->is_traction_load())
@@ -50,7 +47,7 @@ public:
    }
 
    // Set the tractions to the given load step and assemble F_ext.
-   void set_load_step(int step)
+   void set_traction_load(int step)
    {
       if (!boundaries->is_traction_load())
          return;
@@ -58,73 +55,58 @@ public:
       external_force.Assemble();
    }
 
-   // R(d), zero on the constrained dofs.
-   void Mult(const mfem::Vector &disp, mfem::Vector &residual) const override
+   // Number of unknowns.
+   int get_num_dofs() const { return global_assembly.Height(); }
+
+   // R(d) at every dof.
+   void get_residual(const mfem::Vector &disp, mfem::Vector &residual) const
    {
-      get_residual(disp, residual);
+      global_assembly.Mult(disp, residual);
+      residual -= external_force;
+   }
+
+   // K(d) at every dof.
+   const mfem::SparseMatrix &get_tangent(const mfem::Vector &disp) const
+   {
+      return dynamic_cast<const mfem::SparseMatrix &>(global_assembly.GetGradient(disp));
+   }
+
+   // R zero on the constrained dofs, which carry no equation.
+   void set_essential_bdr(mfem::Vector &residual) const
+   {
       for (int dof : ess_tdof_list)
          residual(dof) = 0.0;
    }
 
-   // The tangent: K(d), the identity on the constrained dofs.
-   mfem::Operator &GetGradient(const mfem::Vector &disp) const override
+   // K the identity on the constrained dofs.
+   void set_essential_bdr(mfem::SparseMatrix &tangent) const
    {
-      tangent = std::make_unique<mfem::SparseMatrix>(get_stiffness(disp));
       for (int dof : ess_tdof_list)
-         tangent->EliminateRowCol(dof, mfem::Operator::DIAG_ONE);
-      return *tangent;
+         tangent.EliminateRowCol(dof, mfem::Operator::DIAG_ONE);
    }
 
-   // The linear system of the consistent predictor at d, with the increment
-   // g of the prescribed displacement on the constrained dofs:
-   //    tangent * du = rhs,   rhs = -R(d) - K(d) g on the free dofs,
-   //                          rhs = g on the constrained dofs,
-   // the constrained columns of K moved to the right-hand side.
-   mfem::Operator &get_predictor_system(const mfem::Vector &disp,
-                                        const mfem::Vector &prescribed_increment,
-                                        mfem::Vector &rhs) const
+   // K the identity on the constrained dofs, with the increment g of the
+   // prescribed displacement on them moved to the right-hand side:
+   //    rhs -= K g on the free dofs,   rhs = g on the constrained dofs.
+   void set_essential_bdr(mfem::SparseMatrix &tangent,
+                          const mfem::Vector &prescribed_increment,
+                          mfem::Vector &rhs) const
    {
-      get_residual(disp, rhs);
-      rhs.Neg();
-      tangent = std::make_unique<mfem::SparseMatrix>(get_stiffness(disp));
       for (int dof : ess_tdof_list)
-         tangent->EliminateRowCol(dof, prescribed_increment(dof), rhs);
-      return *tangent;
+         tangent.EliminateRowCol(dof, prescribed_increment(dof), rhs);
    }
-
-   // Print the load of the current step.
-   void print_load(int step, const mfem::GridFunction &disp) const
-   {
-      boundaries->print_load_by_step(step, disp);
-   }
-
-   // The material of the local assembly.
-   const MaterialModel &get_material() const { return local_assembly->get_material(); }
 
    // The boundary conditions.
    BoundaryManager &get_boundaries() { return *boundaries; }
 
 private:
-   // R(d) at every dof.
-   void get_residual(const mfem::Vector &disp, mfem::Vector &residual) const
-   {
-      form.Mult(disp, residual);
-      residual -= external_force;
-   }
-
-   // K(d) at every dof.
-   const mfem::SparseMatrix &get_stiffness(const mfem::Vector &disp) const
-   {
-      return dynamic_cast<const mfem::SparseMatrix &>(form.GetGradient(disp));
-   }
-
-   // Declared before form, so that form, which borrows it, goes first.
+   // Declared before global_assembly, so that global_assembly, which
+   // borrows it, goes first.
    const std::unique_ptr<LocalAssembly_Disp> local_assembly;
    const std::unique_ptr<BoundaryManager> boundaries;     // Dirichlet and Neumann
-   mfem::NonlinearForm form;                              // R + F_ext and K, without constraints
+   mfem::NonlinearForm global_assembly;                   // R + F_ext and K, without constraints
    mfem::LinearForm external_force;                       // F_ext
    const mfem::Array<int> ess_tdof_list;                  // constrained dofs
-   mutable std::unique_ptr<mfem::SparseMatrix> tangent;   // K with the constraints eliminated
 };
 
 #endif

@@ -27,9 +27,6 @@ public:
    LocalAssembly_Disp(std::unique_ptr<const MaterialModel> input_material)
       : material(std::move(input_material)) {}
 
-   // The material this local assembly owns.
-   const MaterialModel &get_material() const { return *material; }
-
    // Required by MFEM: overrides mfem::NonlinearFormIntegrator::
    // AssembleElementVector, which NonlinearForm calls on every element.
    // a is the node index and k the direction (x, y, z).
