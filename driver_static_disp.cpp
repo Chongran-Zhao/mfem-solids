@@ -1,5 +1,5 @@
 // ============================================================================
-// driver_static_displacement.cpp
+// driver_static_disp.cpp
 //
 // Hyperelastostatics in the displacement form, the displacement being the
 // only unknown. Boundary conditions are read from config.yaml and refer to

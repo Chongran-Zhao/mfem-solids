@@ -51,9 +51,9 @@ target_include_directories(read_mesh PRIVATE ${MFEM_INCLUDE_DIRS})
 target_link_libraries(read_mesh PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
 target_compile_definitions(read_mesh PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
-add_executable(driver_static_displacement driver_static_displacement.cpp)
-target_include_directories(driver_static_displacement PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
-target_link_libraries(driver_static_displacement PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
+add_executable(driver_static_disp driver_static_disp.cpp)
+target_include_directories(driver_static_disp PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
+target_link_libraries(driver_static_disp PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
 
 add_executable(driver_static_mixed driver_static_mixed.cpp)
 target_include_directories(driver_static_mixed PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})

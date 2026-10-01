@@ -31,7 +31,7 @@ public:
    }
 
    // Write step_XXXX.vtu and update the PVD file. pres is nodal in H1 from
-   // driver_static_mixed, or p(J) at the element centers from driver_static_displacement;
+   // driver_static_mixed, or p(J) at the element centers from driver_static_disp;
    // stress holds P at the element centers.
    void save(int step, double time, const mfem::GridFunction &disp,
              const mfem::GridFunction &pres, const mfem::GridFunction &stress)

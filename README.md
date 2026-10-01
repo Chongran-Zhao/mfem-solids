@@ -9,7 +9,7 @@ and traction conditions on named faces, load stepping and Newton's method.
 | Program | Reads | Writes |
 |---|---|---|
 | `read_mesh` | the mesh in `config.yaml` | `beam.mesh` with the six box faces named `left`, `right`, `front`, `back`, `bottom`, `top`, and a 3D view of them, `beam_boundary.html` |
-| `driver_static_displacement` | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement, the nodal internal force, and the pressure p(J) and the first Piola-Kirchhoff stress at the element centers of each load step, `results_gf/disp_XXXX.gf`, `internal_force_XXXX.gf`, `pres_XXXX.gf` and `stress_XXXX.gf` |
+| `driver_static_disp` | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement, the nodal internal force, and the pressure p(J) and the first Piola-Kirchhoff stress at the element centers of each load step, `results_gf/disp_XXXX.gf`, `internal_force_XXXX.gf`, `pres_XXXX.gf` and `stress_XXXX.gf` |
 | `driver_static_mixed` | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | the same, the pressure being the nodal unknown |
 | `vtu_writer` | `results_gf/` | `results_vtu/`: the deformed mesh with the displacement, the pressure, and the first and second Piola-Kirchhoff stresses; open `results_vtu.pvd` in ParaView |
 | `csv_writer` | `results_gf/` | `results_csv/<face>.csv`: mean displacement, resultant force and mean traction on the faces and directions of `csv_writer` in `config.yaml`, at each step |
@@ -73,11 +73,11 @@ cmake --build build
 The programs run in `build/`, in this order:
 
 ```bash
-cd build && ./read_mesh && ./driver_static_displacement && ./vtu_writer && ./csv_writer
+cd build && ./read_mesh && ./driver_static_disp && ./vtu_writer && ./csv_writer
 ```
 
 For the mixed form, set `space.order: 2` and run `./driver_static_mixed` in place of
-`./driver_static_displacement`.
+`./driver_static_disp`.
 
 CMake copies `config.yaml` into `build/`, again whenever it changes; each program reads
 the `config.yaml` of the directory it runs in, or the file given as its first argument.
