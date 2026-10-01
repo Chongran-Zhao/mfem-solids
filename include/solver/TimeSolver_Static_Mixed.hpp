@@ -2,8 +2,9 @@
 // TimeSolver_Static_Mixed.hpp
 //
 // Mixed load-step loop and displacement, pressure and element-center stress
-// output. Owns the nonlinear solver; the solution and its field views belong
-// to the caller.
+// output. Owns the nonlinear solver; the solution belongs to the caller.
+// Field views are constructed inside run; stress calculation is delegated
+// to assembly.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -19,7 +20,6 @@
 #include <mfem.hpp>
 #include "NonlinearSolver_Static_Mixed.hpp"
 #include "SystemTools.hpp"
-#include "VTK_Tools.hpp"
 
 class TimeSolver_Static_Mixed
 {
@@ -33,8 +33,10 @@ public:
       SystemTools::make_empty_dir(results_dir);
    }
 
-   void run(mfem::BlockVector &sol, mfem::GridFunction &disp, mfem::GridFunction &pres)
+   void run(mfem::BlockVector &sol)
    {
+      mfem::GridFunction disp, pres;
+      nonlinear_solver->make_solution_views(sol, disp, pres);
       mfem::Mesh &mesh = *disp.FESpace()->GetMesh();
       mfem::L2_FECollection fec_stress(0, mesh.Dimension());
       mfem::FiniteElementSpace space_stress(&mesh, &fec_stress, 9, mfem::Ordering::byVDIM);
@@ -48,7 +50,7 @@ public:
          mfem::out << std::string(74, '=') << '\n'
                    << "Load step " << step << " / " << num_load_steps << '\n';
          const double load_factor = static_cast<double>(step) / num_load_steps;
-         const int iterations = nonlinear_solver->solve(load_factor, sol, disp);
+         const int iterations = nonlinear_solver->solve(load_factor, sol);
          mfem::out << "converged in " << iterations
                    << " iterations. Time taken: " << std::fixed << std::setprecision(2)
                    << step_timer.RealTime() << " sec. " << SystemTools::get_time()
@@ -63,19 +65,7 @@ private:
    {
       SystemTools::save_gf(results_dir, "disp", step, disp);
       SystemTools::save_gf(results_dir, "pres", step, pres);
-      const MaterialModel &material = nonlinear_solver->get_material();
-      const mfem::Mesh &mesh = *disp.FESpace()->GetMesh();
-      const mfem::FiniteElementSpace &space_stress = *stress.FESpace();
-      for (int ee = 0; ee < mesh.GetNE(); ee++)
-      {
-         const Tensor2_3D F = VTK_Tools::get_center_deformation_gradient(*disp.FESpace(), disp, ee);
-         const double p = pres.GetValue(ee, mfem::Geometries.GetCenter(mesh.GetElementGeometry(ee)));
-         const Tensor2_3D PK1 = material.get_1st_PK_stress_ich(F)
-                                - p * F.det() * F.inverse().transpose();
-         for (int ii = 0; ii < 3; ii++)
-            for (int JJ = 0; JJ < 3; JJ++)
-               stress(space_stress.DofToVDof(ee, 3 * ii + JJ)) = PK1(ii, JJ);
-      }
+      nonlinear_solver->set_center_stress(disp, pres, stress);
       SystemTools::save_gf(results_dir, "stress", step, stress);
    }
 

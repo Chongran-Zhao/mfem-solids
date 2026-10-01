@@ -20,6 +20,7 @@
 #include <yaml-cpp/yaml.h>
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
+#include "LocalAssembly_Mixed.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
@@ -62,11 +63,6 @@ int main(int argc, char *argv[])
    mfem::BlockVector sol(offsets);
    sol = 0.0;
 
-   // disp and pres are views of the two blocks of sol, not copies.
-   mfem::GridFunction disp, pres;
-   disp.MakeRef(&space_u, sol.GetBlock(0), 0);
-   pres.MakeRef(&space_p, sol.GetBlock(1), 0);
-
    // 4. Set up the boundary conditions, on the displacement only.
    auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
    auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
@@ -98,9 +94,11 @@ int main(int argc, char *argv[])
    // 5. Set up the material model.
    std::unique_ptr<MaterialModel> material = set_material_model();
 
-   // 6. Global assembly owns the material, local integrators and boundary conditions.
+   // 6. The local assembly owns the material; global assembly owns it and
+   //    the boundary conditions.
+   auto local_assembly = std::make_unique<LocalAssembly_Mixed>(std::move(material));
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
-      space_u, space_p, std::move(material), std::move(dirichlet), std::move(neumann));
+      space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
    // 7. The nonlinear solver owns global assembly; the time solver owns it.
    auto nonlinear_solver = std::make_unique<NonlinearSolver_Static_Mixed>(
@@ -109,8 +107,8 @@ int main(int argc, char *argv[])
    auto time_solver = std::make_unique<TimeSolver_Static_Mixed>(
       std::move(nonlinear_solver), num_load_steps, results_dir);
 
-   // 8. Solve the load steps, with disp and pres as views of sol.
-   time_solver->run(sol, disp, pres);
+   // 8. Solve the load steps.
+   time_solver->run(sol);
 
    mfem::out << std::string(74, '=') << "\n\n";
    mfem::out << "Job finished on " << SystemTools::get_time() << ' ' << SystemTools::get_date()

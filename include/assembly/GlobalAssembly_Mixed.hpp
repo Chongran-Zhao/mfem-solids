@@ -1,11 +1,10 @@
 // ============================================================================
 // GlobalAssembly_Mixed.hpp
 //
-// Global residual and tangent of the mixed displacement-pressure form.
-// Owns the material, boundary conditions and two block nonlinear forms: one
-// with essential displacement dofs for Newton, one unconstrained for the
-// consistent predictor. The forms own their local integrators, which borrow
-// the material; the finite element spaces are borrowed from the caller.
+// Global mixed residual R(u,p) = F_int(u,p) - F_ext and its full tangent.
+// One unconstrained block form assembles both Newton and predictor data.
+// Boundary elimination is performed on a monolithic copy of the tangent,
+// as in GlobalAssembly_Disp.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -19,33 +18,29 @@
 #include <mfem.hpp>
 #include "DirichletBoundary.hpp"
 #include "LocalAssembly_Mixed.hpp"
-#include "MaterialModel.hpp"
 #include "NeumannBoundary.hpp"
 
 class GlobalAssembly_Mixed
 {
 public:
+   // The block form takes ownership of the local integrator, which owns its
+   // material. Unlike NonlinearForm, BlockNonlinearForm has no external-
+   // integrator ownership option. local_assembly is a borrowed view.
    GlobalAssembly_Mixed(mfem::FiniteElementSpace &space_u,
                         mfem::FiniteElementSpace &space_p,
-                        std::unique_ptr<const MaterialModel> input_material,
+                        std::unique_ptr<LocalAssembly_Mixed> input_local_assembly,
                         std::unique_ptr<DirichletBoundary> input_dirichlet,
                         std::unique_ptr<NeumannBoundary> input_neumann)
-      : material(std::move(input_material)),
-        dirichlet(std::move(input_dirichlet)),
+      : dirichlet(std::move(input_dirichlet)),
         neumann(std::move(input_neumann)),
         spaces({&space_u, &space_p}),
         offsets({0, space_u.GetTrueVSize(),
                     space_u.GetTrueVSize() + space_p.GetTrueVSize()}),
-        global_assembly(spaces), internal_force_form(spaces),
-        external_force(&space_u), ess_u(dirichlet->get_ess_tdof_list())
+        global_assembly(spaces), local_assembly(input_local_assembly.get()),
+        external_force(&space_u), ess_tdof_list(dirichlet->get_ess_tdof_list())
    {
-      global_assembly.AddDomainIntegrator(new LocalAssembly_Mixed(*material));
-      internal_force_form.AddDomainIntegrator(new LocalAssembly_Mixed(*material));
-      mfem::Array<int> ess_p;
-      mfem::Array<mfem::Array<int> *> ess({&ess_u, &ess_p});
-      mfem::Array<mfem::Vector *> ess_rhs({nullptr, nullptr});
-      global_assembly.SetEssentialTrueDofs(ess, ess_rhs);
-
+      global_assembly.AddDomainIntegrator(input_local_assembly.get());
+      input_local_assembly.release();
       external_force = 0.0;
       if (neumann->is_traction_load())
          neumann->add_traction_integrators(external_force);
@@ -53,10 +48,17 @@ public:
 
    int get_num_dofs() const { return offsets.Last(); }
    const mfem::Array<int> &get_offsets() const { return offsets; }
-   mfem::FiniteElementSpace &get_disp_space() const { return *spaces[0]; }
-   const MaterialModel &get_material() const { return *material; }
    const DirichletBoundary &get_dirichlet() const { return *dirichlet; }
    const NeumannBoundary &get_neumann() const { return *neumann; }
+
+   // Field views are created from one solution; callers do not pass redundant
+   // views alongside the block vector to solve() or run().
+   void make_solution_views(mfem::BlockVector &sol, mfem::GridFunction &disp,
+                            mfem::GridFunction &pres) const
+   {
+      disp.MakeRef(spaces[0], sol.GetBlock(0), 0);
+      pres.MakeRef(spaces[1], sol.GetBlock(1), 0);
+   }
 
    void set_traction_load(double tt)
    {
@@ -64,54 +66,64 @@ public:
       external_force.Assemble();
    }
 
-   // Full internal residual and tangent, including the constrained columns.
-   void set_internal_force(const mfem::Vector &sol, mfem::Vector &residual) const
-   {
-      internal_force_form.Mult(sol, residual);
-   }
-   mfem::Operator &get_internal_tangent(const mfem::Vector &sol) const
-   {
-      return internal_force_form.GetGradient(sol);
-   }
-
-   // External force acts on displacement only. Newton uses zero at essential
-   // dofs; the predictor needs the full force before imposing its increment.
-   void set_external_force(mfem::BlockVector &rhs, bool constrained) const
-   {
-      rhs = 0.0;
-      rhs.GetBlock(0) = external_force;
-      if (constrained)
-         rhs.GetBlock(0).SetSubVector(ess_u, 0.0);
-   }
-
+   // R at every dof, including support reactions. Pressure has no external load.
    void set_residual(const mfem::Vector &sol, mfem::Vector &residual) const
    {
       global_assembly.Mult(sol, residual);
-   }
-   mfem::Operator &get_tangent(const mfem::Vector &sol) const
-   {
-      return global_assembly.GetGradient(sol);
+      for (int ii = 0; ii < external_force.Size(); ii++)
+         residual(ii) -= external_force[ii];
    }
 
-   // The constrained tangent has an identity diagonal on essential dofs.
-   void set_essential_bdr(const mfem::BlockVector &increment,
-                          mfem::BlockVector &rhs) const
+   // Convert the full block tangent to one owned sparse matrix. The block
+   // form keeps its matrices; neither elimination nor UMFPACK modifies them.
+   std::unique_ptr<mfem::SparseMatrix> get_tangent(const mfem::Vector &sol) const
    {
-      for (int dof : ess_u)
-         rhs.GetBlock(0)(dof) = increment.GetBlock(0)(dof);
+      const auto &block_op = dynamic_cast<const mfem::BlockOperator &>(
+         global_assembly.GetGradient(sol));
+      mfem::BlockMatrix block_mat(block_op.RowOffsets(), block_op.ColOffsets());
+      for (int ii = 0; ii < block_op.NumRowBlocks(); ii++)
+         for (int jj = 0; jj < block_op.NumColBlocks(); jj++)
+            if (!block_op.IsZeroBlock(ii, jj))
+               block_mat.SetBlock(ii, jj, const_cast<mfem::SparseMatrix *>(
+                  &dynamic_cast<const mfem::SparseMatrix &>(block_op.GetBlock(ii, jj))));
+      return std::unique_ptr<mfem::SparseMatrix>(block_mat.CreateMonolithic());
+   }
+
+   void set_essential_bdr(mfem::Vector &residual) const
+   {
+      for (int dof : ess_tdof_list)
+         residual(dof) = 0.0;
+   }
+   void set_essential_bdr(mfem::SparseMatrix &tangent) const
+   {
+      for (int dof : ess_tdof_list)
+         tangent.EliminateRowCol(dof, mfem::Operator::DIAG_ONE);
+   }
+   void set_essential_bdr(mfem::SparseMatrix &tangent,
+                          const mfem::Vector &prescribed_increment,
+                          mfem::Vector &rhs) const
+   {
+      for (int dof : ess_tdof_list)
+         tangent.EliminateRowCol(dof, prescribed_increment(dof), rhs);
+   }
+
+   void set_center_stress(const mfem::GridFunction &disp,
+                          const mfem::GridFunction &pres,
+                          mfem::GridFunction &stress) const
+   {
+      local_assembly->set_center_stress(disp, pres, stress);
    }
 
 private:
-   // Material and boundary data outlive the forms and traction integrators.
-   const std::unique_ptr<const MaterialModel> material;
+   // Boundary coefficients and spaces outlive the forms that borrow them.
    const std::unique_ptr<DirichletBoundary> dirichlet;
    const std::unique_ptr<NeumannBoundary> neumann;
    mfem::Array<mfem::FiniteElementSpace *> spaces;
    const mfem::Array<int> offsets;
    mfem::BlockNonlinearForm global_assembly;
-   mfem::BlockNonlinearForm internal_force_form;
+   const LocalAssembly_Mixed *local_assembly;
    mfem::LinearForm external_force;
-   mfem::Array<int> ess_u;
+   const mfem::Array<int> ess_tdof_list;
 };
 
 #endif

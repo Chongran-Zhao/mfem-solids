@@ -2,7 +2,7 @@
 // LocalAssemblyTools.hpp
 //
 // Tools shared by the local assemblies: the quadrature rule and the
-// deformation gradient at a quadrature point.
+// deformation gradient at a quadrature point or an element center.
 //
 // Author: Chongran Zhao
 // Date: Sep. 29, 2026
@@ -47,6 +47,29 @@ public:
          F(2, 2) += disp_z * dN_dX(aa, 2);
       }
       return F;
+   }
+
+   // F at the center of element ee, for the output of the stress.
+   static Tensor2_3D get_center_deformation_gradient(const mfem::FiniteElementSpace &fespace,
+                                                     const mfem::GridFunction &disp, int ee)
+   {
+      const mfem::FiniteElement &elem = *fespace.GetFE(ee);
+      mfem::ElementTransformation &elem_map = *fespace.GetElementTransformation(ee);
+      const mfem::IntegrationPoint &center = mfem::Geometries.GetCenter(elem.GetGeomType());
+      elem_map.SetIntPoint(&center);
+
+      const int num_nodes = elem.GetDof();
+      mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
+      elem.CalcDShape(center, dN_dxi);
+      mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
+
+      // Element displacement: x of all nodes, then y, then z.
+      mfem::Array<int> vdofs;
+      mfem::Vector elem_disp;
+      fespace.GetElementVDofs(ee, vdofs);
+      disp.GetSubVector(vdofs, elem_disp);
+
+      return LocalAssemblyTools::get_deformation_gradient(elem_disp, dN_dX);
    }
 
 };
