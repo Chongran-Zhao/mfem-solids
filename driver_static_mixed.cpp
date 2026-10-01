@@ -87,12 +87,9 @@ int main(int argc, char *argv[])
    nonlinear_form.SetEssentialTrueDofs(ess, ess_rhs);
 
    // Internal force R^a_k = int N_a,J (P_ich_kJ - p J F^-1_Jk) dV at every
-   // node, the displacement block of a second form without essential dofs:
-   // the reaction on the constrained dofs, the load on the others.
+   // node, from a second form without essential dofs, for the predictor.
    mfem::BlockNonlinearForm internal_force_form(spaces);
    internal_force_form.AddDomainIntegrator(new LocalAssembly_Mixed(*material));
-   mfem::BlockVector internal_force_blocks(offsets);
-   mfem::GridFunction internal_force(&space_u);
 
    // First Piola-Kirchhoff stress P = P_ich - p J F^-T at the element
    // centers, for vtu_writer: piecewise constant, with the 9 components P_xx,
@@ -123,16 +120,11 @@ int main(int argc, char *argv[])
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    SystemTools::make_empty_dir(results_dir);
 
-   // Saves the displacement, the pressure, the internal force and the stress
-   // of a step.
+   // Saves the displacement, the pressure and the stress of a step.
    auto save_results = [&](int step)
    {
       SystemTools::save_gf(results_dir, "disp", step, disp);
       SystemTools::save_gf(results_dir, "pres", step, pres);
-
-      internal_force_form.Mult(sol, internal_force_blocks);
-      internal_force = internal_force_blocks.GetBlock(0);
-      SystemTools::save_gf(results_dir, "internal_force", step, internal_force);
 
       for (int ee = 0; ee < mesh.GetNE(); ee++)
       {

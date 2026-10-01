@@ -52,8 +52,7 @@ solver:
   newton_max_iter: 20
 
 # Faces and directions reported by csv_writer, one entry per face and
-# direction; F is the reaction on a constrained face and the load on a
-# traction face.
+# direction.
 csv_writer:
   - { face: left, dir: z }
   - { face: right, dir: z }
