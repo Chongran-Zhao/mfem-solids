@@ -22,6 +22,7 @@
 #include "LocalAssembly_Disp.hpp"
 #include "MaterialModelData.hpp"
 #include "NonlinearSolver_Static_Disp.hpp"
+#include "TimeSolver_Static_Disp.hpp"
 #include "SystemTools.hpp"
 
 int main(int argc, char *argv[])
@@ -80,9 +81,12 @@ int main(int argc, char *argv[])
    mfem::FiniteElementSpace space_stress(&mesh, &fec_center, 9, mfem::Ordering::byVDIM);
    mfem::GridFunction pres(&space_pres), stress(&space_stress);
 
-   // 7. Set up the nonlinear solver, which owns the global assembly.
+   // 7. Set up the nonlinear solver, which owns the global assembly, and the
+   //    time solver, which owns the nonlinear solver.
    auto nonlinear_solver = std::make_unique<NonlinearSolver_Static_Disp>(
       std::move(global_assembly), config["solver"]);
+   auto time_solver =
+      std::make_unique<TimeSolver_Static_Disp>(std::move(nonlinear_solver), num_load_steps);
 
    // Remove the former results.
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
@@ -105,24 +109,9 @@ int main(int argc, char *argv[])
       SystemTools::save_gf(results_dir, "pres", step, pres);
       SystemTools::save_gf(results_dir, "stress", step, stress);
    };
-   save_results(0);
 
-   // 8. Loading loop.
-   mfem::StopWatch step_timer;
-   for (int step = 1; step <= num_load_steps; step++)
-   {
-      // Wall-clock time of the step, up to the convergence.
-      step_timer.Restart();
-
-      const int iterations = nonlinear_solver->solve(step, disp);
-
-      mfem::out << "converged in " << iterations
-                << " iterations. Time taken: " << std::fixed << std::setprecision(2)
-                << step_timer.RealTime() << " sec. " << SystemTools::get_time()
-                << std::defaultfloat << '\n';
-
-      save_results(step);
-   }
+   // 8. Solve the load steps.
+   time_solver->run(disp, save_results);
 
    mfem::out << std::string(74, '=') << "\n\n";
    mfem::out << "Job finished on " << SystemTools::get_time() << ' ' << SystemTools::get_date()
