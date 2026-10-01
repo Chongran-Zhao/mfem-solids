@@ -13,6 +13,7 @@
 // ============================================================================
 #include <filesystem>
 #include <iomanip>
+#include <memory>
 #include <string>
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
@@ -71,12 +72,12 @@ int main(int argc, char *argv[])
    boundaries.print_load();
 
    // 5. Set up the material model.
-   const MaterialModel material = get_material_model();
+   const std::unique_ptr<const MaterialModel> material = get_material_model();
 
    // 6. Construct the block nonlinear form; the pressure has no essential
    //    dofs.
    mfem::BlockNonlinearForm nonlinear_form(spaces);
-   nonlinear_form.AddDomainIntegrator(new LocalAssembly_Mixed(material));
+   nonlinear_form.AddDomainIntegrator(new LocalAssembly_Mixed(*material));
 
    // Constrained dofs per block; the pressure has none, but MFEM needs a list
    // for every space.
@@ -89,7 +90,7 @@ int main(int argc, char *argv[])
    // node, the displacement block of a second form without essential dofs:
    // the reaction on the constrained dofs, the load on the others.
    mfem::BlockNonlinearForm internal_force_form(spaces);
-   internal_force_form.AddDomainIntegrator(new LocalAssembly_Mixed(material));
+   internal_force_form.AddDomainIntegrator(new LocalAssembly_Mixed(*material));
    mfem::BlockVector internal_force_blocks(offsets);
    mfem::GridFunction internal_force(&space_u);
 
@@ -137,7 +138,7 @@ int main(int argc, char *argv[])
       {
          const Tensor2_3D F = LocalAssemblyTools::get_center_deformation_gradient(space_u, disp, ee);
          const double p = pres.GetValue(ee, mfem::Geometries.GetCenter(mesh.GetElementGeometry(ee)));
-         const Tensor2_3D PK1 = material.get_1st_PK_stress_ich(F)
+         const Tensor2_3D PK1 = material->get_1st_PK_stress_ich(F)
                                 - p * F.det() * F.inverse().transpose();
          for (int ii = 0; ii < 3; ii++)
             for (int JJ = 0; JJ < 3; JJ++)

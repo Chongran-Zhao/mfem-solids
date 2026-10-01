@@ -1,8 +1,8 @@
 // ============================================================================
 // MaterialModelData.hpp
 //
-// The material of this project, shared by the driver, vtu_writer and
-// csv_writer. Changing the material means changing this file.
+// The material of this project, used by the drivers. Changing the material
+// means changing this file.
 //
 // Author: Chongran Zhao
 // Date: Sep. 29, 2026
@@ -34,10 +34,11 @@ inline std::unique_ptr<IMaterialModel_ich> create_ich_model()
    return std::make_unique<MaterialModel_ich_NeoHookean>(mu);
 }
 
-// The material: the volumetric and the isochoric model together.
-inline MaterialModel get_material_model()
+// The material: the volumetric and the isochoric model together. It holds no
+// state, so each owner, e.g. each local assembly, creates its own.
+inline std::unique_ptr<MaterialModel> get_material_model()
 {
-   return MaterialModel(create_vol_model(), create_ich_model());
+   return std::make_unique<MaterialModel>(create_vol_model(), create_ich_model());
 }
 
 #endif

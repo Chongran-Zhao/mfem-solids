@@ -13,6 +13,8 @@
 #ifndef LOCAL_ASSEMBLY_DISP_HPP
 #define LOCAL_ASSEMBLY_DISP_HPP
 
+#include <memory>
+#include <utility>
 #include <mfem.hpp>
 #include "LocalAssemblyTools.hpp"
 #include "MaterialModel.hpp"
@@ -21,8 +23,9 @@
 class LocalAssembly_Disp : public mfem::NonlinearFormIntegrator
 {
 public:
-   LocalAssembly_Disp(const MaterialModel &input_material)
-      : material(input_material) {}
+   // Takes the ownership of the material->
+   LocalAssembly_Disp(std::unique_ptr<const MaterialModel> input_material)
+      : material(std::move(input_material)) {}
 
    // a is the node index and k the direction (x, y, z).
    // R^a_k = int N_a,J P_kJ dV over the element in the reference configuration.
@@ -52,7 +55,7 @@ public:
 
          const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
 
-         const Tensor2_3D PK1 = material.get_1st_PK_stress(F);
+         const Tensor2_3D PK1 = material->get_1st_PK_stress(F);
 
          // dV = w_q * det( dX/dxi )
          const double dV = quad_pt.weight * elem_map.Weight();
@@ -102,7 +105,7 @@ public:
 
          const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
 
-         const Tensor4_3D AA = material.get_1st_elasticity_tensor(F);
+         const Tensor4_3D AA = material->get_1st_elasticity_tensor(F);
 
          // dV = w_q * det( dX/dxi )
          const double dV = quad_pt.weight * elem_map.Weight();
@@ -134,7 +137,7 @@ public:
    }
 
 private:
-   const MaterialModel &material;
+   const std::unique_ptr<const MaterialModel> material;
 };
 
 #endif

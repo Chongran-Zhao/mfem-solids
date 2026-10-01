@@ -11,6 +11,7 @@
 // ============================================================================
 #include <filesystem>
 #include <iomanip>
+#include <memory>
 #include <string>
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
@@ -54,13 +55,15 @@ int main(int argc, char *argv[])
    boundaries.print_fixed_bc();
    boundaries.print_load();
 
-   // 5. Set up the material model.
-   const MaterialModel material = get_material_model();
+   // 5. Set up the material model for the output of the stress; each local
+   //    assembly creates and owns its own.
+   const std::unique_ptr<const MaterialModel> material = get_material_model();
 
    // 6. Construct the nonlinear form; its essential dofs are the constrained
    //    displacements.
    mfem::NonlinearForm nonlinear_form(&space_u);
-   nonlinear_form.AddDomainIntegrator(new LocalAssembly_Disp(material));
+   nonlinear_form.AddDomainIntegrator(
+      std::make_unique<LocalAssembly_Disp>(get_material_model()).release());
 
    const mfem::Array<int> ess_u = boundaries.get_ess_tdof_list();
    nonlinear_form.SetEssentialTrueDofs(ess_u);
@@ -69,7 +72,8 @@ int main(int argc, char *argv[])
    // form without essential dofs: the reaction on the constrained dofs, the
    // load on the others.
    mfem::NonlinearForm internal_force_form(&space_u);
-   internal_force_form.AddDomainIntegrator(new LocalAssembly_Disp(material));
+   internal_force_form.AddDomainIntegrator(
+      std::make_unique<LocalAssembly_Disp>(get_material_model()).release());
    mfem::GridFunction internal_force(&space_u);
 
    // Pressure p(J) and first Piola-Kirchhoff stress P at the element centers,
@@ -113,8 +117,8 @@ int main(int argc, char *argv[])
       for (int ee = 0; ee < mesh.GetNE(); ee++)
       {
          const Tensor2_3D F = LocalAssemblyTools::get_center_deformation_gradient(space_u, disp, ee);
-         pres(ee) = material.get_p(F.det());
-         const Tensor2_3D PK1 = material.get_1st_PK_stress(F);
+         pres(ee) = material->get_p(F.det());
+         const Tensor2_3D PK1 = material->get_1st_PK_stress(F);
          for (int ii = 0; ii < 3; ii++)
             for (int JJ = 0; JJ < 3; JJ++)
                stress(space_stress.DofToVDof(ee, 3 * ii + JJ)) = PK1(ii, JJ);
