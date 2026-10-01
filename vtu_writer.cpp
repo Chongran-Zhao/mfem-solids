@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
    };
 
    // The material; it holds no state, so this program creates its own.
-   const std::unique_ptr<const MaterialModel> material = get_material_model();
+   const std::unique_ptr<const MaterialModel> material = set_material_model();
 
    // Pressure p(J) and first Piola-Kirchhoff stress P at the element centers:
    // piecewise constant, P with the 9 components P_xx, P_xy, ..., P_zz.

@@ -60,7 +60,7 @@ public:
    int get_num_dofs() const { return global_assembly.Height(); }
 
    // R(d) at every dof.
-   void get_residual(const mfem::Vector &disp, mfem::Vector &residual) const
+   void set_residual(const mfem::Vector &disp, mfem::Vector &residual) const
    {
       global_assembly.Mult(disp, residual);
       residual -= external_force;

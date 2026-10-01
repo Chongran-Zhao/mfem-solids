@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
       neumann->print_traction_load();
 
    // 5. Set up the material model.
-   std::unique_ptr<MaterialModel> material = get_material_model();
+   std::unique_ptr<MaterialModel> material = set_material_model();
 
    // 6. Set up the assembly: the material goes to the local assembly, and the
    //    local assembly and the boundary conditions to the global one, which

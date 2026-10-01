@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
       neumann.print_traction_load();
 
    // 5. Set up the material model.
-   const std::unique_ptr<const MaterialModel> material = get_material_model();
+   const std::unique_ptr<const MaterialModel> material = set_material_model();
 
    // 6. Construct the block nonlinear form; the pressure has no essential
    //    dofs.

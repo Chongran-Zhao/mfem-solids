@@ -73,7 +73,7 @@ public:
    // R(d), zero on the constrained dofs.
    void Mult(const mfem::Vector &disp, mfem::Vector &residual) const override
    {
-      global_assembly->get_residual(disp, residual);
+      global_assembly->set_residual(disp, residual);
       global_assembly->set_essential_bdr(residual);
    }
 
@@ -108,7 +108,7 @@ private:
       prescribed_increment -= disp;
 
       mfem::Vector rhs(global_assembly->get_num_dofs());
-      global_assembly->get_residual(disp, rhs);
+      global_assembly->set_residual(disp, rhs);
       rhs.Neg();
       tangent = std::make_unique<mfem::SparseMatrix>(global_assembly->get_tangent(disp));
       global_assembly->set_essential_bdr(*tangent, prescribed_increment, rhs);
