@@ -203,7 +203,7 @@ int main(int argc, char *argv[])
       if (boundaries.is_disp_load())
          boundaries.apply_disp_load_bc(step, disp);
 
-      boundaries.print_load_by_step(step, disp, external_force);
+      boundaries.print_load_by_step(step, disp);
       SystemTools::print_block_newton_header();
 
       // Set the external force to zero on the essential dofs.

@@ -90,8 +90,7 @@ public:
    }
 
    // Print the header of the load step and the load value at that step.
-   void print_load_by_step(int step, const mfem::GridFunction &disp,
-                           const mfem::LinearForm &traction_force) const
+   void print_load_by_step(int step, const mfem::GridFunction &disp) const
    {
       mfem::out << std::string(74, '=') << '\n'
                 << "Load step " << step << " / " << get_num_load_steps() << '\n';
@@ -99,7 +98,7 @@ public:
       if (is_disp_load())
          dirichlet.print_disp_load_by_step(disp);
       else
-         neumann.print_traction_load_by_step(traction_force);
+         neumann.print_traction_load_by_step();
    }
 
 private:

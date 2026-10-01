@@ -95,7 +95,7 @@ public:
    // Print the load of the current step.
    void print_load(int step, const mfem::GridFunction &disp) const
    {
-      boundaries->print_load_by_step(step, disp, external_force);
+      boundaries->print_load_by_step(step, disp);
    }
 
    // The material of the local assembly.
