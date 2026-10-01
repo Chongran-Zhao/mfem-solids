@@ -20,6 +20,10 @@ overlaying the result folders listed at its top.
 All settings are in `static_disp/config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
 and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
 
+Both drivers follow the same structure: global assembly, a nonlinear solver for
+one load step, and a time solver for load stepping and output. The mixed structure
+and ownership are described in `static_mixed/README.md`.
+
 ## Setting up a problem
 
 - **Faces.** `read_mesh` names the six faces of the box; the boundary conditions refer
