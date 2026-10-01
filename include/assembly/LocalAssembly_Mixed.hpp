@@ -27,6 +27,8 @@ public:
    LocalAssembly_Mixed(const MaterialModel &input_material)
       : material(input_material) {}
 
+   // Required by MFEM: overrides mfem::BlockNonlinearFormIntegrator::
+   // AssembleElementVector, which BlockNonlinearForm calls on every element.
    // Block 0 is the displacement, block 1 the pressure.
    // R^a_k = int N_a,J (P_ich_kJ - p J F^-1_Jk) dV,
    // R^c   = -int M_c (J - J(p)) dV,
@@ -104,6 +106,8 @@ public:
       }
    }
 
+   // Required by MFEM: overrides mfem::BlockNonlinearFormIntegrator::
+   // AssembleElementGrad, which BlockNonlinearForm calls on every element.
    // The four blocks of the tangent, the derivatives of R^a_k and R^c:
    // K_uu(a k, b l) = int N_a,J AA_kJlL N_b,L dV,
    //    AA_kJlL = AA_ich_kJlL - p J (F^-1_Jk F^-1_Ll - F^-1_Jl F^-1_Lk),

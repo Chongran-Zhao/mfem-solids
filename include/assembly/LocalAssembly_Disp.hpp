@@ -30,6 +30,8 @@ public:
    // The material this local assembly owns.
    const MaterialModel &get_material() const { return *material; }
 
+   // Required by MFEM: overrides mfem::NonlinearFormIntegrator::
+   // AssembleElementVector, which NonlinearForm calls on every element.
    // a is the node index and k the direction (x, y, z).
    // R^a_k = int N_a,J P_kJ dV over the element in the reference configuration.
    // disp and residual store component k of node aa at aa + k * num_nodes.
@@ -81,6 +83,8 @@ public:
       }
    }
 
+   // Required by MFEM: overrides mfem::NonlinearFormIntegrator::
+   // AssembleElementGrad, which NonlinearForm calls on every element.
    // K^ab_kl = int N_a,J AA_kJlL N_b,L dV, with AA = dP/dF,
    // stored at tangent(aa+k*num_nodes, bb+l*num_nodes).
    void AssembleElementGrad(const mfem::FiniteElement &elem,
