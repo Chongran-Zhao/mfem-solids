@@ -2,8 +2,8 @@
 % plot_csv.m
 %
 % Plots the CSV files written by csv_writer against the load factor: for
-% each face, one figure of the mean displacement u, with one panel per
-% reported direction. The
+% each face, one figure of the mean displacement u and one of the reaction
+% force F, with one panel per reported direction. The
 % result folders listed below, e.g. of the displacement and the mixed drivers,
 % are overlaid in the same panels.
 %
@@ -14,8 +14,8 @@
 clear; close all; clc;
 
 % Result folders, relative to the repository, and their legend labels.
-csv_dirs = {'build_disp/results_csv', 'build_mixed/results_csv', 'build_disp_dense/results_csv', 'build_mixed_dense/results_csv'};
-labels = {'displacement', 'mixed', 'displacement_dense', 'mixed_dense'};
+csv_dirs = {'static_disp/build/results_csv'};
+labels = {'displacement'};
 
 assert(numel(labels) == numel(csv_dirs), 'One label per folder.');
 
@@ -44,8 +44,8 @@ for ff = 1:numel(files)
    % One marker per folder, so that the curves stay apart where they overlap.
    markers = {'o', 's', '^', 'd', 'v', 'x', '+', '*'};
 
-   % One figure of the mean displacement u.
-   quantities = {'u'};
+   % One figure per quantity: u, then F.
+   quantities = {'u', 'F'};
    for qq = 1:numel(quantities)
       figure('Name', sprintf('%s_%s', face, quantities{qq}));
       tiledlayout(1, numel(dirs));
