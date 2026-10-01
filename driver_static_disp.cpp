@@ -69,11 +69,6 @@ int main(int argc, char *argv[])
 
    // Borrowed from the global assembly.
    BoundaryManager &boundaries = global_assembly->get_boundaries();
-   const mfem::Array<int> &ess_u = global_assembly->get_ess_tdof_list();
-
-   // Internal force R^a_k = int N_a,J P_kJ dV at every node: the reaction on
-   // the constrained dofs, the load on the others.
-   mfem::GridFunction internal_force(&space_u);
 
    // Pressure p(J) and first Piola-Kirchhoff stress P at the element centers,
    // for vtu_writer: piecewise constant, P with the 9 components P_xx, P_xy,
@@ -104,14 +99,10 @@ int main(int argc, char *argv[])
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    SystemTools::make_empty_dir(results_dir);
 
-   // Saves the displacement, the internal force, the pressure and the stress
-   // of a step.
+   // Saves the displacement, the pressure and the stress of a step.
    auto save_results = [&](int step)
    {
       SystemTools::save_gf(results_dir, "disp", step, disp);
-
-      global_assembly->get_internal_force(disp, internal_force);
-      SystemTools::save_gf(results_dir, "internal_force", step, internal_force);
 
       for (int ee = 0; ee < mesh.GetNE(); ee++)
       {
@@ -127,18 +118,12 @@ int main(int argc, char *argv[])
    };
    save_results(0);
 
-   // 8. Set up the external force.
-   mfem::LinearForm external_force(&space_u);
-   external_force = 0.0;
-   if (boundaries.is_traction_load())
-      boundaries.add_traction_integrators(external_force);
-
-   // Set zero displacement on the fixed faces.
+   // 8. Set zero displacement on the fixed faces.
    boundaries.apply_fixed_bc(disp);
 
    // Work vectors of the consistent predictor.
    mfem::GridFunction disp_target(&space_u);
-   mfem::Vector prescribed_increment(space_u.GetTrueVSize()), coupling(space_u.GetTrueVSize());
+   mfem::Vector prescribed_increment(space_u.GetTrueVSize());
    mfem::Vector predictor_rhs(space_u.GetTrueVSize()), predicted_increment(space_u.GetTrueVSize());
 
    // Loading loop.
@@ -148,48 +133,33 @@ int main(int argc, char *argv[])
       // Wall-clock time of the step, up to the convergence.
       step_timer.Restart();
 
-      if (boundaries.is_traction_load())
-      {
-         boundaries.update_traction(step);
-         external_force.Assemble();
-      }
+      global_assembly->set_load_step(step);
 
       // Consistent predictor: the initial guess of Newton's method is one
       // linear step from the converged state u with the new load, so that the
       // interior follows the prescribed boundary increment du_e instead of
       // only the boundary nodes moving,
-      //    K_ff du_f = [f_ext - R_int(u)]_f - K_fe du_e,
-      // with the full stiffness for K_fe.
+      //    K_ff du_f = -R_f(u) - K_fe du_e,
+      // which the global assembly sets up.
       disp_target = disp;
       if (boundaries.is_disp_load())
          boundaries.apply_disp_load_bc(step, disp_target);
       prescribed_increment = disp_target;
       prescribed_increment -= disp;
 
-      global_assembly->get_internal_force(disp, predictor_rhs);
-      global_assembly->get_stiffness(disp).Mult(prescribed_increment, coupling);
-      predictor_rhs.Neg();
-      predictor_rhs += external_force;
-      predictor_rhs -= coupling;
-      // The tangent of the global assembly is the identity on the constrained
-      // dofs, so their increment is du_e itself.
-      for (int dof : ess_u)
-         predictor_rhs(dof) = prescribed_increment(dof);
-
-      linear_solver.SetOperator(global_assembly->GetGradient(disp));
+      linear_solver.SetOperator(
+         global_assembly->get_predictor_system(disp, prescribed_increment, predictor_rhs));
       linear_solver.Mult(predictor_rhs, predicted_increment);
       disp += predicted_increment;
       // Set the prescribed values exactly, free of round-off.
       if (boundaries.is_disp_load())
          boundaries.apply_disp_load_bc(step, disp);
 
-      boundaries.print_load_by_step(step, disp, external_force);
+      global_assembly->print_load(step, disp);
       SystemTools::print_newton_header();
 
-      // Set the external force to zero on the essential dofs.
-      external_force.SetSubVector(ess_u, 0.0);
-      // Newton iterations for the displacement.
-      newton_solver.Mult(external_force, disp);
+      // Newton iterations for R(u) = 0; the empty right-hand side means zero.
+      newton_solver.Mult(mfem::Vector(), disp);
       MFEM_VERIFY(newton_solver.GetConverged(), "Newton did not converge at step " << step << ".");
 
       mfem::out << "converged in " << newton_solver.GetNumIterations()
