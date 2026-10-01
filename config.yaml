@@ -1,5 +1,6 @@
-# Input of read_mesh, the driver, vtu_writer and csv_writer.
-# CMake copies it into build/, and the programs read the copy of the directory
+# Input of read_mesh, the drivers, vtu_writer and csv_writer.
+# CMake copies it into build/static_disp/ and build/static_mixed/, and the
+# programs read the copy of the directory
 # they run in, or the file given as first argument. mesh.file is relative to
 # the source directory.
 
