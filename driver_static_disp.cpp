@@ -52,20 +52,24 @@ int main(int argc, char *argv[])
    SystemTools::print_space(space_u);
 
    // 4. Set up the boundary conditions.
-   BoundaryManager boundaries(config, space_u);
-   const int num_load_steps = boundaries.get_num_load_steps();
-   boundaries.print_fixed_bc();
-   boundaries.print_load();
+   auto boundary_manager = std::make_unique<BoundaryManager>(config, space_u);
+   const int num_load_steps = boundary_manager->get_num_load_steps();
+   boundary_manager->print_fixed_bc();
+   boundary_manager->print_load();
 
    // 5. Set up the material model.
    std::unique_ptr<MaterialModel> material = get_material_model();
 
    // 6. Set up the assembly: the material goes to the local assembly, and the
-   //    local assembly to the global one, which owns them.
-   const mfem::Array<int> ess_u = boundaries.get_ess_tdof_list();
+   //    local assembly and the boundary conditions to the global one, which
+   //    owns them.
    auto local_assembly = std::make_unique<LocalAssembly_Disp>(std::move(material));
-   auto global_assembly =
-      std::make_unique<GlobalAssembly_Disp>(space_u, std::move(local_assembly), ess_u);
+   auto global_assembly = std::make_unique<GlobalAssembly_Disp>(
+      space_u, std::move(local_assembly), std::move(boundary_manager));
+
+   // Borrowed from the global assembly.
+   BoundaryManager &boundaries = global_assembly->get_boundaries();
+   const mfem::Array<int> &ess_u = global_assembly->get_ess_tdof_list();
 
    // Internal force R^a_k = int N_a,J P_kJ dV at every node: the reaction on
    // the constrained dofs, the load on the others.

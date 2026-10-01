@@ -3,7 +3,8 @@
 //
 // Global assembly of the displacement form: the internal force R_int(d) and
 // the stiffness K(d) of the whole mesh, from one NonlinearForm over
-// LocalAssembly_Disp. Two views of them are given:
+// LocalAssembly_Disp, with the boundary conditions of BoundaryManager. Two
+// views of them are given:
 //    full        R_int and K as assembled, for the predictor and the
 //                reactions;
 //    eliminated  R_int zero and K the identity on the constrained dofs, for
@@ -19,20 +20,23 @@
 #include <memory>
 #include <utility>
 #include <mfem.hpp>
+#include "BoundaryManager.hpp"
 #include "LocalAssembly_Disp.hpp"
 #include "MaterialModel.hpp"
 
 class GlobalAssembly_Disp : public mfem::Operator
 {
 public:
-   // Takes the ownership of the local assembly; the form only borrows it.
+   // Takes the ownership of the local assembly and of the boundary
+   // conditions; the form only borrows the local assembly.
    GlobalAssembly_Disp(mfem::FiniteElementSpace &space,
                        std::unique_ptr<LocalAssembly_Disp> input_local_assembly,
-                       const mfem::Array<int> &input_ess_tdof_list)
+                       std::unique_ptr<BoundaryManager> input_boundaries)
       : mfem::Operator(space.GetTrueVSize()),
         local_assembly(std::move(input_local_assembly)),
+        boundaries(std::move(input_boundaries)),
         form(&space),
-        ess_tdof_list(input_ess_tdof_list)
+        ess_tdof_list(boundaries->get_ess_tdof_list())
    {
       form.UseExternalIntegrators();
       form.AddDomainIntegrator(local_assembly.get());
@@ -71,12 +75,16 @@ public:
    // The material of the local assembly.
    const MaterialModel &get_material() const { return local_assembly->get_material(); }
 
+   // The boundary conditions.
+   BoundaryManager &get_boundaries() { return *boundaries; }
+
    // The constrained dofs.
    const mfem::Array<int> &get_ess_tdof_list() const { return ess_tdof_list; }
 
 private:
    // Declared before form, so that form, which borrows it, goes first.
    const std::unique_ptr<LocalAssembly_Disp> local_assembly;
+   const std::unique_ptr<BoundaryManager> boundaries;     // Dirichlet and Neumann
    mfem::NonlinearForm form;                              // R_int and K, without constraints
    const mfem::Array<int> ess_tdof_list;                  // constrained dofs
    mutable std::unique_ptr<mfem::SparseMatrix> tangent;   // K with the constraints eliminated
