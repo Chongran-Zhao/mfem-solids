@@ -2,9 +2,9 @@
 % plot_csv.m
 %
 % Plots the CSV files written by csv_writer against the load factor: for
-% each face, one figure of the mean displacement u and one of the mean
-% nominal traction t = F / A_0, with one panel per reported direction. The
-% result folders listed below, e.g. of driver_static_displacement and driver_static_mixed,
+% each face, one figure of the mean displacement u, with one panel per
+% reported direction. The
+% result folders listed below, e.g. of driver_static_disp and driver_static_mixed,
 % are overlaid in the same panels.
 %
 % Author: Chongran Zhao
@@ -44,8 +44,8 @@ for ff = 1:numel(files)
    % One marker per folder, so that the curves stay apart where they overlap.
    markers = {'o', 's', '^', 'd', 'v', 'x', '+', '*'};
 
-   % One figure per quantity: u, then t.
-   quantities = {'u', 't'};
+   % One figure of the mean displacement u.
+   quantities = {'u'};
    for qq = 1:numel(quantities)
       figure('Name', sprintf('%s_%s', face, quantities{qq}));
       tiledlayout(1, numel(dirs));

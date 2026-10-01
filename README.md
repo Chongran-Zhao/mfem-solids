@@ -9,10 +9,10 @@ and traction conditions on named faces, load stepping and Newton's method.
 | Program | Reads | Writes |
 |---|---|---|
 | `read_mesh` | the mesh in `config.yaml` | `beam.mesh` with the six box faces named `left`, `right`, `front`, `back`, `bottom`, `top`, and a 3D view of them, `beam_boundary.html` |
-| `driver_static_displacement` | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement, the nodal internal force, and the pressure p(J) and the first Piola-Kirchhoff stress at the element centers of each load step, `results_gf/disp_XXXX.gf`, `internal_force_XXXX.gf`, `pres_XXXX.gf` and `stress_XXXX.gf` |
+| `driver_static_disp` | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
 | `driver_static_mixed` | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | the same, the pressure being the nodal unknown |
-| `vtu_writer` | `results_gf/` | `results_vtu/`: the deformed mesh with the displacement, the pressure, and the first and second Piola-Kirchhoff stresses; open `results_vtu.pvd` in ParaView |
-| `csv_writer` | `results_gf/` | `results_csv/<face>.csv`: mean displacement, resultant force and mean traction on the faces and directions of `csv_writer` in `config.yaml`, at each step |
+| `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with the displacement, and the pressure p(J) and the first and second Piola-Kirchhoff stresses at the element centers; open `results_vtu.pvd` in ParaView |
+| `csv_writer` | `results_gf/` | `results_csv/<face>.csv`: mean displacement on the faces and directions of `csv_writer` in `config.yaml`, at each step |
 
 `scripts/plot_csv.m` (MATLAB) plots the CSV files of `csv_writer` against the load factor,
 overlaying the result folders listed at its top.
@@ -38,12 +38,6 @@ and the prescribed displacements and tractions are in `include/boundary/LoadData
 
 ## Notes
 
-- The resultant force F of `csv_writer` is the sum of the nodal internal forces on the
-  face. It is the reaction on a constrained face and the applied load on a traction
-  face, exact up to the Newton tolerance on any mesh. On a free face it picks up the
-  reactions of the edges it shares with constrained faces, so it has no meaning there.
-- F is a resultant only: applying F / A_0 as a uniform traction does not reproduce a
-  prescribed displacement, since the distribution of the reaction is lost.
 - `vtu_writer` writes the values at the vertices only: with `space.order: 2` the midside
   nodes are left out and ParaView draws the elements as linear.
 - `driver_static_mixed` needs a volumetric model with the pressure form J(p): `Quadratic`, or
@@ -70,15 +64,17 @@ cmake -B build
 cmake --build build
 ```
 
-The programs run in `build/`, in this order:
+The programs of each formulation are in their own folder, `static_disp/` and
+`static_mixed/`, with their own `CMakeLists.txt`, and are built into the same folder of
+`build/`. The displacement form runs in `build/static_disp/`, in this order:
 
 ```bash
-cd build && ./read_mesh && ./driver_static_displacement && ./vtu_writer && ./csv_writer
+cd build/static_disp && ./read_mesh && ./driver_static_disp && ./vtu_writer && ./csv_writer
 ```
 
-For the mixed form, set `space.order: 2` and run `./driver_static_mixed` in place of
-`./driver_static_displacement`.
+For the mixed form, `build/static_mixed/` has only `driver_static_mixed`; it needs
+`space.order: 2` and the `beam.mesh` of `read_mesh` in the directory it runs in.
 
-CMake copies `config.yaml` into `build/`, again whenever it changes; each program reads
+CMake copies `config.yaml` into both folders of `build/`, again whenever it changes; each program reads
 the `config.yaml` of the directory it runs in, or the file given as its first argument.
 `mesh.file` is relative to the source directory.

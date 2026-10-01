@@ -13,13 +13,15 @@
 // ============================================================================
 #include <filesystem>
 #include <iomanip>
+#include <memory>
 #include <string>
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
-#include "BoundaryManager.hpp"
-#include "IntegratorTools.hpp"
-#include "Integrator_Mixed.hpp"
+#include "DirichletBoundary.hpp"
+#include "LocalAssemblyTools.hpp"
+#include "LocalAssembly_Mixed.hpp"
 #include "MaterialModelData.hpp"
+#include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 
 int main(int argc, char *argv[])
@@ -65,33 +67,52 @@ int main(int argc, char *argv[])
    pres.MakeRef(&space_p, sol.GetBlock(1), 0);
 
    // 4. Set up the boundary conditions, on the displacement only.
-   BoundaryManager boundaries(config, space_u);
-   const int num_load_steps = boundaries.get_num_load_steps();
-   boundaries.print_fixed_bc();
-   boundaries.print_load();
+   DirichletBoundary dirichlet(config["Dirichlet"], space_u);
+   NeumannBoundary neumann(config["Neumann"], space_u);
+   const int num_load_steps = config["loading"]["load_steps"].as<int>();
+
+   // The loading is either a prescribed displacement or a traction.
+   const std::string loading_type = config["loading"]["type"].as<std::string>();
+   if (loading_type == "displacement")
+   {
+      MFEM_VERIFY(dirichlet.is_disp_load() && !neumann.is_traction_load(),
+                  "The loading type is displacement, so disp_bc must have an "
+                  "entry and Neumann no face.");
+   }
+   else if (loading_type == "traction")
+   {
+      MFEM_VERIFY(neumann.is_traction_load() && !dirichlet.is_disp_load(),
+                  "The loading type is traction, so Neumann must have a face "
+                  "and disp_bc no entry.");
+   }
+   else
+      MFEM_ABORT("Unknown loading type \"" << loading_type << "\".");
+
+   dirichlet.print_fixed_bc();
+   if (dirichlet.is_disp_load())
+      dirichlet.print_disp_load();
+   else
+      neumann.print_traction_load();
 
    // 5. Set up the material model.
-   const MaterialModel material = get_material_model();
+   const std::unique_ptr<const MaterialModel> material = set_material_model();
 
    // 6. Construct the block nonlinear form; the pressure has no essential
    //    dofs.
    mfem::BlockNonlinearForm nonlinear_form(spaces);
-   nonlinear_form.AddDomainIntegrator(new Integrator_Mixed(material));
+   nonlinear_form.AddDomainIntegrator(new LocalAssembly_Mixed(*material));
 
    // Constrained dofs per block; the pressure has none, but MFEM needs a list
    // for every space.
-   mfem::Array<int> ess_u = boundaries.get_ess_tdof_list(), ess_p;
+   mfem::Array<int> ess_u = dirichlet.get_ess_tdof_list(), ess_p;
    mfem::Array<mfem::Array<int> *> ess({&ess_u, &ess_p});
    mfem::Array<mfem::Vector *> ess_rhs({nullptr, nullptr});
    nonlinear_form.SetEssentialTrueDofs(ess, ess_rhs);
 
    // Internal force R^a_k = int N_a,J (P_ich_kJ - p J F^-1_Jk) dV at every
-   // node, the displacement block of a second form without essential dofs:
-   // the reaction on the constrained dofs, the load on the others.
+   // node, from a second form without essential dofs, for the predictor.
    mfem::BlockNonlinearForm internal_force_form(spaces);
-   internal_force_form.AddDomainIntegrator(new Integrator_Mixed(material));
-   mfem::BlockVector internal_force_blocks(offsets);
-   mfem::GridFunction internal_force(&space_u);
+   internal_force_form.AddDomainIntegrator(new LocalAssembly_Mixed(*material));
 
    // First Piola-Kirchhoff stress P = P_ich - p J F^-T at the element
    // centers, for vtu_writer: piecewise constant, with the 9 components P_xx,
@@ -122,22 +143,17 @@ int main(int argc, char *argv[])
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    SystemTools::make_empty_dir(results_dir);
 
-   // Saves the displacement, the pressure, the internal force and the stress
-   // of a step.
+   // Saves the displacement, the pressure and the stress of a step.
    auto save_results = [&](int step)
    {
       SystemTools::save_gf(results_dir, "disp", step, disp);
       SystemTools::save_gf(results_dir, "pres", step, pres);
 
-      internal_force_form.Mult(sol, internal_force_blocks);
-      internal_force = internal_force_blocks.GetBlock(0);
-      SystemTools::save_gf(results_dir, "internal_force", step, internal_force);
-
       for (int ee = 0; ee < mesh.GetNE(); ee++)
       {
-         const Tensor2_3D F = IntegratorTools::get_center_deformation_gradient(space_u, disp, ee);
+         const Tensor2_3D F = LocalAssemblyTools::get_center_deformation_gradient(space_u, disp, ee);
          const double p = pres.GetValue(ee, mfem::Geometries.GetCenter(mesh.GetElementGeometry(ee)));
-         const Tensor2_3D PK1 = material.get_1st_PK_stress_ich(F)
+         const Tensor2_3D PK1 = material->get_1st_PK_stress_ich(F)
                                 - p * F.det() * F.inverse().transpose();
          for (int ii = 0; ii < 3; ii++)
             for (int JJ = 0; JJ < 3; JJ++)
@@ -151,14 +167,14 @@ int main(int argc, char *argv[])
    //    block of rhs stays zero.
    mfem::LinearForm external_force(&space_u);
    external_force = 0.0;
-   if (boundaries.is_traction_load())
-      boundaries.add_traction_integrators(external_force);
+   if (neumann.is_traction_load())
+      neumann.add_traction_integrators(external_force);
 
    mfem::BlockVector rhs(offsets);
    rhs = 0.0;
 
    // Set zero displacement on the fixed faces.
-   boundaries.apply_fixed_bc(disp);
+   dirichlet.apply_fixed_bc(disp);
 
    // Work vectors of the consistent predictor.
    mfem::GridFunction disp_target(&space_u);
@@ -172,9 +188,12 @@ int main(int argc, char *argv[])
       // Wall-clock time of the step, up to the convergence.
       step_timer.Restart();
 
-      if (boundaries.is_traction_load())
+      // Load factor t = n / N, the time of the loading functions.
+      const double load_factor = static_cast<double>(step) / num_load_steps;
+
+      if (neumann.is_traction_load())
       {
-         boundaries.update_traction(step);
+         neumann.set_time(load_factor);
          external_force.Assemble();
       }
       rhs.GetBlock(0) = external_force;
@@ -187,8 +206,8 @@ int main(int argc, char *argv[])
       // with the full tangent of internal_force_form for K_fe; the pressure
       // is predicted as well.
       disp_target = disp;
-      if (boundaries.is_disp_load())
-         boundaries.apply_disp_load_bc(step, disp_target);
+      if (dirichlet.is_disp_load())
+         dirichlet.apply_disp_load_bc(load_factor, disp_target);
       prescribed_increment = 0.0;
       prescribed_increment.GetBlock(0) = disp_target;
       prescribed_increment.GetBlock(0) -= disp;
@@ -207,10 +226,15 @@ int main(int argc, char *argv[])
       linear_solver.Mult(predictor_rhs, predicted_increment);
       sol += predicted_increment;
       // Set the prescribed values exactly, free of round-off.
-      if (boundaries.is_disp_load())
-         boundaries.apply_disp_load_bc(step, disp);
+      if (dirichlet.is_disp_load())
+         dirichlet.apply_disp_load_bc(load_factor, disp);
 
-      boundaries.print_load_by_step(step, disp, external_force);
+      mfem::out << std::string(74, '=') << '\n'
+                << "Load step " << step << " / " << num_load_steps << '\n';
+      if (dirichlet.is_disp_load())
+         dirichlet.print_disp_load_by_step(disp);
+      else
+         neumann.print_traction_load_by_step();
       SystemTools::print_block_newton_header();
 
       // Set the external force to zero on the essential dofs.

@@ -104,6 +104,8 @@ public:
    class NewtonMonitor : public mfem::IterativeSolverMonitor
    {
    public:
+      // Required by MFEM: overrides mfem::IterativeSolverMonitor::
+      // MonitorResidual, which NewtonSolver calls at every iteration.
       void MonitorResidual(int it, mfem::real_t norm, const mfem::Vector &,
                            bool final) override
       {
@@ -129,6 +131,8 @@ public:
    public:
       BlockNewtonMonitor(const mfem::Array<int> &input_offsets) : offsets(input_offsets) {}
 
+      // Required by MFEM: overrides mfem::IterativeSolverMonitor::
+      // MonitorResidual, which NewtonSolver calls at every iteration.
       void MonitorResidual(int it, mfem::real_t, const mfem::Vector &r,
                            bool final) override
       {
@@ -171,6 +175,8 @@ public:
    class BlockUMFPackSolver : public mfem::Solver
    {
    public:
+      // Required by MFEM: overrides mfem::Solver::SetOperator, which
+      // NewtonSolver calls with the tangent at every iteration.
       void SetOperator(const mfem::Operator &op) override
       {
          const auto &block_op = dynamic_cast<const mfem::BlockOperator &>(op);
@@ -189,6 +195,8 @@ public:
          height = width = monolithic->Height();
       }
 
+      // Required by MFEM: overrides mfem::Solver::Mult, which NewtonSolver
+      // calls to solve with the tangent.
       // x = K^-1 b
       void Mult(const mfem::Vector &b, mfem::Vector &x) const override
       {

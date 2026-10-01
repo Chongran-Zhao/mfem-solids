@@ -36,33 +36,14 @@ endif()
 
 # Headers of this project, one folder per kind.
 set(include_dirs
-  include/boundary
-  include/integrator
-  include/material
-  include/system
-  include/visualization)
+  ${PROJECT_SOURCE_DIR}/include/assembly
+  ${PROJECT_SOURCE_DIR}/include/boundary
+  ${PROJECT_SOURCE_DIR}/include/material
+  ${PROJECT_SOURCE_DIR}/include/solver
+  ${PROJECT_SOURCE_DIR}/include/system
+  ${PROJECT_SOURCE_DIR}/include/visualization)
 
-# config.yaml is copied into the build directory, again whenever it changes;
-# the programs read the copy of the directory they run in.
-configure_file(config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
-
-add_executable(read_mesh read_mesh.cpp)
-target_include_directories(read_mesh PRIVATE ${MFEM_INCLUDE_DIRS})
-target_link_libraries(read_mesh PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
-target_compile_definitions(read_mesh PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-
-add_executable(driver_static_displacement driver_static_displacement.cpp)
-target_include_directories(driver_static_displacement PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
-target_link_libraries(driver_static_displacement PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
-
-add_executable(driver_static_mixed driver_static_mixed.cpp)
-target_include_directories(driver_static_mixed PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
-target_link_libraries(driver_static_mixed PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
-
-add_executable(vtu_writer vtu_writer.cpp)
-target_include_directories(vtu_writer PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
-target_link_libraries(vtu_writer PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
-
-add_executable(csv_writer csv_writer.cpp)
-target_include_directories(csv_writer PRIVATE ${include_dirs} ${MFEM_INCLUDE_DIRS})
-target_link_libraries(csv_writer PRIVATE ${mfem_libraries} yaml-cpp::yaml-cpp)
+# One folder per formulation, each with its own programs and CMakeLists.txt;
+# the programs of a folder are built into the same folder of the build tree.
+add_subdirectory(static_disp)
+add_subdirectory(static_mixed)

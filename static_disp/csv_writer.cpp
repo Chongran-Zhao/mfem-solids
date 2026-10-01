@@ -1,9 +1,8 @@
 // ============================================================================
 // csv_writer.cpp
 //
-// Writes the mean displacement and the resultant force on the faces and
-// directions of the csv_writer section of config.yaml at each load step, one
-// CSV file per face.
+// Writes the mean displacement on the faces and directions of the csv_writer
+// section of config.yaml at each load step, one CSV file per face.
 //
 // Author: Chongran Zhao
 // Date: Sep. 26, 2026
@@ -28,7 +27,6 @@ struct reported_face
    std::string name;                                // face name
    mfem::Array<int> face_marker;                    // marker of its boundary attributes
    std::vector<int> dirs;                           // reported directions, 0, 1, 2 for x, y, z
-   std::array<mfem::Array<int>, 3> component_dofs;  // dofs of x, y, z on the face
    double area;                                     // reference area A_0
    std::ofstream csv;                               // CSV file of the face
 };
@@ -46,14 +44,12 @@ int main(int argc, char *argv[])
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
 
-   // 3. Set up the displacement space of the driver; the internal force
-   //    lives in the same space.
+   // 3. Set up the displacement space of the driver.
    const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    mfem::H1_FECollection fec(order, dim);
    mfem::FiniteElementSpace fespace(&mesh, &fec, dim, mfem::Ordering::byVDIM);
    mfem::GridFunction disp(&fespace);
-   mfem::Vector internal_force(fespace.GetTrueVSize());
    SystemTools::print_space(fespace);
 
    // 4. Collect the faces and directions of the csv_writer section.
@@ -106,8 +102,6 @@ int main(int argc, char *argv[])
          reported_face face;
          face.name = input_face;
          face.face_marker = mesh.bdr_attribute_sets.GetAttributeSetMarker(input_face);
-         for (int axis = 0; axis < 3; axis++)
-            fespace.GetEssentialTrueDofs(face.face_marker, face.component_dofs[axis], axis);
          face.area = get_area(face.face_marker);
          faces.push_back(std::move(face));
          found = faces.end() - 1;
@@ -153,16 +147,13 @@ int main(int argc, char *argv[])
       return out;
    };
 
-   // CSV header: step, load factor, then u, F and t = F / A_0 in the
-   // reported directions.
+   // CSV header: step, load factor, then u in the reported directions.
    for (reported_face &face : faces)
    {
       face.csv.open(output_dir / (face.name + ".csv"));
       face.csv << "step,load_factor";
-      const std::array<std::string, 3> quantities = {"u", "F", "t"};
-      for (int qq = 0; qq < 3; qq++)
-         for (int dir : face.dirs)
-            face.csv << ',' << quantities[qq] << '_' << component_names[dir];
+      for (int dir : face.dirs)
+         face.csv << ",u_" << component_names[dir];
       face.csv << '\n' << std::scientific << std::setprecision(10);
    }
 
@@ -182,51 +173,32 @@ int main(int argc, char *argv[])
       target = file_gf;
    };
 
-   // 5. Read the displacement and the internal force R^a_k of each step,
-   //    saved by the driver, and write, for each face,
-   //       u_mean_k = (1 / A_0) int u_k dA        mean displacement
-   //       F_k      = sum_{a on face} R^a_k       resultant force
-   //       t_k      = F_k / A_0                   mean nominal traction
-   //    F is the reaction on a constrained face and the load on a traction
-   //    face; on a free face it picks up the reactions of the edges it shares
-   //    with constrained faces, so it has no meaning there.
+   // 5. Read the displacement of each step, saved by the driver, and write
+   //    the mean displacement u_mean_k = (1 / A_0) int u_k dA of each face.
    for (int step = 0; step <= load_steps; step++)
    {
       read_gf("disp", step, disp);
-      read_gf("internal_force", step, internal_force);
 
       const double factor = static_cast<double>(step) / load_steps;
 
       mfem::out << std::string(74, '=') << '\n'
                 << "Load step " << step << " / " << load_steps << "\n\n"
                 << std::left << std::setw(10) << "face" << std::setw(6) << ""
-                << std::setw(19) << "u_mean"
-                << std::setw(19) << "F"
-                << "t = F / A_0\n";
+                << "u_mean\n";
 
       for (reported_face &face : faces)
       {
          const std::array<double, 3> mean_disp = get_mean_disp(face);
 
-         std::array<double, 3> force = {0.0, 0.0, 0.0};
-         for (int kk = 0; kk < 3; kk++)
-            for (int dof : face.component_dofs[kk])
-               force[kk] += internal_force(dof);
-
          face.csv << step << ',' << factor;
          for (int dir : face.dirs)
             face.csv << ',' << mean_disp[dir];
-         for (int dir : face.dirs)
-            face.csv << ',' << force[dir];
-         for (int dir : face.dirs)
-            face.csv << ',' << force[dir] / face.area;
          face.csv << '\n';
 
          for (int dir : face.dirs)
             mfem::out << std::left << std::setw(10) << (dir == face.dirs[0] ? face.name : "")
                       << std::setw(6) << component_names[dir] << std::scientific
-                      << std::setprecision(6) << std::setw(19) << mean_disp[dir]
-                      << std::setw(19) << force[dir] << force[dir] / face.area
+                      << std::setprecision(6) << mean_disp[dir]
                       << std::defaultfloat << '\n';
       }
    }
