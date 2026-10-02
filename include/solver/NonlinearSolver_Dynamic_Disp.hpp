@@ -117,6 +117,32 @@ public:
       disp_n = &input_disp_n;
       acce_n = &input_acce_n;
       disp_predictor = &input_predictor;
+      initial_guess(end_time, disp);
+      mfem::Vector u;
+      disp.GetTrueDofs(u);
+      SystemTools::print_newton_header();
+      newton_solver.Mult(mfem::Vector(), u);
+      MFEM_VERIFY(newton_solver.GetConverged(),
+                  "Dynamic Newton did not converge at t = " << end_time << ".");
+
+      disp.SetFromTrueDofs(u);
+      disp_n = acce_n = disp_predictor = nullptr;
+      return newton_solver.GetNumIterations();
+   }
+
+   double get_kinetic_energy(const mfem::GridFunction &velo) const
+   {
+      mfem::Vector v, mv(mass->Height());
+      velo.GetTrueDofs(v); mass->Mult(v, mv);
+      return 0.5 * (v * mv);
+   }
+
+private:
+   // One effective-tangent correction from the time solver's predictor.
+   // Include prescribed displacement increments through the full mass/stiffness
+   // coupling, then impose their end-time values exactly before Newton.
+   void initial_guess(double end_time, mfem::GridFunction &disp)
+   {
       mfem::Vector u;
       disp.GetTrueDofs(u);
       mfem::GridFunction target(disp.FESpace());
@@ -140,24 +166,9 @@ public:
       if (dirichlet.is_disp_load())
          dirichlet.apply_disp_load_bc(end_time, target);
       target.GetTrueDofs(u);
-      SystemTools::print_newton_header();
-      newton_solver.Mult(mfem::Vector(), u);
-      MFEM_VERIFY(newton_solver.GetConverged(),
-                  "Dynamic Newton did not converge at t = " << end_time << ".");
-
       disp.SetFromTrueDofs(u);
-      disp_n = acce_n = disp_predictor = nullptr;
-      return newton_solver.GetNumIterations();
    }
 
-   double get_kinetic_energy(const mfem::GridFunction &velo) const
-   {
-      mfem::Vector v, mv(mass->Height());
-      velo.GetTrueDofs(v); mass->Mult(v, mv);
-      return 0.5 * (v * mv);
-   }
-
-private:
    void check_fields(const mfem::GridFunction &disp, const mfem::GridFunction &velo,
                      const mfem::GridFunction &acce) const
    {
