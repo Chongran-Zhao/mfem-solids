@@ -16,15 +16,14 @@
 
 #include "NonlinearSolver_Dynamic_Disp.hpp"
 #include "SystemTools.hpp"
-#include "TimeMethod_GenAlpha.hpp"
 
 class TimeSolver_Dynamic_Disp
 {
 public:
    TimeSolver_Dynamic_Disp(std::unique_ptr<NonlinearSolver_Dynamic_Disp> input_solver,
-                           double input_dt, double input_final_time, double rho_inf,
+                           double input_dt, double input_final_time,
                            const std::filesystem::path &input_results_dir)
-      : nonlinear_solver(std::move(input_solver)), time_method(rho_inf),
+      : nonlinear_solver(std::move(input_solver)),
         dt(input_dt), final_time(input_final_time), results_dir(input_results_dir)
    {
       MFEM_VERIFY(std::isfinite(dt) && dt > 0.0 &&
@@ -58,7 +57,7 @@ public:
          mfem::out << std::string(74, '=') << '\n'
                    << "Time step " << step << ", t = " << next_time
                    << ", dt = " << step_dt << '\n';
-         const int iterations = solve_step(time, step_dt, disp, velo, acce);
+         const int iterations = nonlinear_solver->solve(time, step_dt, disp, velo, acce);
          time = next_time;
          SystemTools::save_gf(results_dir, "disp", step, disp);
          SystemTools::save_gf(results_dir, "velo", step, velo);
@@ -68,43 +67,8 @@ public:
       }
    }
 
-   // Predict the state, request a solve at the stage/end times, and commit Newmark states.
-   int solve_step(double time, double dt,
-                  mfem::GridFunction &disp, mfem::GridFunction &velo, mfem::GridFunction &acce)
-   {
-      MFEM_VERIFY(std::isfinite(dt) && dt > 0.0, "The time step must be positive.");
-      MFEM_VERIFY(disp.FESpace() == velo.FESpace() && disp.FESpace() == acce.FESpace(),
-                  "Dynamic fields must share one displacement space.");
-      mfem::Vector pre_disp, pre_velo, pre_acce;
-      disp.GetTrueDofs(pre_disp); velo.GetTrueDofs(pre_velo); acce.GetTrueDofs(pre_acce);
-      const double alpha_m = time_method.get_alpha_m();
-      const double alpha_f = time_method.get_alpha_f();
-      const double acce_factor = 1.0 / (time_method.get_beta() * dt * dt);
-      mfem::Vector predictor(pre_disp);
-      predictor.Add(dt, pre_velo);
-      predictor.Add(dt * dt * (0.5 - time_method.get_beta()), pre_acce);
-      mfem::Vector u(pre_disp);
-      u.Add(dt, pre_velo); u.Add(0.5 * dt * dt, pre_acce);
-      mfem::GridFunction next_disp(disp.FESpace());
-      next_disp.SetFromTrueDofs(u);
-      const int iterations = nonlinear_solver->solve(time + alpha_f * dt, time + dt,
-         alpha_m, alpha_f, acce_factor, pre_disp, pre_acce, predictor, next_disp);
-      next_disp.GetTrueDofs(u);
-
-      mfem::Vector a(u);
-      a -= pre_disp; a.Add(-dt, pre_velo);
-      a.Add(-dt * dt * (0.5 - time_method.get_beta()), pre_acce);
-      a /= time_method.get_beta() * dt * dt;
-      mfem::Vector v(pre_velo);
-      v.Add(dt * (1.0 - time_method.get_gamma()), pre_acce);
-      v.Add(dt * time_method.get_gamma(), a);
-      disp.SetFromTrueDofs(u); velo.SetFromTrueDofs(v); acce.SetFromTrueDofs(a);
-      return iterations;
-   }
-
 private:
    const std::unique_ptr<NonlinearSolver_Dynamic_Disp> nonlinear_solver;
-   const TimeMethod_GenAlpha time_method;
    const double dt, final_time;
    const std::filesystem::path results_dir;
 };

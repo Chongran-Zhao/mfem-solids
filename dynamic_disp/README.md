@@ -22,21 +22,18 @@ remain in `MaterialModelData.hpp`.
 ## Ownership and time integration
 
 - The driver owns displacement, velocity and acceleration grid functions.
-- `TimeSolver_Dynamic_Disp` owns the nonlinear solver and integration parameters.
-  It computes stage/end times, integration weights and known predictor vectors,
-  requests a solve for that step, and updates velocity and acceleration through
-  Newmark kinematics. It manages the physical-time loop and output, and never
-  accesses global assembly or the mass matrix.
+- `TimeSolver_Dynamic_Disp` owns the nonlinear solver. It advances physical
+  time, shortens the final step, calls `solve(time, dt, disp, velo, acce)` and
+  saves accepted states. It has no time-method or assembly dependency.
 - `NonlinearSolver_Dynamic_Disp` owns global assembly, the consistent mass matrix,
-  the linear/Newton solvers and monitor. Like the static nonlinear solver, it
-  handles loading, prescribed boundaries, a consistent initial guess, residual
-  and tangent assembly, and Newton convergence. Its `solve` receives stage/end
-  times, scalar weights and known vectors; it constructs its own MFEM equation.
-  It computes compatible initial acceleration and kinetic energy internally.
+  `TimeMethod_GenAlpha`, the linear/Newton solvers and monitor. The driver creates
+  the time method and moves its ownership into this solver. It computes initial
+  acceleration, predicts each step, assembles intermediate-state residuals and
+  effective tangents, handles boundaries and its private `initial_guess`, and
+  updates velocity/acceleration after Newton convergence.
   It directly derives from `mfem::Operator`, implements `Mult` and `GetGradient`,
-  and binds Newton to itself with `SetOperator(*this)`.
-  It neither includes nor receives `TimeMethod_GenAlpha` and does not expose
-  assembly or mass to its caller.
+  and binds Newton to itself with `SetOperator(*this)`. Integration coefficients
+  are read from the owned time method instead of copied or borrowed individually.
 - `GlobalAssembly_Disp` assembles mass, internal force and material tangent;
   element and material assembly have no time-integration dependency.
 
@@ -55,7 +52,7 @@ The step residual is `M a_alpha_m + R(u_alpha_f, t_alpha_f)`. Its displacement
 Jacobian is `alpha_m/(beta dt^2) M + alpha_f K(u_alpha_f)`. Mass is assembled once
 without boundary elimination. Prescribed increments are eliminated from the
 combined tangent so their inertia coupling reaches the free equations.
-The time solver updates velocity and acceleration after Newton convergence.
+The nonlinear solver updates velocity and acceleration after Newton convergence.
 The nonlinear solver borrows the known vectors only during the single-step
 call and clears those references after solving. Neither solver stores displacement, velocity or acceleration as members.
 

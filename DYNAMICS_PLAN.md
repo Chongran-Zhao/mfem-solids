@@ -23,7 +23,7 @@ Mixed displacement-pressure dynamics is a later task.
       acceleration from the initial equilibrium and boundary conditions.
 - [x] Add dynamic nonlinear and time solver components using existing global assembly,
       following GlobalAssembly → NonlinearSolver → TimeSolver ownership.
-      Assembly and mass belong to the method-independent nonlinear solver. Keep material integration
+      Assembly, mass and the generalized-alpha time method belong to the nonlinear solver. Keep material integration
       independent of the time-integration scheme.
 - [x] Implement the generalized-alpha residual and effective tangent, Newmark
       state updates and prescribed motion at physical time.
@@ -45,13 +45,13 @@ Mixed displacement-pressure dynamics is a later task.
 
 The single-step nonlinear solver, time loop, generalized-alpha parameters,
 compatible initial acceleration, physical-time boundaries and `dynamic_disp`
-driver/configuration are implemented. The time solver determines stage/end times, integration weights and predictors,
-requests the nonlinear solve, and commits Newmark state updates. The nonlinear
-solver handles loading, boundaries, its own residual/tangent equation and
-Newton convergence, without receiving the time-method object or exposing
-assembly/mass to the time solver. The nonlinear solver directly derives from
-`mfem::Operator`; Newton uses its own `Mult` and `GetGradient`, with no nested
-step-operator class. The driver saves displacement, velocity,
+driver/configuration are implemented. The time solver advances physical time, passes `time` and `dt` to the nonlinear
+solver and saves accepted states. The nonlinear solver owns the generalized-alpha
+time method, computes predictors and intermediate states, handles loading and
+boundaries, assembles residuals/tangents, runs Newton, and updates the states.
+It directly derives from `mfem::Operator`; Newton uses its own `Mult` and
+`GetGradient`, with no nested step-operator class.
+ The driver saves displacement, velocity,
 acceleration and a time history with kinetic energy. Dynamic stress/reaction
 postprocessors and nonlinear strain energy output remain to be implemented.
 

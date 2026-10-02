@@ -14,6 +14,7 @@
 #include "NeumannBoundary.hpp"
 #include "NonlinearSolver_Dynamic_Disp.hpp"
 #include "SystemTools.hpp"
+#include "TimeMethod_GenAlpha.hpp"
 #include "TimeSolver_Dynamic_Disp.hpp"
 
 int main(int argc, char *argv[])
@@ -64,12 +65,13 @@ int main(int argc, char *argv[])
    auto global_assembly = std::make_unique<GlobalAssembly_Disp>(
       space, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
    const YAML::Node dynamics = config["dynamics"];
+   auto time_method = std::make_unique<TimeMethod_GenAlpha>(dynamics["rho_inf"].as<double>());
    auto nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic_Disp>(
-      std::move(global_assembly), dynamics["density"].as<double>(), config["solver"]);
+      std::move(global_assembly), dynamics["density"].as<double>(), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver_Dynamic_Disp>(
       std::move(nonlinear_solver), dynamics["dt"].as<double>(),
-      dynamics["final_time"].as<double>(), dynamics["rho_inf"].as<double>(), results_dir);
+      dynamics["final_time"].as<double>(), results_dir);
    time_solver->run(disp, velo, acce);
    SystemTools::print_saved(results_dir);
 }
