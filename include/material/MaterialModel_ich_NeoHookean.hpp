@@ -11,7 +11,10 @@
 #define MATERIAL_MODEL_ICH_NEO_HOOKEAN_HPP
 
 #include <cmath>
+
 #include "IMaterialModel_ich.hpp"
+#include "Tensor2_3D.hpp"
+#include "Tensor4_3D.hpp"
 
 class MaterialModel_ich_NeoHookean : public IMaterialModel_ich
 {

@@ -11,6 +11,7 @@
 #define TENSOR2_3D_HPP
 
 #include <array>
+
 #include "Vector_3D.hpp"
 
 class Tensor2_3D

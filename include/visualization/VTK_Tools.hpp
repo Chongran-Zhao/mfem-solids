@@ -11,6 +11,7 @@
 #ifndef VTK_TOOLS_HPP
 #define VTK_TOOLS_HPP
 
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -18,8 +19,11 @@
 #include <string>
 #include <utility>
 #include <vector>
+
 #include <mfem.hpp>
+
 #include "LocalAssemblyTools.hpp"
+#include "Tensor2_3D.hpp"
 
 class VTK_Tools
 {
@@ -142,27 +146,11 @@ public:
       write_pvd();
    }
 
-   // F at the center of element ee, for the output of the stress.
+   // Shared with assembly; keep the existing postprocessing interface.
    static Tensor2_3D get_center_deformation_gradient(const mfem::FiniteElementSpace &fespace,
                                                      const mfem::GridFunction &disp, int ee)
    {
-      const mfem::FiniteElement &elem = *fespace.GetFE(ee);
-      mfem::ElementTransformation &elem_map = *fespace.GetElementTransformation(ee);
-      const mfem::IntegrationPoint &center = mfem::Geometries.GetCenter(elem.GetGeomType());
-      elem_map.SetIntPoint(&center);
-
-      const int num_nodes = elem.GetDof();
-      mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
-      elem.CalcDShape(center, dN_dxi);
-      mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
-
-      // Element displacement: x of all nodes, then y, then z.
-      mfem::Array<int> vdofs;
-      mfem::Vector elem_disp;
-      fespace.GetElementVDofs(ee, vdofs);
-      disp.GetSubVector(vdofs, elem_disp);
-
-      return LocalAssemblyTools::get_deformation_gradient(elem_disp, dN_dX);
+      return LocalAssemblyTools::get_center_deformation_gradient(fespace, disp, ee);
    }
 
    // Path of the PVD file, the one to open in ParaView.

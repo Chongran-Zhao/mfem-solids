@@ -3,8 +3,8 @@
 //
 // Writes mean displacement, mean pressure and reaction force on the faces and
 // directions of the csv_writer section of config.yaml at each load step, one
-// CSV file per face. The reaction is the residual R(d) = F_int(d) - F_ext at
-// the saved displacement, on the constrained dofs: the force the supports
+// CSV file per face. The reaction is the residual R(u,p) = F_int(d) - F_ext at
+// the saved displacement and pressure, on the constrained dofs: the force the supports
 // exert; it is computed with the material of MaterialModelData, which must be
 // the one the driver ran with.
 //
@@ -29,13 +29,11 @@
 #include <yaml-cpp/yaml.h>
 
 #include "DirichletBoundary.hpp"
-#include "GlobalAssembly_Disp.hpp"
-#include "LocalAssembly_Disp.hpp"
-#include "MaterialModel.hpp"
+#include "GlobalAssembly_Mixed.hpp"
+#include "LocalAssembly_Mixed.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
-#include "Tensor2_3D.hpp"
 
 // One reported face.
 struct reported_face
@@ -61,25 +59,31 @@ int main(int argc, char *argv[])
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
 
-   // 3. Set up the displacement space of the driver.
+   // 3. Set up the displacement and pressure spaces of the mixed driver.
    const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
+   MFEM_VERIFY(order >= 2, "The mixed csv_writer needs space.order >= 2.");
    mfem::H1_FECollection fec(order, dim);
    mfem::FiniteElementSpace fespace(&mesh, &fec, dim, mfem::Ordering::byVDIM);
    mfem::GridFunction disp(&fespace);
+   mfem::H1_FECollection fec_p(order - 1, dim);
+   mfem::FiniteElementSpace space_p(&mesh, &fec_p);
+   mfem::GridFunction pres(&space_p);
+   mfem::Array<int> offsets({0, fespace.GetTrueVSize(),
+                             fespace.GetTrueVSize() + space_p.GetTrueVSize()});
+   mfem::BlockVector sol(offsets);
    SystemTools::print_space(fespace);
 
-   // The global assembly of the driver, for the residual R(d): the material
+   // The global assembly of the driver, for the residual R(u,p): the material
    // and the boundary conditions are created anew from MaterialModelData and
    // config.yaml.
    auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], fespace);
    auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], fespace);
    const bool is_traction_load = neumann->is_traction_load();
-   auto local_assembly = std::make_unique<LocalAssembly_Disp>(set_material_model());
-   auto global_assembly = std::make_unique<GlobalAssembly_Disp>(
-      fespace, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
-   mfem::Vector residual(fespace.GetTrueVSize());
-   const std::unique_ptr<const MaterialModel> material = set_material_model();
+   auto local_assembly = std::make_unique<LocalAssembly_Mixed>(set_material_model());
+   auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
+      fespace, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
+   mfem::Vector residual(offsets.Last());
 
    // 4. Collect the faces and directions of the csv_writer section.
    const int load_steps = config["loading"]["load_steps"].as<int>();
@@ -172,16 +176,7 @@ int main(int argc, char *argv[])
             for (int kk = 0; kk < 3; kk++)
                for (int aa = 0; aa < num_nodes; aa++)
                   out[kk] += face_disp(aa + kk * num_nodes) * shape(aa) * dA;
-
-            // Evaluate the volume gradient on the adjacent element, retaining
-            // its normal derivative at the boundary integration point.
-            mfem::DenseMatrix grad;
-            disp.GetVectorGradient(face_map, grad);
-            Tensor2_3D F = Tensor2_3D::identity();
-            for (int kk = 0; kk < 3; kk++)
-               for (int JJ = 0; JJ < 3; JJ++)
-                  F(kk, JJ) += grad(kk, JJ);
-            out[3] += material->get_p(F.det()) * dA;
+            out[3] += pres.GetValue(face_map, quad_pt) * dA;
          }
       }
       for (double &value : out)
@@ -231,11 +226,14 @@ int main(int argc, char *argv[])
    for (int step = 0; step <= load_steps; step++)
    {
       read_gf("disp", step, disp);
+      read_gf("pres", step, pres);
+      sol.GetBlock(0) = disp;
+      sol.GetBlock(1) = pres;
 
       const double factor = static_cast<double>(step) / load_steps;
       if (is_traction_load)
          global_assembly->set_traction_load(factor);
-      global_assembly->set_residual(disp, residual);
+      global_assembly->set_residual(sol, residual);
 
       mfem::out << std::string(74, '=') << '\n'
                 << "Load step " << step << " / " << load_steps << "\n\n"

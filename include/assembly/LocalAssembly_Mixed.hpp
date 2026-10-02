@@ -16,16 +16,23 @@
 #ifndef LOCAL_ASSEMBLY_MIXED_HPP
 #define LOCAL_ASSEMBLY_MIXED_HPP
 
+#include <memory>
+#include <utility>
+
 #include <mfem.hpp>
+
 #include "LocalAssemblyTools.hpp"
 #include "MaterialModel.hpp"
 #include "Tensor2_3D.hpp"
+#include "Tensor4_3D.hpp"
+#include "Vector_3D.hpp"
 
 class LocalAssembly_Mixed : public mfem::BlockNonlinearFormIntegrator
 {
 public:
-   LocalAssembly_Mixed(const MaterialModel &input_material)
-      : material(input_material) {}
+   // Takes ownership of the material, as in LocalAssembly_Disp.
+   LocalAssembly_Mixed(std::unique_ptr<const MaterialModel> input_material)
+      : material(std::move(input_material)) {}
 
    // Required by MFEM: overrides mfem::BlockNonlinearFormIntegrator::
    // AssembleElementVector, which BlockNonlinearForm calls on every element.
@@ -77,7 +84,7 @@ public:
          const double p = M * pres;
 
          // P = P_ich - p J F^-T
-         const Tensor2_3D PK1 = material.get_1st_PK_stress_ich(F)
+         const Tensor2_3D PK1 = material->get_1st_PK_stress_ich(F)
                                 - p * J * F.inverse().transpose();
 
          // dV = w_q * det( dX/dxi )
@@ -100,7 +107,7 @@ public:
          }
 
          // J - J(p), zero where the volume ratio matches the pressure.
-         const double vol_residual = J - material.get_J(p);
+         const double vol_residual = J - material->get_J(p);
          for (int cc = 0; cc < num_nodes_p; cc++)
             residual_p(cc) -= dV * M(cc) * vol_residual;
       }
@@ -166,7 +173,7 @@ public:
          const double p = M * pres;
 
          // AA = AA_ich - p d(J F^-T)/dF
-         Tensor4_3D AA = material.get_1st_elasticity_tensor_ich(F);
+         Tensor4_3D AA = material->get_1st_elasticity_tensor_ich(F);
          for (int kk = 0; kk < 3; kk++)
             for (int JJ = 0; JJ < 3; JJ++)
                for (int ll = 0; ll < 3; ll++)
@@ -174,7 +181,7 @@ public:
                      AA(kk, JJ, ll, LL) -= p * J * (F_inv(JJ, kk) * F_inv(LL, ll)
                                                   - F_inv(JJ, ll) * F_inv(LL, kk));
 
-         const double dJ_dp = material.get_dJ_dp(p);
+         const double dJ_dp = material->get_dJ_dp(p);
 
          // dV = w_q * det( dX/dxi )
          const double dV = quad_pt.weight * elem_map.Weight();
@@ -228,7 +235,7 @@ public:
    }
 
 private:
-   const MaterialModel &material;
+   const std::unique_ptr<const MaterialModel> material;
 };
 
 #endif

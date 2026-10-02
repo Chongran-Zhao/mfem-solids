@@ -16,7 +16,9 @@
 #define MATERIAL_MODEL_VOL_SIMO_PISTER_HPP
 
 #include <cmath>
+
 #include <mfem.hpp>
+
 #include "IMaterialModel_vol.hpp"
 
 class MaterialModel_vol_SimoPister : public IMaterialModel_vol
