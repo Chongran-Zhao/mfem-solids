@@ -184,17 +184,17 @@ int main(int argc, char *argv[])
       return out;
    };
 
-   // CSV header: step, load factor, then u, F and t = F / A_0 in the
-   // reported directions, followed by the scalar face-mean pressure p.
+   // CSV header: step, load factor, then u and F in the reported
+   // directions, followed by reference face area and face-mean pressure p.
    for (reported_face &face : faces)
    {
       face.csv.open(output_dir / (face.name + ".csv"));
       face.csv << "step,load_factor";
-      const std::array<std::string, 3> quantities = {"u", "F", "t"};
-      for (int qq = 0; qq < 3; qq++)
+      const std::array<std::string, 2> quantities = {"u", "F"};
+      for (int qq = 0; qq < 2; qq++)
          for (int dir : face.dirs)
             face.csv << ',' << quantities[qq] << '_' << component_names[dir];
-      face.csv << ",p\n" << std::scientific << std::setprecision(10);
+      face.csv << ",area,p\n" << std::scientific << std::setprecision(10);
    }
 
    // Reads <results>/<prefix>_XXXX.gf of a step into target, whose size must
@@ -217,7 +217,7 @@ int main(int argc, char *argv[])
    //    for each face,
    //       u_mean_k = (1 / A_0) int u_k dA        mean displacement
    //       F_k      = sum_{a on face} R^a_k       reaction force
-   //       t_k      = F_k / A_0                   mean nominal traction
+   //       area     = A_0                        reference face area
    //       p_mean   = (1 / A_0) int p dA          mean pressure
    //    F is the force the supports exert on a constrained face; on a free
    //    face, a traction face included, it is the residual of Newton's method,
@@ -240,7 +240,7 @@ int main(int argc, char *argv[])
                 << std::left << std::setw(10) << "face" << std::setw(6) << ""
                 << std::setw(19) << "u_mean"
                 << std::setw(19) << "F"
-                << std::setw(19) << "t = F / A_0" << "p_mean\n";
+                << std::setw(19) << "area" << "p_mean\n";
 
       for (reported_face &face : faces)
       {
@@ -256,15 +256,13 @@ int main(int argc, char *argv[])
             face.csv << ',' << mean_fields[dir];
          for (int dir : face.dirs)
             face.csv << ',' << force[dir];
-         for (int dir : face.dirs)
-            face.csv << ',' << force[dir] / face.area;
-         face.csv << ',' << mean_fields[3] << '\n';
+         face.csv << ',' << face.area << ',' << mean_fields[3] << '\n';
 
          for (int dir : face.dirs)
             mfem::out << std::left << std::setw(10) << (dir == face.dirs[0] ? face.name : "")
                       << std::setw(6) << component_names[dir] << std::scientific
                       << std::setprecision(6) << std::setw(19) << mean_fields[dir]
-                      << std::setw(19) << force[dir] << std::setw(19) << force[dir] / face.area
+                      << std::setw(19) << force[dir] << std::setw(19) << face.area
                       << mean_fields[3]
                       << std::defaultfloat << '\n';
       }
