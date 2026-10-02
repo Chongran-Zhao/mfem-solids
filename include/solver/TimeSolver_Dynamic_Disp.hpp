@@ -48,21 +48,21 @@ public:
       for (int step = 1; time < final_time; ++step)
       {
          // Shorten the last step and save its actual physical time.
-         double next_time = std::min(step * dt, final_time);
+         double next_time = std::min(step * this->dt, final_time);
          if (final_time - next_time <=
              8.0 * std::numeric_limits<double>::epsilon() * final_time)
             next_time = final_time;
-         const double step_dt = next_time - time;
-         MFEM_VERIFY(step_dt > 0.0, "The time step is below floating-point resolution.");
+         const double dt = next_time - time;
+         MFEM_VERIFY(dt > 0.0, "The time step is below floating-point resolution.");
          mfem::out << std::string(74, '=') << '\n'
                    << "Time step " << step << ", t = " << next_time
-                   << ", dt = " << step_dt << '\n';
-         const int iterations = nonlinear_solver->solve(time, step_dt, disp, velo, acce);
+                   << ", dt = " << dt << '\n';
+         const int iterations = nonlinear_solver->solve(time, dt, disp, velo, acce);
          time = next_time;
          SystemTools::save_gf(results_dir, "disp", step, disp);
          SystemTools::save_gf(results_dir, "velo", step, velo);
          SystemTools::save_gf(results_dir, "acce", step, acce);
-         history << step << ',' << time << ',' << step_dt << ',' << iterations
+         history << step << ',' << time << ',' << dt << ',' << iterations
                  << ',' << nonlinear_solver->get_kinetic_energy(velo) << '\n';
       }
    }
