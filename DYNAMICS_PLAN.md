@@ -22,8 +22,8 @@ Mixed displacement-pressure dynamics is a later task.
 - [x] Assemble the consistent mass matrix and obtain a compatible initial
       acceleration from the initial equilibrium and boundary conditions.
 - [x] Add dynamic nonlinear and time solver components using existing global assembly,
-      with assembly and mass owned by the time solver and a method-independent
-      nonlinear solver. Keep material integration
+      following GlobalAssembly → NonlinearSolver → TimeSolver ownership.
+      Assembly and mass belong to the method-independent nonlinear solver. Keep material integration
       independent of the time-integration scheme.
 - [x] Implement the generalized-alpha residual and effective tangent, Newmark
       state updates and prescribed motion at physical time.

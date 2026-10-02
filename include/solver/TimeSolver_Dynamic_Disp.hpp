@@ -23,14 +23,10 @@
 class TimeSolver_Dynamic_Disp
 {
 public:
-   TimeSolver_Dynamic_Disp(std::unique_ptr<GlobalAssembly_Disp> input_assembly,
-                           double density,
-                           std::unique_ptr<NonlinearSolver_Dynamic_Disp> input_solver,
+   TimeSolver_Dynamic_Disp(std::unique_ptr<NonlinearSolver_Dynamic_Disp> input_solver,
                            double input_dt, double input_final_time, double rho_inf,
                            const std::filesystem::path &input_results_dir)
-      : global_assembly(std::move(input_assembly)),
-        mass(global_assembly->assemble_mass(density)),
-        nonlinear_solver(std::move(input_solver)), time_method(rho_inf),
+      : nonlinear_solver(std::move(input_solver)), time_method(rho_inf),
         dt(input_dt), final_time(input_final_time), results_dir(input_results_dir)
    {
       MFEM_VERIFY(std::isfinite(dt) && dt > 0.0 &&
@@ -80,7 +76,9 @@ public:
                    mfem::GridFunction &velo, mfem::GridFunction &acce)
    {
       check_fields(disp, velo, acce);
-      const auto &dirichlet = global_assembly->get_dirichlet();
+      auto &global_assembly = nonlinear_solver->get_global_assembly();
+      const auto &mass = nonlinear_solver->get_mass();
+      const auto &dirichlet = global_assembly.get_dirichlet();
       dirichlet.apply_fixed_bc(disp);
       dirichlet.apply_fixed_bc(velo);
       acce = 0.0;
@@ -90,14 +88,14 @@ public:
          dirichlet.apply_velo_load_bc(time, velo);
          dirichlet.apply_acce_load_bc(time, acce);
       }
-      global_assembly->set_traction_load(time);
-      mfem::Vector u, prescribed_acce, rhs(mass->Height()), a(mass->Height());
+      global_assembly.set_traction_load(time);
+      mfem::Vector u, prescribed_acce, rhs(mass.Height()), a(mass.Height());
       disp.GetTrueDofs(u);
       acce.GetTrueDofs(prescribed_acce);
-      global_assembly->assemble_residual(u, rhs);
+      global_assembly.assemble_residual(u, rhs);
       rhs.Neg();
-      mfem::SparseMatrix constrained_mass(*mass);
-      global_assembly->set_essential_bdr(constrained_mass, prescribed_acce, rhs);
+      mfem::SparseMatrix constrained_mass(mass);
+      global_assembly.set_essential_bdr(constrained_mass, prescribed_acce, rhs);
       nonlinear_solver->solve_linear(constrained_mass, rhs, a);
       acce.SetFromTrueDofs(a);
    }
@@ -176,10 +174,12 @@ public:
    {
       MFEM_VERIFY(std::isfinite(dt) && dt > 0.0, "The time step must be positive.");
       check_fields(disp, velo, acce);
+      auto &global_assembly = nonlinear_solver->get_global_assembly();
+      const auto &mass = nonlinear_solver->get_mass();
       mfem::Vector u_n, v_n, a_n;
       disp.GetTrueDofs(u_n); velo.GetTrueDofs(v_n); acce.GetTrueDofs(a_n);
-      global_assembly->set_traction_load(time + time_method.get_alpha_f() * dt);
-      StepOperator step(*global_assembly, *mass, time_method, dt, u_n, v_n, a_n);
+      global_assembly.set_traction_load(time + time_method.get_alpha_f() * dt);
+      StepOperator step(global_assembly, mass, time_method, dt, u_n, v_n, a_n);
 
       // Constant-acceleration predictor, followed by one consistent linear
       // correction that includes coupling from the new boundary values.
@@ -187,7 +187,7 @@ public:
       u.Add(dt, v_n); u.Add(0.5 * dt * dt, a_n);
       mfem::GridFunction target(disp.FESpace());
       target.SetFromTrueDofs(u);
-      const auto &dirichlet = global_assembly->get_dirichlet();
+      const auto &dirichlet = global_assembly.get_dirichlet();
       dirichlet.apply_fixed_bc(target);
       if (dirichlet.is_disp_load())
          dirichlet.apply_disp_load_bc(time + dt, target);
@@ -196,7 +196,7 @@ public:
       prescribed_increment -= u;
       step.assemble_residual(u, rhs); rhs.Neg();
       auto tangent = step.assemble_tangent(u);
-      global_assembly->set_essential_bdr(*tangent, prescribed_increment, rhs);
+      global_assembly.set_essential_bdr(*tangent, prescribed_increment, rhs);
       nonlinear_solver->solve_linear(*tangent, rhs, increment);
       u += increment;
 
@@ -222,8 +222,9 @@ public:
 
    double get_kinetic_energy(const mfem::GridFunction &velo) const
    {
-      mfem::Vector v, mv(mass->Height());
-      velo.GetTrueDofs(v); mass->Mult(v, mv);
+      const auto &mass = nonlinear_solver->get_mass();
+      mfem::Vector v, mv(mass.Height());
+      velo.GetTrueDofs(v); mass.Mult(v, mv);
       return 0.5 * (v * mv);
    }
 
@@ -232,12 +233,10 @@ private:
                      const mfem::GridFunction &acce) const
    {
       MFEM_VERIFY(disp.FESpace() == velo.FESpace() && disp.FESpace() == acce.FESpace() &&
-                  disp.Size() == mass->Height(),
+                  disp.Size() == nonlinear_solver->get_mass().Height(),
                   "Dynamics currently requires one conforming displacement space for all fields.");
    }
 
-   const std::unique_ptr<GlobalAssembly_Disp> global_assembly;
-   const std::unique_ptr<mfem::SparseMatrix> mass;
    const std::unique_ptr<NonlinearSolver_Dynamic_Disp> nonlinear_solver;
    const TimeMethod_GenAlpha time_method;
    const double dt, final_time;

@@ -72,8 +72,8 @@ struct Fixture
 
    std::unique_ptr<TimeSolver_Dynamic_Disp> solver(double rho_inf = 1.0)
    {
-      return std::make_unique<TimeSolver_Dynamic_Disp>(assembly(), density,
-         std::make_unique<NonlinearSolver_Dynamic_Disp>(
+      return std::make_unique<TimeSolver_Dynamic_Disp>(
+         std::make_unique<NonlinearSolver_Dynamic_Disp>(assembly(), density,
             YAML::Load("newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20")),
          0.001, 0.02, rho_inf, results_dir);
    }
@@ -128,8 +128,8 @@ void translation_and_time_loop()
    { v.SetSize(3); v(0) = 0.02; v(1) = -0.01; v(2) = 0.03; });
    f.v.ProjectCoefficient(velocity);
    const auto &dir = f.results_dir;
-   TimeSolver_Dynamic_Disp time(f.assembly(), density,
-      std::make_unique<NonlinearSolver_Dynamic_Disp>(YAML::Load(
+   TimeSolver_Dynamic_Disp time(
+      std::make_unique<NonlinearSolver_Dynamic_Disp>(f.assembly(), density, YAML::Load(
          "newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20")),
       0.003, 0.01, 0.5, dir);
    time.run(f.u, f.v, f.a);
@@ -211,8 +211,8 @@ void traction_momentum()
    Fixture f;
    auto assembly = f.assembly("faces: [right]");
    auto mass = assembly->assemble_mass(density);
-   TimeSolver_Dynamic_Disp solver(std::move(assembly), density,
-      std::make_unique<NonlinearSolver_Dynamic_Disp>(
+   TimeSolver_Dynamic_Disp solver(
+      std::make_unique<NonlinearSolver_Dynamic_Disp>(std::move(assembly), density,
          YAML::Load("newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20")),
       0.001, 0.003, 1.0, f.results_dir);
    solver.initialize(0.0, f.u, f.v, f.a);

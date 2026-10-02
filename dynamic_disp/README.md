@@ -22,15 +22,17 @@ remain in `MaterialModelData.hpp`.
 ## Ownership and time integration
 
 - The driver owns displacement, velocity and acceleration grid functions.
-- `TimeSolver_Dynamic_Disp` owns global assembly, the consistent mass matrix,
-  the nonlinear solver and integration parameters. It computes compatible
+- `TimeSolver_Dynamic_Disp` owns the nonlinear solver and integration parameters.
+  Its constructor receives only the nonlinear solver and time/output settings. It computes compatible
   initial acceleration, predicts each step, constructs intermediate-state
   residuals and effective tangents, and commits the Newmark state updates. It
   also advances physical time, shortens the final step and saves accepted states.
-- `NonlinearSolver_Dynamic_Disp` owns only the linear/Newton solvers and monitor.
+- `NonlinearSolver_Dynamic_Disp` owns global assembly, the consistent mass matrix,
+  the linear/Newton solvers and monitor. The time solver borrows assembly and
+  mass through it when constructing a step equation.
   It solves a supplied MFEM operator for a caller-owned unknown, and linear
   systems for initialization and the predictor. It has no dependency on
-  generalized-alpha, physical time, boundary conditions or solution fields.
+  generalized-alpha or the time-stepping state updates.
 - `GlobalAssembly_Disp` assembles mass, internal force and material tangent;
   element and material assembly have no time-integration dependency.
 

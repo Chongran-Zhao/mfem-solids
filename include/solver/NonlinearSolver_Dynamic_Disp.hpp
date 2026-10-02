@@ -1,16 +1,23 @@
-// Linear and Newton solves for a supplied single-step equation.
+// Owns global assembly, mass and numerical solvers; solves supplied step equations.
 #ifndef NONLINEAR_SOLVER_DYNAMIC_DISP_HPP
 #define NONLINEAR_SOLVER_DYNAMIC_DISP_HPP
+
+#include <memory>
+#include <utility>
 
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 
+#include "GlobalAssembly_Disp.hpp"
 #include "SystemTools.hpp"
 
 class NonlinearSolver_Dynamic_Disp
 {
 public:
-   explicit NonlinearSolver_Dynamic_Disp(const YAML::Node &solver)
+   NonlinearSolver_Dynamic_Disp(std::unique_ptr<GlobalAssembly_Disp> input_assembly,
+                                double density, const YAML::Node &solver)
+      : global_assembly(std::move(input_assembly)),
+        mass(global_assembly->assemble_mass(density))
    {
       newton_solver.SetSolver(linear_solver);
       newton_solver.SetRelTol(solver["newton_rel_tol"].as<double>());
@@ -20,6 +27,10 @@ public:
       newton_solver.iterative_mode = true;
       newton_solver.SetMonitor(newton_monitor);
    }
+
+   // Borrowed by the time solver when constructing a single-step equation.
+   GlobalAssembly_Disp &get_global_assembly() const { return *global_assembly; }
+   const mfem::SparseMatrix &get_mass() const { return *mass; }
 
    // Used for the initial acceleration and the consistent initial guess.
    void solve_linear(const mfem::SparseMatrix &matrix, const mfem::Vector &rhs,
@@ -41,6 +52,8 @@ public:
    bool get_converged() const { return newton_solver.GetConverged(); }
 
 private:
+   const std::unique_ptr<GlobalAssembly_Disp> global_assembly;
+   const std::unique_ptr<mfem::SparseMatrix> mass;
    mfem::UMFPackSolver linear_solver;
    SystemTools::NewtonMonitor newton_monitor;
    mfem::NewtonSolver newton_solver;
