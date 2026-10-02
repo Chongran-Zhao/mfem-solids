@@ -45,10 +45,11 @@ Mixed displacement-pressure dynamics is a later task.
 
 The single-step nonlinear solver, time loop, generalized-alpha parameters,
 compatible initial acceleration, physical-time boundaries and `dynamic_disp`
-driver/configuration are implemented. Generalized-alpha equation construction,
-predictors and state updates belong to the time solver; the nonlinear solver
-accepts only an MFEM equation and its unknown, with no integration-method
-dependency. The driver saves displacement, velocity,
+driver/configuration are implemented. The time solver determines stage/end times, integration weights and predictors,
+requests the nonlinear solve, and commits Newmark state updates. The nonlinear
+solver handles loading, boundaries, its own residual/tangent equation and
+Newton convergence, without receiving the time-method object or exposing
+assembly/mass to the time solver. The driver saves displacement, velocity,
 acceleration and a time history with kinetic energy. Dynamic stress/reaction
 postprocessors and nonlinear strain energy output remain to be implemented.
 
