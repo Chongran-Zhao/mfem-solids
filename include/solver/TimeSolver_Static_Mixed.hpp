@@ -1,9 +1,9 @@
 // ============================================================================
 // TimeSolver_Static_Mixed.hpp
 //
-// Mixed load-step loop and displacement, pressure and element-center stress
-// output. Owns the nonlinear solver; displacement and pressure belong to
-// the caller. Stress calculation is delegated to assembly.
+// Mixed load-step loop and displacement-pressure output. Owns the nonlinear
+// solver; displacement and pressure belong to the caller. Stress is computed
+// by the standalone postprocessor, as in the displacement formulation.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -38,11 +38,7 @@ public:
 
    void run(mfem::GridFunction &disp, mfem::GridFunction &pres)
    {
-      mfem::Mesh &mesh = *disp.FESpace()->GetMesh();
-      mfem::L2_FECollection fec_stress(0, mesh.Dimension());
-      mfem::FiniteElementSpace space_stress(&mesh, &fec_stress, 9, mfem::Ordering::byVDIM);
-      mfem::GridFunction stress(&space_stress);
-      save_results(0, disp, pres, stress);
+      save_results(0, disp, pres);
 
       mfem::StopWatch step_timer;
       for (int step = 1; step <= num_load_steps; step++)
@@ -56,18 +52,16 @@ public:
                    << " iterations. Time taken: " << std::fixed << std::setprecision(2)
                    << step_timer.RealTime() << " sec. " << SystemTools::get_time()
                    << std::defaultfloat << '\n';
-         save_results(step, disp, pres, stress);
+         save_results(step, disp, pres);
       }
    }
 
 private:
    void save_results(int step, const mfem::GridFunction &disp,
-                     const mfem::GridFunction &pres, mfem::GridFunction &stress) const
+                     const mfem::GridFunction &pres) const
    {
       SystemTools::save_gf(results_dir, "disp", step, disp);
       SystemTools::save_gf(results_dir, "pres", step, pres);
-      nonlinear_solver->set_center_stress(disp, pres, stress);
-      SystemTools::save_gf(results_dir, "stress", step, stress);
    }
 
    const std::unique_ptr<NonlinearSolver_Static_Mixed> nonlinear_solver;

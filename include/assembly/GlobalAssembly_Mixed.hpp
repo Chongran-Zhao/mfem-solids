@@ -27,7 +27,7 @@ class GlobalAssembly_Mixed
 public:
    // The block form takes ownership of the local integrator, which owns its
    // material. Unlike NonlinearForm, BlockNonlinearForm has no external-
-   // integrator ownership option. local_assembly is a borrowed view.
+   // integrator ownership option.
    GlobalAssembly_Mixed(mfem::FiniteElementSpace &space_u,
                         mfem::FiniteElementSpace &space_p,
                         std::unique_ptr<LocalAssembly_Mixed> input_local_assembly,
@@ -38,7 +38,7 @@ public:
         spaces({&space_u, &space_p}),
         offsets({0, space_u.GetTrueVSize(),
                     space_u.GetTrueVSize() + space_p.GetTrueVSize()}),
-        global_assembly(spaces), local_assembly(input_local_assembly.get()),
+        global_assembly(spaces),
         external_force(&space_u), ess_tdof_list(dirichlet->get_ess_tdof_list())
    {
       global_assembly.AddDomainIntegrator(input_local_assembly.get());
@@ -108,12 +108,6 @@ public:
          tangent.EliminateRowCol(dof, prescribed_increment(dof), rhs);
    }
 
-   void set_center_stress(const mfem::GridFunction &disp,
-                          const mfem::GridFunction &pres,
-                          mfem::GridFunction &stress) const
-   {
-      local_assembly->set_center_stress(disp, pres, stress);
-   }
 
 private:
    // Boundary coefficients and spaces outlive the forms that borrow them.
@@ -122,7 +116,6 @@ private:
    mfem::Array<mfem::FiniteElementSpace *> spaces;
    const mfem::Array<int> offsets;
    mfem::BlockNonlinearForm global_assembly;
-   const LocalAssembly_Mixed *local_assembly;
    mfem::LinearForm external_force;
    const mfem::Array<int> ess_tdof_list;
 };

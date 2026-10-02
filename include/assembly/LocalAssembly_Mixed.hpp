@@ -34,26 +34,6 @@ public:
    LocalAssembly_Mixed(std::unique_ptr<const MaterialModel> input_material)
       : material(std::move(input_material)) {}
 
-   // First Piola-Kirchhoff stress at element centers, for saved results.
-   void set_center_stress(const mfem::GridFunction &disp,
-                          const mfem::GridFunction &pres,
-                          mfem::GridFunction &stress) const
-   {
-      const mfem::Mesh &mesh = *disp.FESpace()->GetMesh();
-      const mfem::FiniteElementSpace &space_stress = *stress.FESpace();
-      for (int ee = 0; ee < mesh.GetNE(); ee++)
-      {
-         const Tensor2_3D F =
-            LocalAssemblyTools::get_center_deformation_gradient(*disp.FESpace(), disp, ee);
-         const double p = pres.GetValue(ee, mfem::Geometries.GetCenter(mesh.GetElementGeometry(ee)));
-         const Tensor2_3D PK1 = material->get_1st_PK_stress_ich(F)
-                                - p * F.det() * F.inverse().transpose();
-         for (int ii = 0; ii < 3; ii++)
-            for (int JJ = 0; JJ < 3; JJ++)
-               stress(space_stress.DofToVDof(ee, 3 * ii + JJ)) = PK1(ii, JJ);
-      }
-   }
-
    // Required by MFEM: overrides mfem::BlockNonlinearFormIntegrator::
    // AssembleElementVector, which BlockNonlinearForm calls on every element.
    // Block 0 is the displacement, block 1 the pressure.

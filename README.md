@@ -10,14 +10,14 @@ and traction conditions on named faces, load stepping and Newton's method.
 |---|---|---|
 | `read_mesh` | the mesh in `config.yaml` | `beam.mesh` with the six box faces named `left`, `right`, `front`, `back`, `bottom`, `top`, and a 3D view of them, `beam_boundary.html` |
 | `driver` (`static_disp/`) | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
-| `driver` (`static_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | the same, the pressure being the nodal unknown |
-| `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with the displacement, and the pressure p(J) and the first and second Piola-Kirchhoff stresses at the element centers; open `results_vtu.pvd` in ParaView |
-| `csv_writer` | `results_gf/` and the material | `results_csv/<face>.csv`: mean displacement, reaction force F and F / A_0 on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the residual R(d) on the constrained dofs of the face |
+| `driver` (`static_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | displacement `disp_XXXX.gf` and nodal pressure `pres_XXXX.gf` at each load step |
+| `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with displacement, pressure and element-center first and second Piola-Kirchhoff stresses; pressure is p(J) in the displacement form and the saved nodal field in the mixed form; open `results_vtu.pvd` in ParaView |
+| `csv_writer` | `results_gf/` and the material | `results_csv/<face>.csv`: mean displacement, reaction force F and F / A_0 on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the formulation's residual on the constrained dofs of the face |
 
 `scripts/plot_csv.m` (MATLAB) plots the CSV files of `csv_writer` against the load factor,
 overlaying the result folders listed at its top.
 
-All settings are in `static_disp/config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
+Each formulation has its own `config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
 and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
 
 Both drivers follow the same structure: global assembly, a nonlinear solver for
@@ -72,8 +72,9 @@ cd static_disp && cmake -B build && cmake --build build
 cd build && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
 ```
 
-`static_mixed/` builds only its `driver`, the same way; it needs `space.order: 2` and the
-`beam.mesh` of `read_mesh` in the directory it runs in.
+`static_mixed/` builds and runs the same four programs, using its own configuration
+with `space.order >= 2`. Its driver saves displacement and pressure; its
+postprocessors read both fields to compute stresses and reactions.
 
 Each folder has its own `config.yaml`, which CMake copies into its `build/`,
 again whenever it changes; each program reads the `config.yaml` of the directory it runs in,

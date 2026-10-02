@@ -88,12 +88,6 @@ public:
       return *tangent;
    }
 
-   void set_center_stress(const mfem::GridFunction &disp,
-                          const mfem::GridFunction &pres,
-                          mfem::GridFunction &stress) const
-   {
-      global_assembly->set_center_stress(disp, pres, stress);
-   }
 
 private:
    // K_ff d(u,p)_f = -R_f(u,p) - K_fe g. Boundary elimination moves the
