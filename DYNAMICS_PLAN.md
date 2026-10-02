@@ -49,7 +49,9 @@ driver/configuration are implemented. The time solver determines stage/end times
 requests the nonlinear solve, and commits Newmark state updates. The nonlinear
 solver handles loading, boundaries, its own residual/tangent equation and
 Newton convergence, without receiving the time-method object or exposing
-assembly/mass to the time solver. The driver saves displacement, velocity,
+assembly/mass to the time solver. The nonlinear solver directly derives from
+`mfem::Operator`; Newton uses its own `Mult` and `GetGradient`, with no nested
+step-operator class. The driver saves displacement, velocity,
 acceleration and a time history with kinetic energy. Dynamic stress/reaction
 postprocessors and nonlinear strain energy output remain to be implemented.
 

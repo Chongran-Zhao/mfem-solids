@@ -12,14 +12,16 @@
 #include "GlobalAssembly_Disp.hpp"
 #include "SystemTools.hpp"
 
-class NonlinearSolver_Dynamic_Disp
+class NonlinearSolver_Dynamic_Disp : public mfem::Operator
 {
 public:
    NonlinearSolver_Dynamic_Disp(std::unique_ptr<GlobalAssembly_Disp> input_assembly,
                                 double density, const YAML::Node &solver)
-      : global_assembly(std::move(input_assembly)),
+      : mfem::Operator(input_assembly->get_num_dofs()),
+        global_assembly(std::move(input_assembly)),
         mass(global_assembly->assemble_mass(density))
    {
+      newton_solver.SetOperator(*this);
       newton_solver.SetSolver(linear_solver);
       newton_solver.SetRelTol(solver["newton_rel_tol"].as<double>());
       newton_solver.SetAbsTol(solver["newton_abs_tol"].as<double>());
@@ -58,80 +60,63 @@ public:
       acce.SetFromTrueDofs(a);
    }
 
-   // Local MFEM operator for a fixed time step. It borrows the previous state
-   // only during solve(); its tangent includes mass before boundary elimination.
-   class StepOperator : public mfem::Operator
+   // Required by MFEM: Newton's residual at the intermediate states.
+   void Mult(const mfem::Vector &disp, mfem::Vector &residual) const override
    {
-   public:
-      StepOperator(GlobalAssembly_Disp &assembly, const mfem::SparseMatrix &input_mass,
-                   double input_alpha_m, double input_alpha_f, double input_acce_factor,
-                   const mfem::Vector &input_disp_n, const mfem::Vector &input_acce_n,
-                   const mfem::Vector &input_predictor)
-         : mfem::Operator(input_mass.Height()), global_assembly(assembly),
-           mass(input_mass), disp_n(input_disp_n), acce_n(input_acce_n),
-           alpha_m(input_alpha_m), alpha_f(input_alpha_f),
-           acce_factor(input_acce_factor), disp_predictor(input_predictor) {}
+      assemble_residual(disp, residual);
+      global_assembly->set_essential_bdr(residual);
+   }
 
-      // Required by MFEM: Newton's residual at the intermediate states.
-      void Mult(const mfem::Vector &disp, mfem::Vector &residual) const override
-      {
-         assemble_residual(disp, residual);
-         global_assembly.set_essential_bdr(residual);
-      }
+   // Full residual, also used for a consistent predictor with nonzero
+   // prescribed displacement increments and for verification.
+   void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
+   {
+      MFEM_VERIFY(disp_n && acce_n && disp_predictor, "No active dynamic step.");
+      residual.SetSize(Height());
+      mfem::Vector disp_alpha(*disp_n), acce_alpha(disp);
+      disp_alpha *= 1.0 - alpha_f;
+      disp_alpha.Add(alpha_f, disp);
+      acce_alpha -= *disp_predictor;
+      acce_alpha *= alpha_m * acce_factor;
+      acce_alpha.Add(1.0 - alpha_m, *acce_n);
+      global_assembly->assemble_residual(disp_alpha, residual);
+      mass->AddMult(acce_alpha, residual);
+   }
 
-      // Full residual, also used for a consistent predictor with nonzero
-      // prescribed displacement increments and for verification.
-      void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
-      {
-         residual.SetSize(Height());
-         mfem::Vector disp_alpha(disp_n), acce_alpha(disp);
-         disp_alpha *= 1.0 - alpha_f;
-         disp_alpha.Add(alpha_f, disp);
-         acce_alpha -= disp_predictor;
-         acce_alpha *= alpha_m * acce_factor;
-         acce_alpha.Add(1.0 - alpha_m, acce_n);
-         global_assembly.assemble_residual(disp_alpha, residual);
-         mass.AddMult(acce_alpha, residual);
-      }
+   std::unique_ptr<mfem::SparseMatrix> assemble_tangent(const mfem::Vector &disp) const
+   {
+      MFEM_VERIFY(disp_n, "No active dynamic step.");
+      mfem::Vector disp_alpha(*disp_n);
+      disp_alpha *= 1.0 - alpha_f;
+      disp_alpha.Add(alpha_f, disp);
+      return std::unique_ptr<mfem::SparseMatrix>(mfem::Add(
+         alpha_m * acce_factor, *mass,
+         alpha_f, global_assembly->assemble_tangent(disp_alpha)));
+   }
 
-      std::unique_ptr<mfem::SparseMatrix> assemble_tangent(const mfem::Vector &disp) const
-      {
-         mfem::Vector disp_alpha(disp_n);
-         disp_alpha *= 1.0 - alpha_f;
-         disp_alpha.Add(alpha_f, disp);
-         return std::unique_ptr<mfem::SparseMatrix>(mfem::Add(
-            alpha_m * acce_factor, mass,
-            alpha_f, global_assembly.assemble_tangent(disp_alpha)));
-      }
-
-      // Required by MFEM: effective tangent after essential elimination.
-      mfem::Operator &GetGradient(const mfem::Vector &disp) const override
-      {
-         tangent = assemble_tangent(disp);
-         global_assembly.set_essential_bdr(*tangent);
-         return *tangent;
-      }
-
-   private:
-      GlobalAssembly_Disp &global_assembly;
-      const mfem::SparseMatrix &mass;
-      const mfem::Vector &disp_n, &acce_n;
-      const double alpha_m, alpha_f, acce_factor;
-      const mfem::Vector &disp_predictor;
-      mutable std::unique_ptr<mfem::SparseMatrix> tangent;
-   };
+   // Required by MFEM: effective tangent after essential elimination.
+   mfem::Operator &GetGradient(const mfem::Vector &disp) const override
+   {
+      tangent = assemble_tangent(disp);
+      global_assembly->set_essential_bdr(*tangent);
+      return *tangent;
+   }
 
    // Load and assemble at stage_time; impose the boundary at end_time.
    // Time integration supplies scalar weights and known vectors, not an operator.
    int solve(double stage_time, double end_time,
-             double alpha_m, double alpha_f, double acce_factor,
-             const mfem::Vector &disp_n, const mfem::Vector &acce_n,
-             const mfem::Vector &disp_predictor, mfem::GridFunction &disp)
+             double input_alpha_m, double input_alpha_f, double input_acce_factor,
+             const mfem::Vector &input_disp_n, const mfem::Vector &input_acce_n,
+             const mfem::Vector &input_predictor, mfem::GridFunction &disp)
    {
       MFEM_VERIFY(disp.Size() == mass->Height(), "Dynamics requires a conforming space.");
       global_assembly->set_traction_load(stage_time);
-      StepOperator step(*global_assembly, *mass, alpha_m, alpha_f, acce_factor,
-                        disp_n, acce_n, disp_predictor);
+      alpha_m = input_alpha_m;
+      alpha_f = input_alpha_f;
+      acce_factor = input_acce_factor;
+      disp_n = &input_disp_n;
+      acce_n = &input_acce_n;
+      disp_predictor = &input_predictor;
       mfem::Vector u;
       disp.GetTrueDofs(u);
       mfem::GridFunction target(disp.FESpace());
@@ -143,8 +128,8 @@ public:
       mfem::Vector prescribed_increment, rhs, increment(u.Size());
       target.GetTrueDofs(prescribed_increment);
       prescribed_increment -= u;
-      step.assemble_residual(u, rhs); rhs.Neg();
-      auto tangent = step.assemble_tangent(u);
+      assemble_residual(u, rhs); rhs.Neg();
+      tangent = assemble_tangent(u);
       global_assembly->set_essential_bdr(*tangent, prescribed_increment, rhs);
       linear_solver.SetOperator(*tangent);
       linear_solver.Mult(rhs, increment);
@@ -155,13 +140,13 @@ public:
       if (dirichlet.is_disp_load())
          dirichlet.apply_disp_load_bc(end_time, target);
       target.GetTrueDofs(u);
-      newton_solver.SetOperator(step);
       SystemTools::print_newton_header();
       newton_solver.Mult(mfem::Vector(), u);
       MFEM_VERIFY(newton_solver.GetConverged(),
                   "Dynamic Newton did not converge at t = " << end_time << ".");
 
       disp.SetFromTrueDofs(u);
+      disp_n = acce_n = disp_predictor = nullptr;
       return newton_solver.GetNumIterations();
    }
 
@@ -185,6 +170,10 @@ private:
    const std::unique_ptr<mfem::SparseMatrix> mass;
    mfem::UMFPackSolver linear_solver;
    SystemTools::NewtonMonitor newton_monitor;
+   // Known vectors are borrowed only for the active solve; the unknown stays external.
+   double alpha_m = 0.0, alpha_f = 0.0, acce_factor = 0.0;
+   const mfem::Vector *disp_n = nullptr, *acce_n = nullptr, *disp_predictor = nullptr;
+   mutable std::unique_ptr<mfem::SparseMatrix> tangent;
    mfem::NewtonSolver newton_solver;
 };
 

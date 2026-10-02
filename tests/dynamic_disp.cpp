@@ -82,20 +82,61 @@ struct Fixture
    }
 };
 
+// Check the actual nonlinear solver operator while Newton has an active step.
+class TangentCheckSolver : public NonlinearSolver_Dynamic_Disp
+{
+public:
+   TangentCheckSolver(std::unique_ptr<GlobalAssembly_Disp> assembly,
+                      const mfem::Array<int> &essential)
+      : NonlinearSolver_Dynamic_Disp(std::move(assembly), density,
+           YAML::Load("newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20")),
+        essential(essential) {}
+
+   mfem::Operator &GetGradient(const mfem::Vector &u) const override
+   {
+      for (bool constrained : {false, true})
+      {
+         mfem::Vector d(u.Size()), plus(u), minus(u), rp(u.Size()), rm(u.Size()), kd(u.Size());
+         for (int i = 0; i < d.Size(); ++i) d(i) = std::sin(0.7 * i + 0.3);
+         if (constrained) for (int i : essential) d(i) = 0.0;
+         const double eps = 1e-7;
+         plus.Add(eps, d); minus.Add(-eps, d);
+         if (constrained)
+         {
+            Mult(plus, rp); Mult(minus, rm);
+            NonlinearSolver_Dynamic_Disp::GetGradient(u).Mult(d, kd);
+         }
+         else
+         {
+            assemble_residual(plus, rp); assemble_residual(minus, rm);
+            assemble_tangent(u)->Mult(d, kd);
+         }
+         rp -= rm; rp /= 2.0 * eps; rp -= kd;
+         require(rp.Norml2() / kd.Norml2() < 1e-7, "Effective tangent finite difference");
+         ++checks;
+      }
+      return NonlinearSolver_Dynamic_Disp::GetGradient(u);
+   }
+
+   mutable int checks = 0;
+private:
+   const mfem::Array<int> essential;
+};
+
 void tangent_check()
 {
    Fixture f("fixed_bc: [{face: left, dir: x}]\ndisp_bc: []");
    auto assembly = f.assembly();
-   auto mass = assembly->assemble_mass(density);
+   const auto essential = assembly->get_dirichlet().get_ess_tdof_list();
+   TangentCheckSolver solver(std::move(assembly), essential);
    const int n = f.space.GetTrueVSize();
-   mfem::Vector un(n), vn(n), an(n), u(n), direction(n);
+   mfem::Vector un(n), vn(n), an(n), u(n);
    for (int i = 0; i < n; ++i)
    {
       un(i) = 0.001 * std::sin(i + 1.0);
       vn(i) = 0.01 * std::cos(i + 1.0);
       an(i) = 0.1 * std::sin(2.0 * i);
       u(i) = un(i) + 0.002 * std::cos(i);
-      direction(i) = std::sin(0.7 * i + 0.3);
    }
    for (double rho : {0.0, 0.5, 1.0})
    {
@@ -104,28 +145,12 @@ void tangent_check()
       mfem::Vector predictor(un);
       predictor.Add(dt, vn);
       predictor.Add(dt * dt * (0.5 - method.get_beta()), an);
-      NonlinearSolver_Dynamic_Disp::StepOperator op(*assembly, *mass,
+      f.u.SetFromTrueDofs(u);
+      const int before = solver.checks;
+      solver.solve(method.get_alpha_f() * dt, dt,
          method.get_alpha_m(), method.get_alpha_f(), 1.0 / (method.get_beta() * dt * dt),
-         un, an, predictor);
-      for (bool constrained : {false, true})
-      {
-         mfem::Vector d(direction), plus(u), minus(u), rp(n), rm(n), kd(n);
-         if (constrained) assembly->set_essential_bdr(d);
-         const double eps = 1e-7;
-         plus.Add(eps, d); minus.Add(-eps, d);
-         if (constrained)
-         {
-            op.Mult(plus, rp); op.Mult(minus, rm);
-            op.GetGradient(u).Mult(d, kd);
-         }
-         else
-         {
-            op.assemble_residual(plus, rp); op.assemble_residual(minus, rm);
-            op.assemble_tangent(u)->Mult(d, kd);
-         }
-         rp -= rm; rp /= 2.0 * eps; rp -= kd;
-         require(rp.Norml2() / kd.Norml2() < 1e-7, "Effective tangent finite difference");
-      }
+         un, an, predictor, f.u);
+      require(solver.checks > before, "Newton must exercise its operator tangent");
    }
 }
 

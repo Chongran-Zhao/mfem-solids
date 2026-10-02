@@ -33,6 +33,8 @@ remain in `MaterialModelData.hpp`.
   and tangent assembly, and Newton convergence. Its `solve` receives stage/end
   times, scalar weights and known vectors; it constructs its own MFEM equation.
   It computes compatible initial acceleration and kinetic energy internally.
+  It directly derives from `mfem::Operator`, implements `Mult` and `GetGradient`,
+  and binds Newton to itself with `SetOperator(*this)`.
   It neither includes nor receives `TimeMethod_GenAlpha` and does not expose
   assembly or mass to its caller.
 - `GlobalAssembly_Disp` assembles mass, internal force and material tangent;
@@ -54,8 +56,8 @@ Jacobian is `alpha_m/(beta dt^2) M + alpha_f K(u_alpha_f)`. Mass is assembled on
 without boundary elimination. Prescribed increments are eliminated from the
 combined tangent so their inertia coupling reaches the free equations.
 The time solver updates velocity and acceleration after Newton convergence.
-The nonlinear solver's local step operator borrows the known vectors only
-during the single-step call. Neither solver stores displacement, velocity or acceleration as members.
+The nonlinear solver borrows the known vectors only during the single-step
+call and clears those references after solving. Neither solver stores displacement, velocity or acceleration as members.
 
 `rho_inf` lies in [0, 1]; 1 gives the nondissipative linear midpoint method.
 Smaller values introduce damping of high frequency response. Exact nonlinear
