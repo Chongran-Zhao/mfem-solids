@@ -22,12 +22,15 @@ remain in `MaterialModelData.hpp`.
 ## Ownership and time integration
 
 - The driver owns displacement, velocity and acceleration grid functions.
-- `TimeSolver_Dynamic_Disp` owns the nonlinear solver and integration parameters,
-  advances physical time, shortens the final step, and saves accepted states.
-- `NonlinearSolver_Dynamic_Disp` owns global assembly, the consistent mass matrix
-  and the linear/Newton solvers. It computes compatible initial acceleration and
-  solves one time step. Its step operator borrows the previous state during that
-  call; it does not retain displacement, velocity or acceleration as members.
+- `TimeSolver_Dynamic_Disp` owns global assembly, the consistent mass matrix,
+  the nonlinear solver and integration parameters. It computes compatible
+  initial acceleration, predicts each step, constructs intermediate-state
+  residuals and effective tangents, and commits the Newmark state updates. It
+  also advances physical time, shortens the final step and saves accepted states.
+- `NonlinearSolver_Dynamic_Disp` owns only the linear/Newton solvers and monitor.
+  It solves a supplied MFEM operator for a caller-owned unknown, and linear
+  systems for initialization and the predictor. It has no dependency on
+  generalized-alpha, physical time, boundary conditions or solution fields.
 - `GlobalAssembly_Disp` assembles mass, internal force and material tangent;
   element and material assembly have no time-integration dependency.
 
@@ -46,7 +49,9 @@ The step residual is `M a_alpha_m + R(u_alpha_f, t_alpha_f)`. Its displacement
 Jacobian is `alpha_m/(beta dt^2) M + alpha_f K(u_alpha_f)`. Mass is assembled once
 without boundary elimination. Prescribed increments are eliminated from the
 combined tangent so their inertia coupling reaches the free equations.
-Velocity and acceleration follow the Newmark updates after convergence.
+The time solver updates velocity and acceleration after Newton convergence.
+Its local step operator borrows the previous state only during the single-step
+call. Neither solver stores displacement, velocity or acceleration as members.
 
 `rho_inf` lies in [0, 1]; 1 gives the nondissipative linear midpoint method.
 Smaller values introduce damping of high frequency response. Exact nonlinear

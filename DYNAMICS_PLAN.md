@@ -22,7 +22,8 @@ Mixed displacement-pressure dynamics is a later task.
 - [x] Assemble the consistent mass matrix and obtain a compatible initial
       acceleration from the initial equilibrium and boundary conditions.
 - [x] Add dynamic nonlinear and time solver components using existing global assembly,
-      following the current static ownership chain. Keep material integration
+      with assembly and mass owned by the time solver and a method-independent
+      nonlinear solver. Keep material integration
       independent of the time-integration scheme.
 - [x] Implement the generalized-alpha residual and effective tangent, Newmark
       state updates and prescribed motion at physical time.
@@ -44,7 +45,10 @@ Mixed displacement-pressure dynamics is a later task.
 
 The single-step nonlinear solver, time loop, generalized-alpha parameters,
 compatible initial acceleration, physical-time boundaries and `dynamic_disp`
-driver/configuration are implemented. The driver saves displacement, velocity,
+driver/configuration are implemented. Generalized-alpha equation construction,
+predictors and state updates belong to the time solver; the nonlinear solver
+accepts only an MFEM equation and its unknown, with no integration-method
+dependency. The driver saves displacement, velocity,
 acceleration and a time history with kinetic energy. Dynamic stress/reaction
 postprocessors and nonlinear strain energy output remain to be implemented.
 

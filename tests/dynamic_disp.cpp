@@ -36,6 +36,11 @@ struct Fixture
    mfem::FiniteElementSpace space{&mesh, &fec, 3, mfem::Ordering::byVDIM};
    mfem::GridFunction u{&space}, v{&space}, a{&space};
    YAML::Node config;
+   const std::filesystem::path results_dir = std::filesystem::temp_directory_path() /
+      ("mfem-dynamics-test-" + std::to_string(
+         std::chrono::steady_clock::now().time_since_epoch().count()));
+
+   ~Fixture() { std::filesystem::remove_all(results_dir); }
 
    explicit Fixture(const std::string &boundary = "fixed_bc: []\ndisp_bc: []")
    {
@@ -65,10 +70,12 @@ struct Fixture
          std::make_unique<NeumannBoundary>(YAML::Load(traction), space));
    }
 
-   std::unique_ptr<NonlinearSolver_Dynamic_Disp> solver()
+   std::unique_ptr<TimeSolver_Dynamic_Disp> solver(double rho_inf = 1.0)
    {
-      return std::make_unique<NonlinearSolver_Dynamic_Disp>(assembly(), density,
-         YAML::Load("newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20"));
+      return std::make_unique<TimeSolver_Dynamic_Disp>(assembly(), density,
+         std::make_unique<NonlinearSolver_Dynamic_Disp>(
+            YAML::Load("newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20")),
+         0.001, 0.02, rho_inf, results_dir);
    }
 };
 
@@ -90,7 +97,7 @@ void tangent_check()
    for (double rho : {0.0, 0.5, 1.0})
    {
       const TimeMethod_GenAlpha method(rho);
-      NonlinearSolver_Dynamic_Disp::StepOperator op(*assembly, *mass, method,
+      TimeSolver_Dynamic_Disp::StepOperator op(*assembly, *mass, method,
                                                    0.01, un, vn, an);
       for (bool constrained : {false, true})
       {
@@ -120,10 +127,11 @@ void translation_and_time_loop()
    mfem::VectorFunctionCoefficient velocity(3, [](const mfem::Vector &, mfem::Vector &v)
    { v.SetSize(3); v(0) = 0.02; v(1) = -0.01; v(2) = 0.03; });
    f.v.ProjectCoefficient(velocity);
-   const auto dir = std::filesystem::temp_directory_path() /
-      ("mfem-dynamics-test-" + std::to_string(
-         std::chrono::steady_clock::now().time_since_epoch().count()));
-   TimeSolver_Dynamic_Disp time(f.solver(), 0.003, 0.01, 0.5, dir);
+   const auto &dir = f.results_dir;
+   TimeSolver_Dynamic_Disp time(f.assembly(), density,
+      std::make_unique<NonlinearSolver_Dynamic_Disp>(YAML::Load(
+         "newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20")),
+      0.003, 0.01, 0.5, dir);
    time.run(f.u, f.v, f.a);
    mfem::GridFunction expected(&f.space);
    expected.ProjectCoefficient(velocity); expected *= 0.01;
@@ -170,12 +178,11 @@ double vibration(double dt)
    mfem::GridFunction shape(&f.space); shape.ProjectCoefficient(mode);
    const double shape_norm = shape * shape;
    const double energy0 = 0.5 * stiffness * amplitude * amplitude;
-   const TimeMethod_GenAlpha method(1.0);
    const int steps = int(std::lround(0.02 / dt));
    double q = amplitude;
    for (int step = 0; step < steps; ++step)
    {
-      solver->solve(step * dt, dt, method, f.u, f.v, f.a);
+      solver->solve_step(step * dt, dt, f.u, f.v, f.a);
       q = (shape * f.u) / shape_norm;
       const double expected = amplitude * std::cos((step + 1) * 2.0 * std::atan(omega * dt / 2.0));
       require(std::abs(q - expected) / amplitude < 2e-5, "Free vibration discrete frequency");
@@ -188,10 +195,9 @@ double vibration(double dt)
 void prescribed_motion()
 {
    Fixture f("fixed_bc: [{face: left, dir: x}, {face: left, dir: y}, {face: left, dir: z}]\ndisp_bc: [{face: right, dir: z}]");
-   auto solver = f.solver();
+   auto solver = f.solver(0.5);
    solver->initialize(0.0, f.u, f.v, f.a);
-   const TimeMethod_GenAlpha method(0.5);
-   solver->solve(0.0, 0.001, method, f.u, f.v, f.a);
+   solver->solve_step(0.0, 0.001, f.u, f.v, f.a);
    mfem::Array<int> dofs;
    f.space.GetEssentialTrueDofs(f.mesh.bdr_attribute_sets.GetAttributeSetMarker("right"), dofs, 2);
    for (int i : dofs)
@@ -205,17 +211,18 @@ void traction_momentum()
    Fixture f;
    auto assembly = f.assembly("faces: [right]");
    auto mass = assembly->assemble_mass(density);
-   NonlinearSolver_Dynamic_Disp solver(std::move(assembly), density,
-      YAML::Load("newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20"));
+   TimeSolver_Dynamic_Disp solver(std::move(assembly), density,
+      std::make_unique<NonlinearSolver_Dynamic_Disp>(
+         YAML::Load("newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20")),
+      0.001, 0.003, 1.0, f.results_dir);
    solver.initialize(0.0, f.u, f.v, f.a);
    mfem::VectorFunctionCoefficient z(3, [](const mfem::Vector &, mfem::Vector &v)
    { v.SetSize(3); v = 0.0; v(2) = 1.0; });
    mfem::GridFunction translation(&f.space); translation.ProjectCoefficient(z);
-   const TimeMethod_GenAlpha method(1.0);
    const double dt = 0.001;
    for (int step = 0; step < 3; ++step)
    {
-      solver.solve(step * dt, dt, method, f.u, f.v, f.a);
+      solver.solve_step(step * dt, dt, f.u, f.v, f.a);
       mfem::Vector momentum(f.v.Size()); mass->Mult(f.v, momentum);
       const double time = (step + 1) * dt;
       const double expected = -0.5 * 2275.0 * time * time;
