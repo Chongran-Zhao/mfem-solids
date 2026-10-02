@@ -18,6 +18,7 @@
 #ifndef GLOBAL_ASSEMBLY_DISP_HPP
 #define GLOBAL_ASSEMBLY_DISP_HPP
 
+#include <cmath>
 #include <memory>
 #include <utility>
 
@@ -61,15 +62,31 @@ public:
    // Number of unknowns.
    int get_num_dofs() const { return global_assembly.Height(); }
 
+   // Consistent reference mass on true dofs, without boundary elimination.
+   // Assemble once; the caller owns the returned matrix.
+   std::unique_ptr<mfem::SparseMatrix> assemble_mass(double density)
+   {
+      MFEM_VERIFY(std::isfinite(density) && density > 0.0,
+                  "The reference density must be finite and positive.");
+      mfem::ConstantCoefficient rho(density);
+      mfem::BilinearForm mass(global_assembly.FESpace());
+      mass.AddDomainIntegrator(new mfem::VectorMassIntegrator(rho));
+      mass.Assemble();
+      mfem::Array<int> no_essential_dofs;
+      mfem::OperatorHandle mass_op;
+      mass.FormSystemMatrix(no_essential_dofs, mass_op);
+      return std::unique_ptr<mfem::SparseMatrix>(mass.LoseMat());
+   }
+
    // R(d) at every dof.
-   void set_residual(const mfem::Vector &disp, mfem::Vector &residual) const
+   void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
    {
       global_assembly.Mult(disp, residual);
       residual -= external_force;
    }
 
    // K(d) at every dof.
-   const mfem::SparseMatrix &get_tangent(const mfem::Vector &disp) const
+   const mfem::SparseMatrix &assemble_tangent(const mfem::Vector &disp) const
    {
       return dynamic_cast<const mfem::SparseMatrix &>(global_assembly.GetGradient(disp));
    }

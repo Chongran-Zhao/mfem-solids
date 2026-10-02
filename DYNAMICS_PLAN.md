@@ -13,6 +13,10 @@ Mixed displacement-pressure dynamics is a later task.
 
 ## Implementation plan
 
+- [x] Rename the displacement and mixed residual/tangent interfaces to
+      `assemble_residual` and `assemble_tangent`, and add `assemble_mass` to
+      displacement global assembly. The caller owns the unconstrained mass
+      matrix on true dofs.
 - [ ] Define density, time step, final time, integration parameters and initial
       displacement and velocity in a dedicated `dynamic_disp` configuration.
 - [ ] Assemble the consistent mass matrix and obtain a compatible initial
@@ -38,5 +42,8 @@ Mixed displacement-pressure dynamics is a later task.
 
 ## Current status
 
-Planning only. No dynamic solver, runtime configuration or verification case
-has been implemented or tested on this branch yet.
+Assembly preparation is implemented. Both static formulations build, and mass
+assembly has been checked at Q1/Q2 with both vector orderings on conforming and
+nonconforming meshes: total mass, density scaling, symmetry, positive quadratic
+forms and ownership after assembly destruction. No dynamic solver or dynamic
+runtime configuration has been implemented yet.

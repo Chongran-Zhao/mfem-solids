@@ -77,13 +77,13 @@ public:
    // R, zero on the constrained displacement dofs.
    void Mult(const mfem::Vector &sol, mfem::Vector &residual) const override
    {
-      global_assembly->set_residual(sol, residual);
+      global_assembly->assemble_residual(sol, residual);
       global_assembly->set_essential_bdr(residual);
    }
    // Owned tangent copy, with identity at the constrained dofs.
    mfem::Operator &GetGradient(const mfem::Vector &sol) const override
    {
-      tangent = std::make_unique<mfem::SparseMatrix>(global_assembly->get_tangent(sol));
+      tangent = std::make_unique<mfem::SparseMatrix>(global_assembly->assemble_tangent(sol));
       global_assembly->set_essential_bdr(*tangent);
       return *tangent;
    }
@@ -107,9 +107,9 @@ private:
       prescribed_increment.GetBlock(0) -= disp;
 
       mfem::Vector rhs(global_assembly->get_num_dofs());
-      global_assembly->set_residual(sol, rhs);
+      global_assembly->assemble_residual(sol, rhs);
       rhs.Neg();
-      tangent = std::make_unique<mfem::SparseMatrix>(global_assembly->get_tangent(sol));
+      tangent = std::make_unique<mfem::SparseMatrix>(global_assembly->assemble_tangent(sol));
       global_assembly->set_essential_bdr(*tangent, prescribed_increment, rhs);
 
       mfem::Vector predicted_increment(global_assembly->get_num_dofs());

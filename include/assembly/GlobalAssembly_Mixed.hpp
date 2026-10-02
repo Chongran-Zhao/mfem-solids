@@ -70,7 +70,7 @@ public:
    }
 
    // R(u,p) at every dof; pressure has no external force.
-   void set_residual(const mfem::Vector &sol, mfem::Vector &residual) const
+   void assemble_residual(const mfem::Vector &sol, mfem::Vector &residual) const
    {
       global_assembly.Mult(sol, residual);
       mfem::BlockVector residual_blocks(residual, get_offsets());
@@ -79,7 +79,7 @@ public:
 
    // K(u,p) at every dof. Convert the full block tangent to a sparse matrix
    // kept here; the nonlinear solver copies it before eliminating boundaries.
-   const mfem::SparseMatrix &get_tangent(const mfem::Vector &sol) const
+   const mfem::SparseMatrix &assemble_tangent(const mfem::Vector &sol) const
    {
       const auto &block_op = dynamic_cast<const mfem::BlockOperator &>(
          global_assembly.GetGradient(sol));
