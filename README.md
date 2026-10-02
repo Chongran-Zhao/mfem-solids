@@ -1,6 +1,6 @@
 # mfem-solids
 
-Finite-strain hyperelastostatics with [MFEM](https://mfem.org/): a Total Lagrangian
+Finite-strain solid mechanics with [MFEM](https://mfem.org/): a Total Lagrangian
 formulation with a hand-written material model and element integrator, Dirichlet
 and traction conditions on named faces, load stepping and Newton's method.
 
@@ -16,6 +16,9 @@ and traction conditions on named faces, load stepping and Newton's method.
 
 `scripts/plot_csv.m` (MATLAB) plots the CSV files of `csv_writer` against the load factor,
 overlaying the result folders listed at its top.
+
+`dynamic_disp/` adds displacement dynamics with generalized-alpha integration,
+initial motion and physical time. See [its usage and solver structure](dynamic_disp/README.md).
 
 Each formulation has its own `config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
 and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.

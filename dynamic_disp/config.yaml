@@ -1,0 +1,40 @@
+# All loading functions receive physical time in seconds.
+mesh:
+  file: mesh_files/Beam_coarse-hex.mesh
+  refine_levels: 0
+  output: beam.mesh
+  output_html: beam_boundary.html
+  open_html: false
+
+space:
+  order: 1
+
+dynamics:
+  density: 1000.0
+  dt: 0.001
+  final_time: 0.05
+  rho_inf: 1.0
+
+# Components multiply either 1 or (x - xmin)/(xmax - xmin).
+initial:
+  profile: linear_x
+  displacement: [0.0, 0.0, 0.0]
+  velocity: [0.0, 0.0, 0.01]
+
+Dirichlet:
+  fixed_bc:
+    - {face: left, dir: x}
+    - {face: left, dir: y}
+    - {face: left, dir: z}
+  disp_bc: []
+
+Neumann:
+  faces: []
+
+solver:
+  newton_rel_tol: 1.0e-8
+  newton_abs_tol: 1.0e-10
+  newton_max_iter: 20
+
+output:
+  gf: results_gf

@@ -116,7 +116,8 @@ public:
             initial_norm = norm;
          mfem::out << std::left << std::setw(12) << it << std::scientific
                    << std::setprecision(6) << std::setw(18) << norm
-                   << norm / initial_norm << std::defaultfloat << '\n';
+                   << (initial_norm > 0.0 ? norm / initial_norm : 0.0)
+                   << std::defaultfloat << '\n';
       }
 
    private:

@@ -23,6 +23,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "LoadData.hpp"
+#include "Vector_3D.hpp"
 
 class DirichletBoundary
 {
@@ -91,17 +92,18 @@ public:
    // Apply the disp loading given by LoadData::disp_driven(pt, tt).
    void apply_disp_load_bc(double tt, mfem::GridFunction &disp) const
    {
-      for (const disp_load &load : disp_load_list)
-      {
-         mfem::FunctionCoefficient value([&](const mfem::Vector &pt)
-         { return LoadData::disp_driven(pt, tt, load.face)(load.dir); });
-
-         mfem::Coefficient *coeff[3] = {nullptr, nullptr, nullptr};
-         coeff[load.dir] = &value;
-         disp.ProjectBdrCoefficient(coeff, face_attribute_map.at(load.face));
-      }
+      apply_load_bc(tt, disp, LoadData::disp_driven);
    }
 
+   void apply_velo_load_bc(double tt, mfem::GridFunction &velo) const
+   {
+      apply_load_bc(tt, velo, LoadData::velo_driven);
+   }
+
+   void apply_acce_load_bc(double tt, mfem::GridFunction &acce) const
+   {
+      apply_load_bc(tt, acce, LoadData::acce_driven);
+   }
 
    // Print the fixed faces and the number of all constrained unknowns.
    void print_fixed_bc() const
@@ -164,6 +166,22 @@ public:
    }
 
 private:
+   // Project one component of a prescribed motion onto its boundary dofs.
+   void apply_load_bc(double tt, mfem::GridFunction &field,
+                     Vector_3D (*motion)(const mfem::Vector &, double,
+                                        const std::string &)) const
+   {
+      for (const disp_load &load : disp_load_list)
+      {
+         mfem::FunctionCoefficient value([&](const mfem::Vector &pt)
+         { return motion(pt, tt, load.face)(load.dir); });
+
+         mfem::Coefficient *coeff[3] = {nullptr, nullptr, nullptr};
+         coeff[load.dir] = &value;
+         field.ProjectBdrCoefficient(coeff, face_attribute_map.at(load.face));
+      }
+   }
+
    // One direction on a fixed face.
    struct disp_fixed
    {
