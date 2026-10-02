@@ -35,7 +35,8 @@ spaces and grid functions.
 The driver saves only `disp_XXXX.gf` and `pres_XXXX.gf`, including the initial
 state. Stress is computed by `vtu_writer` from the saved displacement and nodal
 pressure; it is no longer saved as `stress_XXXX.gf` by the solver. `csv_writer`
-uses the full mixed residual to report support reactions. Both postprocessors
+uses the full mixed residual to report support reactions and integrates the
+saved pressure field for the face-mean `p` column. Both postprocessors
 use the same material as the driver.
 
 Build and run the same four programs as `static_disp`:

@@ -12,13 +12,19 @@ and traction conditions on named faces, load stepping and Newton's method.
 | `driver` (`static_disp/`) | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
 | `driver` (`static_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | displacement `disp_XXXX.gf` and nodal pressure `pres_XXXX.gf` at each load step |
 | `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with displacement, pressure and element-center first and second Piola-Kirchhoff stresses; pressure is p(J) in the displacement form and the saved nodal field in the mixed form; open `results_vtu.pvd` in ParaView |
-| `csv_writer` | `results_gf/` and the material | `results_csv/<face>.csv`: mean displacement, reaction force F and F / A_0 on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the formulation's residual on the constrained dofs of the face |
+| `csv_writer` | `results_gf/` and the material | `results_csv/<face>.csv`: mean displacement, reaction force F, F / A_0 and face-mean pressure p on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the formulation's residual on the constrained dofs of the face |
 
 `scripts/plot_csv.m` (MATLAB) plots the CSV files of `csv_writer` against the load factor,
 overlaying the result folders listed at its top.
 
 Each formulation has its own `config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
 and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
+
+The CSV column `p` is the reference-area average of pressure on each reported
+face, with compression positive. The displacement writer evaluates p(J) from
+the adjacent volume element at boundary quadrature points; the mixed writer
+integrates the saved pressure field. Pressure is scalar and is written once per
+face, independently of the reported directions.
 
 Both drivers follow the same structure: global assembly, a nonlinear solver for
 one load step, and a time solver for load stepping and output. The mixed structure
