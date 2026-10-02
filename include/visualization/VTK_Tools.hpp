@@ -11,6 +11,7 @@
 #ifndef VTK_TOOLS_HPP
 #define VTK_TOOLS_HPP
 
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -18,8 +19,11 @@
 #include <string>
 #include <utility>
 #include <vector>
+
 #include <mfem.hpp>
-#include "IntegratorTools.hpp"
+
+#include "LocalAssemblyTools.hpp"
+#include "Tensor2_3D.hpp"
 
 class VTK_Tools
 {
@@ -30,11 +34,12 @@ public:
       std::filesystem::create_directories(dir);
    }
 
-   // Write step_XXXX.vtu and update the PVD file. pres is nodal in H1 from
-   // driver_static_mixed, or p(J) at the element centers from driver_static_displacement;
-   // stress holds P at the element centers.
+   // Write step_XXXX.vtu and update the PVD file. pres is nodal in H1, or
+   // one value per element; PK1 and PK2, the first and second
+   // Piola-Kirchhoff stresses, have one value per element.
    void save(int step, double time, const mfem::GridFunction &disp,
-             const mfem::GridFunction &pres, const mfem::GridFunction &stress)
+             const mfem::GridFunction &pres, const std::vector<Tensor2_3D> &PK1,
+             const std::vector<Tensor2_3D> &PK2)
    {
       const mfem::FiniteElementSpace &fespace = *disp.FESpace();
       const mfem::Mesh &mesh = *fespace.GetMesh();
@@ -73,18 +78,6 @@ public:
          out << "</DataArray>\n";
       }
       out << "</PointData>\n";
-
-      // Stresses at the element centers: P from the drivers, S = F^-1 P.
-      std::vector<Tensor2_3D> PK1(mesh.GetNE()), PK2(mesh.GetNE());
-      const mfem::FiniteElementSpace &space_stress = *stress.FESpace();
-      for (int ee = 0; ee < mesh.GetNE(); ee++)
-      {
-         for (int ii = 0; ii < 3; ii++)
-            for (int JJ = 0; JJ < 3; JJ++)
-               PK1[ee](ii, JJ) = stress(space_stress.DofToVDof(ee, 3 * ii + JJ));
-         const Tensor2_3D F = IntegratorTools::get_center_deformation_gradient(fespace, disp, ee);
-         PK2[ee] = F.inverse() * PK1[ee];
-      }
 
       out << "<CellData>\n";
 
@@ -151,6 +144,13 @@ public:
 
       steps.emplace_back(time, file_name.str());
       write_pvd();
+   }
+
+   // Shared with assembly; keep the existing postprocessing interface.
+   static Tensor2_3D get_center_deformation_gradient(const mfem::FiniteElementSpace &fespace,
+                                                     const mfem::GridFunction &disp, int ee)
+   {
+      return LocalAssemblyTools::get_center_deformation_gradient(fespace, disp, ee);
    }
 
    // Path of the PVD file, the one to open in ParaView.

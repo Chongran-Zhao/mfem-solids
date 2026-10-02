@@ -12,13 +12,16 @@
 #define DIRICHLET_BOUNDARY_HPP
 
 #include <algorithm>
+#include <iomanip>
+#include <ios>
 #include <limits>
 #include <map>
-#include <iomanip>
 #include <string>
 #include <vector>
+
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
+
 #include "LoadData.hpp"
 
 class DirichletBoundary
@@ -138,7 +141,7 @@ public:
 
 
    // Print the prescribed displacement of each driven face.
-   void print_disp_load_time(const mfem::GridFunction &disp) const
+   void print_disp_load_by_step(const mfem::GridFunction &disp) const
    {
       for (const disp_load &load : disp_load_list)
       {

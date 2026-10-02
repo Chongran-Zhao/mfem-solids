@@ -12,11 +12,15 @@
 #define NEUMANN_BOUNDARY_HPP
 
 #include <iomanip>
+#include <ios>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
+
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
+
 #include "LoadData.hpp"
 #include "Vector_3D.hpp"
 
@@ -79,22 +83,12 @@ public:
       mfem::out << std::string(74, '-') << "\n\n";
    }
 
-   // Print the traction load at the current time, as the resultant force.
-   void print_traction_load_time(const mfem::LinearForm &traction_force) const
+   // Print the traction faces at each step, with the time of their tractions.
+   void print_traction_load_by_step() const
    {
-      // LinearForm::operator() is the action on a GridFunction, so the
-      // entries are read through the Vector.
-      const mfem::Vector &force = traction_force;
-      const mfem::FiniteElementSpace &fespace = *traction_force.FESpace();
-      Vector_3D resultant;
-      for (int node = 0; node < fespace.GetNDofs(); node++)
-         for (int dir = 0; dir < 3; dir++)
-            resultant(dir) += force(fespace.DofToVDof(node, dir));
-
-      mfem::out << "  force"
-                << "  Fx = " << resultant(0)
-                << "  Fy = " << resultant(1)
-                << "  Fz = " << resultant(2) << '\n';
+      for (const traction_load &load : traction_load_list)
+         mfem::out << "  " << std::left << std::setw(8) << load.face
+                   << "traction at t = " << load.traction->GetTime() << '\n';
    }
 
 private:

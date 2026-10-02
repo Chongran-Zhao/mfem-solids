@@ -1,0 +1,64 @@
+# Input of the driver of static_mixed.
+# CMake copies it into static_mixed/build/, and the driver reads the copy of
+# the directory it runs in, or the file given as first argument. The mesh is
+# the beam.mesh of read_mesh, in that directory.
+
+mesh:
+  # Mesh file in MFEM format.
+  file: mesh_files/Beam_coarse-hex.mesh
+
+  # Number of uniform refinements.
+  refine_levels: 0
+
+  # Name of the mesh file written by read_mesh.
+  output: beam.mesh
+
+  # Web page showing the named faces in 3D, and whether to open it.
+  output_html: beam_boundary.html
+  open_html: true
+
+space:
+  # Order of the continuous shape functions.
+  order: 2
+
+# Loading settings.
+loading:
+  # Number of load steps; the final load is reached in equal steps.
+  load_steps: 25
+  # Loading type, displacement or traction.
+  type: displacement
+
+# Displacement boundary conditions, one entry per face and direction.
+Dirichlet:
+  # Zero displacement.
+  fixed_bc:
+    - { face: left, dir: x }
+    - { face: left, dir: y }
+    - { face: left, dir: z }
+  # Prescribed displacement, given by LoadData::disp_driven.
+  disp_bc:
+    - { face: right, dir: z }
+
+# Traction faces; the traction is given by LoadData::surface_traction.
+Neumann:
+  faces: []
+# faces: [right, top]
+
+# Newton's method settings.
+# The linear solver is UMFPACK.
+solver:
+  newton_rel_tol: 1.0e-8
+  newton_abs_tol: 0.0
+  newton_max_iter: 20
+
+# Faces and directions reported by csv_writer, one entry per face and
+# direction.
+csv_writer:
+  - { face: left, dir: z }
+  - { face: right, dir: z }
+
+# Output folders, in the directory the programs run in.
+output:
+  vtu: results_vtu
+  gf: results_gf
+  csv: results_csv

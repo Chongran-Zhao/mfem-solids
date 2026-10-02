@@ -13,6 +13,7 @@
 #define MATERIAL_MODEL_VOL_INCOMPRESSIBLE_HPP
 
 #include <mfem.hpp>
+
 #include "IMaterialModel_vol.hpp"
 
 class MaterialModel_vol_Incompressible : public IMaterialModel_vol

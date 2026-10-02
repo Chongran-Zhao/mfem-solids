@@ -3,7 +3,9 @@
 //
 // Writes the displacement, the pressure, and the first and second
 // Piola-Kirchhoff stresses of each load step for ParaView, from the
-// results saved by the drivers.
+// displacement saved by the driver. The pressure p(J) and the stress are
+// computed at the element centers with the material of MaterialModelData,
+// which must be the one the driver ran with.
 //
 // Author: Chongran Zhao
 // Date: Sep. 26, 2026
@@ -15,9 +17,15 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
+
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
+
+#include "MaterialModel.hpp"
+#include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
+#include "Tensor2_3D.hpp"
 #include "VTK_Tools.hpp"
 
 int main(int argc, char *argv[])
@@ -48,18 +56,36 @@ int main(int argc, char *argv[])
       return std::make_unique<mfem::GridFunction>(&mesh, gf_file);
    };
 
+   // The material; it holds no state, so this program creates its own.
+   const std::unique_ptr<const MaterialModel> material = set_material_model();
+
+   // Pressure p(J), piecewise constant, and the first and second
+   // Piola-Kirchhoff stresses P and S, at the element centers.
+   const int dim = mesh.Dimension();
+   mfem::L2_FECollection fec_center(0, dim);
+   mfem::FiniteElementSpace space_pres(&mesh, &fec_center);
+   mfem::GridFunction pres(&space_pres);
+   std::vector<Tensor2_3D> PK1(mesh.GetNE()), PK2(mesh.GetNE());
+
    VTK_Tools output(config["output"]["vtu"].as<std::string>());
 
    for (int step = 0; step <= load_steps; step++)
    {
       const std::unique_ptr<mfem::GridFunction> disp = read_gf("disp", step);
-      const std::unique_ptr<mfem::GridFunction> pres = read_gf("pres", step);
-      const std::unique_ptr<mfem::GridFunction> stress = read_gf("stress", step);
       if (step == 0)
          SystemTools::print_space(*disp->FESpace());
 
+      for (int ee = 0; ee < mesh.GetNE(); ee++)
+      {
+         const Tensor2_3D F =
+            VTK_Tools::get_center_deformation_gradient(*disp->FESpace(), *disp, ee);
+         pres(ee) = material->get_p(F.det());
+         PK2[ee] = material->get_2nd_PK_stress(F);
+         PK1[ee] = F * PK2[ee];
+      }
+
       const double time = static_cast<double>(step) / load_steps;
-      output.save(step, time, *disp, *pres, *stress);
+      output.save(step, time, *disp, pres, PK1, PK2);
    }
 
    mfem::out << '\n';

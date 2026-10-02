@@ -9,16 +9,27 @@ and traction conditions on named faces, load stepping and Newton's method.
 | Program | Reads | Writes |
 |---|---|---|
 | `read_mesh` | the mesh in `config.yaml` | `beam.mesh` with the six box faces named `left`, `right`, `front`, `back`, `bottom`, `top`, and a 3D view of them, `beam_boundary.html` |
-| `driver_static_displacement` | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement, the nodal internal force, and the pressure p(J) and the first Piola-Kirchhoff stress at the element centers of each load step, `results_gf/disp_XXXX.gf`, `internal_force_XXXX.gf`, `pres_XXXX.gf` and `stress_XXXX.gf` |
-| `driver_static_mixed` | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | the same, the pressure being the nodal unknown |
-| `vtu_writer` | `results_gf/` | `results_vtu/`: the deformed mesh with the displacement, the pressure, and the first and second Piola-Kirchhoff stresses; open `results_vtu.pvd` in ParaView |
-| `csv_writer` | `results_gf/` | `results_csv/<face>.csv`: mean displacement, resultant force and mean traction on the faces and directions of `csv_writer` in `config.yaml`, at each step |
+| `driver` (`static_disp/`) | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
+| `driver` (`static_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | displacement `disp_XXXX.gf` and nodal pressure `pres_XXXX.gf` at each load step |
+| `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with displacement, pressure and element-center first and second Piola-Kirchhoff stresses; pressure is p(J) in the displacement form and the saved nodal field in the mixed form; open `results_vtu.pvd` in ParaView |
+| `csv_writer` | `results_gf/` and the material | `results_csv/<face>.csv`: mean displacement, reaction force F, reference face area and face-mean pressure p on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the formulation's residual on the constrained dofs of the face |
 
 `scripts/plot_csv.m` (MATLAB) plots the CSV files of `csv_writer` against the load factor,
 overlaying the result folders listed at its top.
 
-All settings are in `config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
+Each formulation has its own `config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
 and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
+
+The CSV column `area` is the undeformed reference area of the reported face.
+The CSV column `p` is the reference-area average of pressure on each reported
+face, with compression positive. The displacement writer evaluates p(J) from
+the adjacent volume element at boundary quadrature points; the mixed writer
+integrates the saved pressure field. Pressure is scalar and is written once per
+face, independently of the reported directions.
+
+Both drivers follow the same structure: global assembly, a nonlinear solver for
+one load step, and a time solver for load stepping and output. The mixed structure
+and ownership are described in `static_mixed/README.md`.
 
 ## Setting up a problem
 
@@ -38,15 +49,9 @@ and the prescribed displacements and tractions are in `include/boundary/LoadData
 
 ## Notes
 
-- The resultant force F of `csv_writer` is the sum of the nodal internal forces on the
-  face. It is the reaction on a constrained face and the applied load on a traction
-  face, exact up to the Newton tolerance on any mesh. On a free face it picks up the
-  reactions of the edges it shares with constrained faces, so it has no meaning there.
-- F is a resultant only: applying F / A_0 as a uniform traction does not reproduce a
-  prescribed displacement, since the distribution of the reaction is lost.
 - `vtu_writer` writes the values at the vertices only: with `space.order: 2` the midside
   nodes are left out and ParaView draws the elements as linear.
-- `driver_static_mixed` needs a volumetric model with the pressure form J(p): `Quadratic`, or
+- The mixed driver needs a volumetric model with the pressure form J(p): `Quadratic`, or
   `Incompressible` for J = 1, set in `MaterialModelData.hpp`. `SimoPister` has none and
   aborts.
 - With `Incompressible`, the pressure is fixed only up to a constant when displacements
@@ -60,25 +65,25 @@ and the prescribed displacements and tractions are in `include/boundary/LoadData
 
 Requires CMake 3.20 or newer, MFEM built with CMake and SuiteSparse (developed against
 4.10.1; the linear systems are solved with UMFPACK) and yaml-cpp. The build looks for
-them in `../../lib`; change the paths in `CMakeLists.txt` if yours are elsewhere.
+them in `../../lib`; change the paths in `cmake/mfem-solids.cmake` if yours are elsewhere.
+
+The programs of each formulation are in their own folder, `static_disp/` and
+`static_mixed/`, a CMake project of its own; the settings they share are in
+`cmake/mfem-solids.cmake`. The displacement form is built and run in `static_disp/`:
 
 ```bash
-cmake -B build
+cd static_disp && cmake -B build && cmake --build build
 ```
 
 ```bash
-cmake --build build
+cd build && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
 ```
 
-The programs run in `build/`, in this order:
+`static_mixed/` builds and runs the same four programs, using its own configuration
+with `space.order >= 2`. Its driver saves displacement and pressure; its
+postprocessors read both fields to compute stresses and reactions.
 
-```bash
-cd build && ./read_mesh && ./driver_static_displacement && ./vtu_writer && ./csv_writer
-```
-
-For the mixed form, set `space.order: 2` and run `./driver_static_mixed` in place of
-`./driver_static_displacement`.
-
-CMake copies `config.yaml` into `build/`, again whenever it changes; each program reads
-the `config.yaml` of the directory it runs in, or the file given as its first argument.
-`mesh.file` is relative to the source directory.
+Each folder has its own `config.yaml`, which CMake copies into its `build/`,
+again whenever it changes; each program reads the `config.yaml` of the directory it runs in,
+or the file given as its first argument. `mesh.file` is relative to the project directory,
+whose `mesh_files/` both formulations share.
