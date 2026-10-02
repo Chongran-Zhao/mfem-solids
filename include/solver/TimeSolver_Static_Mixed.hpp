@@ -2,9 +2,8 @@
 // TimeSolver_Static_Mixed.hpp
 //
 // Mixed load-step loop and displacement, pressure and element-center stress
-// output. Owns the nonlinear solver; the solution belongs to the caller.
-// Field views are constructed inside run; stress calculation is delegated
-// to assembly.
+// output. Owns the nonlinear solver; displacement and pressure belong to
+// the caller. Stress calculation is delegated to assembly.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -37,10 +36,8 @@ public:
       SystemTools::make_empty_dir(results_dir);
    }
 
-   void run(mfem::BlockVector &sol)
+   void run(mfem::GridFunction &disp, mfem::GridFunction &pres)
    {
-      mfem::GridFunction disp, pres;
-      nonlinear_solver->make_solution_views(sol, disp, pres);
       mfem::Mesh &mesh = *disp.FESpace()->GetMesh();
       mfem::L2_FECollection fec_stress(0, mesh.Dimension());
       mfem::FiniteElementSpace space_stress(&mesh, &fec_stress, 9, mfem::Ordering::byVDIM);
@@ -54,7 +51,7 @@ public:
          mfem::out << std::string(74, '=') << '\n'
                    << "Load step " << step << " / " << num_load_steps << '\n';
          const double load_factor = static_cast<double>(step) / num_load_steps;
-         const int iterations = nonlinear_solver->solve(load_factor, sol);
+         const int iterations = nonlinear_solver->solve(load_factor, disp, pres);
          mfem::out << "converged in " << iterations
                    << " iterations. Time taken: " << std::fixed << std::setprecision(2)
                    << step_timer.RealTime() << " sec. " << SystemTools::get_time()

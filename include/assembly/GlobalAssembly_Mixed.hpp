@@ -53,8 +53,7 @@ public:
    const DirichletBoundary &get_dirichlet() const { return *dirichlet; }
    const NeumannBoundary &get_neumann() const { return *neumann; }
 
-   // Field views are created from one solution; callers do not pass redundant
-   // views alongside the block vector to solve() or run().
+   // Internal field views of the nonlinear solver's block state.
    void make_solution_views(mfem::BlockVector &sol, mfem::GridFunction &disp,
                             mfem::GridFunction &pres) const
    {

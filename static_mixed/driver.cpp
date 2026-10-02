@@ -61,11 +61,9 @@ int main(int argc, char *argv[])
    SystemTools::print_space(space_u);
    SystemTools::print_space(space_p);
 
-   // Block 0 is the displacement, block 1 the pressure.
-   mfem::Array<int> offsets({0, space_u.GetTrueVSize(),
-                             space_u.GetTrueVSize() + space_p.GetTrueVSize()});
-   mfem::BlockVector sol(offsets);
-   sol = 0.0;
+   mfem::GridFunction disp(&space_u), pres(&space_p);
+   disp = 0.0;
+   pres = 0.0;
 
    // 4. Set up the boundary conditions, on the displacement only.
    auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
@@ -112,7 +110,7 @@ int main(int argc, char *argv[])
       std::move(nonlinear_solver), num_load_steps, results_dir);
 
    // 8. Solve the load steps.
-   time_solver->run(sol);
+   time_solver->run(disp, pres);
 
    mfem::out << std::string(74, '=') << "\n\n";
    mfem::out << "Job finished on " << SystemTools::get_time() << ' ' << SystemTools::get_date()

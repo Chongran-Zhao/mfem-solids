@@ -30,7 +30,8 @@ public:
                                 const YAML::Node &solver)
       : mfem::Operator(input_global_assembly->get_num_dofs()),
         global_assembly(std::move(input_global_assembly)),
-        newton_monitor(global_assembly->get_offsets())
+        newton_monitor(global_assembly->get_offsets()),
+        sol(global_assembly->get_offsets())
    {
       newton_solver.SetOperator(*this);
       newton_solver.SetSolver(linear_solver);
@@ -42,19 +43,25 @@ public:
       newton_solver.SetMonitor(newton_monitor);
    }
 
-   // Solve from the preceding state; only the block solution is passed in.
-   int solve(double tt, mfem::BlockVector &sol)
+   // The caller supplies separate fields. Pack their preceding state into
+   // the internal block vector, then copy the converged fields back.
+   int solve(double tt, mfem::GridFunction &disp, mfem::GridFunction &pres)
    {
+      MFEM_VERIFY(disp.Size() == sol.GetBlock(0).Size() &&
+                  pres.Size() == sol.GetBlock(1).Size(),
+                  "The displacement or pressure size differs from the solver space.");
+      sol.GetBlock(0) = disp;
+      sol.GetBlock(1) = pres;
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       const NeumannBoundary &neumann = global_assembly->get_neumann();
       if (neumann.is_traction_load())
          global_assembly->set_traction_load(tt);
       initial_guess(tt, sol);
 
-      mfem::GridFunction disp, pres;
-      make_solution_views(sol, disp, pres);
+      mfem::GridFunction disp_view, pres_view;
+      global_assembly->make_solution_views(sol, disp_view, pres_view);
       if (dirichlet.is_disp_load())
-         dirichlet.print_disp_load_by_step(disp);
+         dirichlet.print_disp_load_by_step(disp_view);
       else
          neumann.print_traction_load_by_step();
       SystemTools::print_block_newton_header();
@@ -62,6 +69,8 @@ public:
       // As in the displacement solver, the empty right-hand side means zero.
       newton_solver.Mult(mfem::Vector(), sol);
       MFEM_VERIFY(newton_solver.GetConverged(), "Newton did not converge at t = " << tt << ".");
+      disp = sol.GetBlock(0);
+      pres = sol.GetBlock(1);
       return newton_solver.GetNumIterations();
    }
 
@@ -79,11 +88,6 @@ public:
       return *tangent;
    }
 
-   void make_solution_views(mfem::BlockVector &sol, mfem::GridFunction &disp,
-                            mfem::GridFunction &pres) const
-   {
-      global_assembly->make_solution_views(sol, disp, pres);
-   }
    void set_center_stress(const mfem::GridFunction &disp,
                           const mfem::GridFunction &pres,
                           mfem::GridFunction &stress) const
@@ -98,7 +102,7 @@ private:
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       mfem::GridFunction disp, pres;
-      make_solution_views(sol, disp, pres);
+      global_assembly->make_solution_views(sol, disp, pres);
       mfem::GridFunction disp_target(disp);
       dirichlet.apply_fixed_bc(disp_target);
       if (dirichlet.is_disp_load())
@@ -126,6 +130,7 @@ private:
    const std::unique_ptr<GlobalAssembly_Mixed> global_assembly;
    mfem::UMFPackSolver linear_solver;
    SystemTools::BlockNewtonMonitor newton_monitor;
+   mfem::BlockVector sol;  // Internal Newton state; never moved or exposed to the caller.
    mutable std::unique_ptr<mfem::SparseMatrix> tangent;
    // Destroy first: borrows this operator, the linear solver and monitor.
    mfem::NewtonSolver newton_solver;

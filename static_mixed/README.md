@@ -20,14 +20,16 @@ prescribed increments to the right-hand side. The mixed tangent is assembled
 in blocks, converted to one sparse matrix and solved by UMFPACK, just as the
 displacement tangent is. Only one block nonlinear form is needed.
 
-The driver owns the finite element spaces and the block solution. `solve(t, sol)`
-and `run(sol)` create displacement and pressure views internally. The block form
-owns its local integrator, which owns the material; global assembly borrows a
+The driver owns the finite element spaces and separate displacement and pressure
+grid functions. The public interfaces are `solve(t, disp, pres)` and
+`run(disp, pres)`. The nonlinear solver packs the fields into its internal block
+vector for Newton and copies the converged fields back after each step. The block
+form owns its local integrator, which owns the material; global assembly borrows a
 pointer to that integrator for stress output. MFEM's `BlockNonlinearForm` does
 not offer the external-integrator ownership option used by `NonlinearForm` in
 the displacement assembly. The nonlinear solver owns global assembly, and the
 time solver owns the nonlinear solver. These objects are destroyed before the
-spaces and solution.
+spaces and grid functions.
 
 The equations, Taylor-Hood spaces, loading behavior and result file formats are
 unchanged. Saved fields include the initial state. The build and mesh preparation
