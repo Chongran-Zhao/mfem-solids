@@ -30,8 +30,7 @@ public:
                                 const YAML::Node &solver)
       : mfem::Operator(input_global_assembly->get_num_dofs()),
         global_assembly(std::move(input_global_assembly)),
-        newton_monitor(global_assembly->get_offsets()),
-        sol(global_assembly->get_offsets())
+        newton_monitor(global_assembly->get_offsets())
    {
       newton_solver.SetOperator(*this);
       newton_solver.SetSolver(linear_solver);
@@ -44,9 +43,10 @@ public:
    }
 
    // The caller supplies separate fields. Pack their preceding state into
-   // the internal block vector, then copy the converged fields back.
+   // a local block vector, then copy the converged fields back.
    int solve(double tt, mfem::GridFunction &disp, mfem::GridFunction &pres)
    {
+      mfem::BlockVector sol(global_assembly->get_offsets());
       MFEM_VERIFY(disp.Size() == sol.GetBlock(0).Size() &&
                   pres.Size() == sol.GetBlock(1).Size(),
                   "The displacement or pressure size differs from the solver space.");
@@ -124,7 +124,6 @@ private:
    const std::unique_ptr<GlobalAssembly_Mixed> global_assembly;
    mfem::UMFPackSolver linear_solver;
    SystemTools::BlockNewtonMonitor newton_monitor;
-   mfem::BlockVector sol;  // Internal Newton state; never moved or exposed to the caller.
    mutable std::unique_ptr<mfem::SparseMatrix> tangent;
    // Destroy first: borrows this operator, the linear solver and monitor.
    mfem::NewtonSolver newton_solver;

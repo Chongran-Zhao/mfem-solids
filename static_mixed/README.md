@@ -22,11 +22,11 @@ displacement tangent is. Only one block nonlinear form is needed.
 
 The driver owns the finite element spaces and separate displacement and pressure
 grid functions. The public interfaces are `solve(t, disp, pres)` and
-`run(disp, pres)`. The nonlinear solver packs the fields into its internal block
-vector for Newton and copies the converged fields back after each step. The block
-form owns its local integrator, which owns the material. MFEM's
-`BlockNonlinearForm` does not offer the external-integrator ownership option used by `NonlinearForm` in
-the displacement assembly. The nonlinear solver owns global assembly, and the
+`run(disp, pres)`. The nonlinear solver packs the fields into a local block
+vector in each `solve()` call for Newton and copies the converged fields back
+after each step. The block form owns its local integrator, which owns the
+material. MFEM's `BlockNonlinearForm` does not offer the external-integrator
+ownership option used by `NonlinearForm` in the displacement assembly. The nonlinear solver owns global assembly, and the
 time solver owns the nonlinear solver. These objects are destroyed before the
 spaces and grid functions.
 
