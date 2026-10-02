@@ -83,6 +83,20 @@ struct Fixture
    }
 };
 
+// The input state must remain unchanged after a separate-output solve.
+void advance(NonlinearSolver_Dynamic_Disp &solver, double time, double dt, Fixture &f)
+{
+   mfem::GridFunction disp_old(f.u), velo_old(f.v), acce_old(f.a);
+   const mfem::Vector saved_disp(disp_old), saved_velo(velo_old), saved_acce(acce_old);
+   solver.solve(time, dt, disp_old, velo_old, acce_old, f.u, f.v, f.a);
+   mfem::Vector change(disp_old); change -= saved_disp;
+   require(change.Normlinf() == 0.0, "Old displacement was modified");
+   change = velo_old; change -= saved_velo;
+   require(change.Normlinf() == 0.0, "Old velocity was modified");
+   change = acce_old; change -= saved_acce;
+   require(change.Normlinf() == 0.0, "Old acceleration was modified");
+}
+
 // Check the actual nonlinear solver operator while Newton has an active step.
 class TangentCheckSolver : public NonlinearSolver_Dynamic_Disp
 {
@@ -146,7 +160,7 @@ void tangent_check()
       f.v.SetFromTrueDofs(vn);
       f.a.SetFromTrueDofs(an);
       const int before = solver.checks;
-      solver.solve(0.0, 0.01, f.u, f.v, f.a);
+      advance(solver, 0.0, 0.01, f);
       require(solver.checks > before, "Newton must exercise its operator tangent");
    }
 }
@@ -212,7 +226,7 @@ double vibration(double dt)
    double q = amplitude;
    for (int step = 0; step < steps; ++step)
    {
-      f.nonlinear->solve(step * dt, dt, f.u, f.v, f.a);
+      advance(*f.nonlinear, step * dt, dt, f);
       q = (shape * f.u) / shape_norm;
       const double expected = amplitude * std::cos((step + 1) * 2.0 * std::atan(omega * dt / 2.0));
       require(std::abs(q - expected) / amplitude < 2e-5, "Free vibration discrete frequency");
@@ -226,7 +240,7 @@ void prescribed_motion()
 {
    Fixture f("fixed_bc: [{face: left, dir: x}, {face: left, dir: y}, {face: left, dir: z}]\ndisp_bc: [{face: right, dir: z}]");
    auto solver = f.solver(0.5);
-   f.nonlinear->solve(0.0, 0.001, f.u, f.v, f.a);
+   advance(*f.nonlinear, 0.0, 0.001, f);
    mfem::Array<int> dofs;
    f.space.GetEssentialTrueDofs(f.mesh.bdr_attribute_sets.GetAttributeSetMarker("right"), dofs, 2);
    for (int i : dofs)
@@ -252,7 +266,7 @@ void traction_momentum()
    const double dt = 0.001;
    for (int step = 0; step < 3; ++step)
    {
-      f.nonlinear->solve(step * dt, dt, f.u, f.v, f.a);
+      advance(*f.nonlinear, step * dt, dt, f);
       mfem::Vector momentum(f.v.Size()); mass->Mult(f.v, momentum);
       const double time = (step + 1) * dt;
       const double expected = -0.5 * 2275.0 * time * time;

@@ -23,8 +23,9 @@ remain in `MaterialModelData.hpp`.
 
 - The driver owns displacement, velocity and acceleration grid functions.
 - `TimeSolver_Dynamic_Disp` owns the nonlinear solver. It advances physical
-  time, shortens the final step, calls `solve(time, dt, disp, velo, acce)` and
-  saves accepted states. It has no time-method or assembly dependency.
+  time, shortens the final step, and keeps separate old and new states. It calls
+  `solve(time, dt, disp_old, velo_old, acce_old, disp_new, velo_new, acce_new)`,
+  saves the converged new state, then copies it into the old state for the next step. It has no time-method or assembly dependency.
 - `NonlinearSolver_Dynamic_Disp` owns global assembly, the consistent mass matrix,
   `TimeMethod_GenAlpha`, the linear/Newton solvers and monitor. The driver creates
   the time method and moves its ownership into this solver. It computes initial

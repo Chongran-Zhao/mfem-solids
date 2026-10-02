@@ -44,6 +44,7 @@ public:
               << std::scientific << std::setprecision(16)
               << "0,0,0,0," << nonlinear_solver->get_kinetic_energy(velo) << '\n';
 
+      mfem::GridFunction disp_old(disp), velo_old(velo), acce_old(acce);
       double time = 0.0;
       for (int step = 1; time < final_time; ++step)
       {
@@ -57,13 +58,17 @@ public:
          mfem::out << std::string(74, '=') << '\n'
                    << "Time step " << step << ", t = " << next_time
                    << ", dt = " << dt << '\n';
-         const int iterations = nonlinear_solver->solve(time, dt, disp, velo, acce);
+         const int iterations = nonlinear_solver->solve(time, dt, disp_old, velo_old, acce_old,
+                                                         disp, velo, acce);
          time = next_time;
          SystemTools::save_gf(results_dir, "disp", step, disp);
          SystemTools::save_gf(results_dir, "velo", step, velo);
          SystemTools::save_gf(results_dir, "acce", step, acce);
          history << step << ',' << time << ',' << dt << ',' << iterations
                  << ',' << nonlinear_solver->get_kinetic_energy(velo) << '\n';
+         disp_old = disp;
+         velo_old = velo;
+         acce_old = acce;
       }
    }
 

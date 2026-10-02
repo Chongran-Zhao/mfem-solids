@@ -72,29 +72,29 @@ public:
    }
 
    // R_dyn = R(disp_alpha, t_alpha_f) + M acce_alpha.
-   // pre_* is the previous state; acce is acceleration.
+   // *_old is the previous state; acce is acceleration.
    void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
    {
-      MFEM_VERIFY(pre_disp && pre_acce && disp_predictor && dt > 0.0, "No active dynamic step.");
+      MFEM_VERIFY(disp_old && acce_old && disp_predict && dt > 0.0, "No active dynamic step.");
       const double alpha_m = time_method->get_alpha_m();
       const double alpha_f = time_method->get_alpha_f();
       residual.SetSize(Height());
-      mfem::Vector disp_alpha(*pre_disp), acce_alpha(disp);
+      mfem::Vector disp_alpha(*disp_old), acce_alpha(disp);
       disp_alpha *= 1.0 - alpha_f;
       disp_alpha.Add(alpha_f, disp);
-      acce_alpha -= *disp_predictor;
+      acce_alpha -= *disp_predict;
       acce_alpha *= alpha_m / (time_method->get_beta() * dt * dt);
-      acce_alpha.Add(1.0 - alpha_m, *pre_acce);
+      acce_alpha.Add(1.0 - alpha_m, *acce_old);
       global_assembly->assemble_residual(disp_alpha, residual);
       mass->AddMult(acce_alpha, residual);
    }
 
    std::unique_ptr<mfem::SparseMatrix> assemble_tangent(const mfem::Vector &disp) const
    {
-      MFEM_VERIFY(pre_disp && dt > 0.0, "No active dynamic step.");
+      MFEM_VERIFY(disp_old && dt > 0.0, "No active dynamic step.");
       const double alpha_m = time_method->get_alpha_m();
       const double alpha_f = time_method->get_alpha_f();
-      mfem::Vector disp_alpha(*pre_disp);
+      mfem::Vector disp_alpha(*disp_old);
       disp_alpha *= 1.0 - alpha_f;
       disp_alpha.Add(alpha_f, disp);
       return std::unique_ptr<mfem::SparseMatrix>(mfem::Add(
@@ -110,29 +110,35 @@ public:
       return *tangent;
    }
 
-   // Solve one physical time step with the owned generalized-alpha method.
-   int solve(double time, double input_dt, mfem::GridFunction &disp,
-             mfem::GridFunction &velo, mfem::GridFunction &acce)
+   // Read the state at time and solve into separate fields at time + dt.
+   int solve(double time, double input_dt,
+             const mfem::GridFunction &disp_old, const mfem::GridFunction &velo_old,
+             const mfem::GridFunction &acce_old, mfem::GridFunction &disp_new,
+             mfem::GridFunction &velo_new, mfem::GridFunction &acce_new)
    {
       MFEM_VERIFY(std::isfinite(input_dt) && input_dt > 0.0, "The time step must be positive.");
-      check_fields(disp, velo, acce);
+      check_fields(disp_old, velo_old, acce_old);
+      check_fields(disp_new, velo_new, acce_new);
+      MFEM_VERIFY(disp_old.FESpace() == disp_new.FESpace() &&
+                  &disp_old != &disp_new && &velo_old != &velo_new && &acce_old != &acce_new,
+                  "Old and new states must be separate fields on the same space.");
       dt = input_dt;
       const double end_time = time + dt;
       global_assembly->set_traction_load(time + time_method->get_alpha_f() * dt);
-      mfem::Vector previous_disp, previous_velo, previous_acce;
-      disp.GetTrueDofs(previous_disp);
-      velo.GetTrueDofs(previous_velo);
-      acce.GetTrueDofs(previous_acce);
-      mfem::Vector predictor(previous_disp);
-      predictor.Add(dt, previous_velo);
-      predictor.Add(dt * dt * (0.5 - time_method->get_beta()), previous_acce);
-      pre_disp = &previous_disp;
-      pre_acce = &previous_acce;
-      disp_predictor = &predictor;
+      mfem::Vector disp_old_true, velo_old_true, acce_old_true;
+      disp_old.GetTrueDofs(disp_old_true);
+      velo_old.GetTrueDofs(velo_old_true);
+      acce_old.GetTrueDofs(acce_old_true);
+      mfem::Vector predictor(disp_old_true);
+      predictor.Add(dt, velo_old_true);
+      predictor.Add(dt * dt * (0.5 - time_method->get_beta()), acce_old_true);
+      this->disp_old = &disp_old_true;
+      this->acce_old = &acce_old_true;
+      disp_predict = &predictor;
 
-      mfem::Vector u(previous_disp);
-      u.Add(dt, previous_velo); u.Add(0.5 * dt * dt, previous_acce);
-      mfem::GridFunction next_disp(disp.FESpace());
+      mfem::Vector u(disp_old_true);
+      u.Add(dt, velo_old_true); u.Add(0.5 * dt * dt, acce_old_true);
+      mfem::GridFunction next_disp(disp_new.FESpace());
       next_disp.SetFromTrueDofs(u);
       initial_guess(end_time, next_disp);
       next_disp.GetTrueDofs(u);
@@ -142,14 +148,14 @@ public:
                   "Dynamic Newton did not converge at t = " << end_time << ".");
 
       mfem::Vector a(u);
-      a -= previous_disp; a.Add(-dt, previous_velo);
-      a.Add(-dt * dt * (0.5 - time_method->get_beta()), previous_acce);
+      a -= disp_old_true; a.Add(-dt, velo_old_true);
+      a.Add(-dt * dt * (0.5 - time_method->get_beta()), acce_old_true);
       a /= time_method->get_beta() * dt * dt;
-      mfem::Vector v(previous_velo);
-      v.Add(dt * (1.0 - time_method->get_gamma()), previous_acce);
+      mfem::Vector v(velo_old_true);
+      v.Add(dt * (1.0 - time_method->get_gamma()), acce_old_true);
       v.Add(dt * time_method->get_gamma(), a);
-      disp.SetFromTrueDofs(u); velo.SetFromTrueDofs(v); acce.SetFromTrueDofs(a);
-      pre_disp = pre_acce = disp_predictor = nullptr;
+      disp_new.SetFromTrueDofs(u); velo_new.SetFromTrueDofs(v); acce_new.SetFromTrueDofs(a);
+      this->disp_old = this->acce_old = disp_predict = nullptr;
       dt = 0.0;
       return newton_solver.GetNumIterations();
    }
@@ -208,7 +214,7 @@ private:
    SystemTools::NewtonMonitor newton_monitor;
    // Known vectors are local to solve(); callbacks borrow them only while it runs.
    double dt = 0.0;
-   const mfem::Vector *pre_disp = nullptr, *pre_acce = nullptr, *disp_predictor = nullptr;
+   const mfem::Vector *disp_old = nullptr, *acce_old = nullptr, *disp_predict = nullptr;
    mutable std::unique_ptr<mfem::SparseMatrix> tangent;
    mfem::NewtonSolver newton_solver;
 };
