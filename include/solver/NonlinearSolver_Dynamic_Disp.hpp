@@ -71,27 +71,28 @@ public:
    // pre_* is the previous state; acce is acceleration.
    void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
    {
-      MFEM_VERIFY(pre_disp && pre_acce && disp_predictor, "No active dynamic step.");
+      MFEM_VERIFY(pre_disp && pre_acce && disp_predictor &&
+                  step_alpha_m && step_alpha_f && step_acce_factor, "No active dynamic step.");
       residual.SetSize(Height());
       mfem::Vector disp_alpha(*pre_disp), acce_alpha(disp);
-      disp_alpha *= 1.0 - alpha_f;
-      disp_alpha.Add(alpha_f, disp);
+      disp_alpha *= 1.0 - *step_alpha_f;
+      disp_alpha.Add(*step_alpha_f, disp);
       acce_alpha -= *disp_predictor;
-      acce_alpha *= alpha_m * acce_factor;
-      acce_alpha.Add(1.0 - alpha_m, *pre_acce);
+      acce_alpha *= *step_alpha_m * *step_acce_factor;
+      acce_alpha.Add(1.0 - *step_alpha_m, *pre_acce);
       global_assembly->assemble_residual(disp_alpha, residual);
       mass->AddMult(acce_alpha, residual);
    }
 
    std::unique_ptr<mfem::SparseMatrix> assemble_tangent(const mfem::Vector &disp) const
    {
-      MFEM_VERIFY(pre_disp, "No active dynamic step.");
+      MFEM_VERIFY(pre_disp && step_alpha_m && step_alpha_f && step_acce_factor, "No active dynamic step.");
       mfem::Vector disp_alpha(*pre_disp);
-      disp_alpha *= 1.0 - alpha_f;
-      disp_alpha.Add(alpha_f, disp);
+      disp_alpha *= 1.0 - *step_alpha_f;
+      disp_alpha.Add(*step_alpha_f, disp);
       return std::unique_ptr<mfem::SparseMatrix>(mfem::Add(
-         alpha_m * acce_factor, *mass,
-         alpha_f, global_assembly->assemble_tangent(disp_alpha)));
+         *step_alpha_m * *step_acce_factor, *mass,
+         *step_alpha_f, global_assembly->assemble_tangent(disp_alpha)));
    }
 
    // Required by MFEM: effective tangent after essential elimination.
@@ -105,15 +106,16 @@ public:
    // Load and assemble at stage_time; impose the boundary at end_time.
    // Time integration supplies scalar weights and known vectors, not an operator.
    int solve(double stage_time, double end_time,
-             double input_alpha_m, double input_alpha_f, double input_acce_factor,
+             const double &input_alpha_m, const double &input_alpha_f,
+             const double &input_acce_factor,
              const mfem::Vector &input_pre_disp, const mfem::Vector &input_pre_acce,
              const mfem::Vector &input_predictor, mfem::GridFunction &disp)
    {
       MFEM_VERIFY(disp.Size() == mass->Height(), "Dynamics requires a conforming space.");
       global_assembly->set_traction_load(stage_time);
-      alpha_m = input_alpha_m;
-      alpha_f = input_alpha_f;
-      acce_factor = input_acce_factor;
+      step_alpha_m = &input_alpha_m;
+      step_alpha_f = &input_alpha_f;
+      step_acce_factor = &input_acce_factor;
       pre_disp = &input_pre_disp;
       pre_acce = &input_pre_acce;
       disp_predictor = &input_predictor;
@@ -127,6 +129,7 @@ public:
 
       disp.SetFromTrueDofs(u);
       pre_disp = pre_acce = disp_predictor = nullptr;
+      step_alpha_m = step_alpha_f = step_acce_factor = nullptr;
       return newton_solver.GetNumIterations();
    }
 
@@ -181,8 +184,9 @@ private:
    const std::unique_ptr<mfem::SparseMatrix> mass;
    mfem::UMFPackSolver linear_solver;
    SystemTools::NewtonMonitor newton_monitor;
-   // Known vectors are borrowed only for the active solve; the unknown stays external.
-   double alpha_m = 0.0, alpha_f = 0.0, acce_factor = 0.0;
+   // Coefficients and known vectors are borrowed only during solve(), then cleared.
+   // MFEM callbacks receive only the unknown; no coefficient values are owned here.
+   const double *step_alpha_m = nullptr, *step_alpha_f = nullptr, *step_acce_factor = nullptr;
    const mfem::Vector *pre_disp = nullptr, *pre_acce = nullptr, *disp_predictor = nullptr;
    mutable std::unique_ptr<mfem::SparseMatrix> tangent;
    mfem::NewtonSolver newton_solver;
