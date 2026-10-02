@@ -24,9 +24,11 @@ The driver owns the finite element spaces and separate displacement and pressure
 grid functions. The public interfaces are `solve(t, disp, pres)` and
 `run(disp, pres)`. The nonlinear solver packs the fields into a local block
 vector in each `solve()` call for Newton and copies the converged fields back
-after each step. The block form owns its local integrator, which owns the
-material. MFEM's `BlockNonlinearForm` does not offer the external-integrator
-ownership option used by `NonlinearForm` in the displacement assembly. The nonlinear solver owns global assembly, and the
+after each step. Global assembly owns its local integrator, which owns the
+material; the block form borrows the integrator. `SystemTools::BlockNonlinearForm`
+adds the external-integrator ownership option missing from MFEM's block form.
+Global assembly exposes a full sparse tangent by const reference, and the
+nonlinear solver copies it before eliminating boundaries, as in `static_disp`. The nonlinear solver owns global assembly, and the
 time solver owns the nonlinear solver. These objects are destroyed before the
 spaces and grid functions.
 

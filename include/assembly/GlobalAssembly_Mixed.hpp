@@ -1,10 +1,14 @@
 // ============================================================================
 // GlobalAssembly_Mixed.hpp
 //
-// Global mixed residual R(u,p) = F_int(u,p) - F_ext and its full tangent.
-// One unconstrained block form assembles both Newton and predictor data.
-// Boundary elimination is performed on a monolithic copy of the tangent,
-// as in GlobalAssembly_Disp.
+// Global assembly of the mixed displacement-pressure form, with the
+// Dirichlet and Neumann boundary conditions:
+//    external force  F_ext, from the tractions, on displacement only;
+//    residual        R(u,p) = F_int(u,p) - F_ext;
+//    tangent         K(u,p) = dR/d(u,p), assembled from the element tangents.
+// set_essential_bdr sets R to zero and K to the identity on the constrained
+// displacement dofs, and, with an increment of prescribed displacement,
+// also moves the constrained columns of K to the right-hand side.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -21,63 +25,61 @@
 #include "DirichletBoundary.hpp"
 #include "LocalAssembly_Mixed.hpp"
 #include "NeumannBoundary.hpp"
+#include "SystemTools.hpp"
 
 class GlobalAssembly_Mixed
 {
 public:
-   // The block form takes ownership of the local integrator, which owns its
-   // material. Unlike NonlinearForm, BlockNonlinearForm has no external-
-   // integrator ownership option.
+   // Takes ownership of local assembly and boundary conditions; the block
+   // form only borrows local assembly, as in GlobalAssembly_Disp.
    GlobalAssembly_Mixed(mfem::FiniteElementSpace &space_u,
                         mfem::FiniteElementSpace &space_p,
                         std::unique_ptr<LocalAssembly_Mixed> input_local_assembly,
                         std::unique_ptr<DirichletBoundary> input_dirichlet,
                         std::unique_ptr<NeumannBoundary> input_neumann)
-      : dirichlet(std::move(input_dirichlet)),
+      : local_assembly(std::move(input_local_assembly)),
+        dirichlet(std::move(input_dirichlet)),
         neumann(std::move(input_neumann)),
-        spaces({&space_u, &space_p}),
-        offsets({0, space_u.GetTrueVSize(),
-                    space_u.GetTrueVSize() + space_p.GetTrueVSize()}),
-        global_assembly(spaces),
-        external_force(&space_u), ess_tdof_list(dirichlet->get_ess_tdof_list())
+        external_force(&space_u),
+        ess_tdof_list(dirichlet->get_ess_tdof_list())
    {
-      global_assembly.AddDomainIntegrator(input_local_assembly.get());
-      input_local_assembly.release();
+      mfem::Array<mfem::FiniteElementSpace *> spaces({&space_u, &space_p});
+      global_assembly.SetSpaces(spaces);
+      global_assembly.UseExternalIntegrators();
+      global_assembly.AddDomainIntegrator(local_assembly.get());
+
       external_force = 0.0;
       if (neumann->is_traction_load())
          neumann->add_traction_integrators(external_force);
    }
 
-   int get_num_dofs() const { return offsets.Last(); }
-   const mfem::Array<int> &get_offsets() const { return offsets; }
-   const DirichletBoundary &get_dirichlet() const { return *dirichlet; }
-   const NeumannBoundary &get_neumann() const { return *neumann; }
-
-   // Internal field views of the nonlinear solver's block state.
-   void make_solution_views(mfem::BlockVector &sol, mfem::GridFunction &disp,
-                            mfem::GridFunction &pres) const
-   {
-      disp.MakeRef(spaces[0], sol.GetBlock(0), 0);
-      pres.MakeRef(spaces[1], sol.GetBlock(1), 0);
-   }
-
+   // Set the tractions to time tt and assemble F_ext.
    void set_traction_load(double tt)
    {
       neumann->set_time(tt);
       external_force.Assemble();
    }
 
-   // R at every dof, including support reactions. Pressure has no external load.
+   // Number of unknowns.
+   int get_num_dofs() const { return global_assembly.Height(); }
+
+   // The mixed solver needs the displacement-pressure block offsets.
+   const mfem::Array<int> &get_offsets() const
+   {
+      return global_assembly.GetBlockTrueOffsets();
+   }
+
+   // R(u,p) at every dof; pressure has no external force.
    void set_residual(const mfem::Vector &sol, mfem::Vector &residual) const
    {
       global_assembly.Mult(sol, residual);
-      for (int ii = 0; ii < external_force.Size(); ii++)
-         residual(ii) -= external_force[ii];
+      mfem::BlockVector residual_blocks(residual, get_offsets());
+      residual_blocks.GetBlock(0) -= external_force;
    }
 
-   // Convert the full block tangent to one owned sparse matrix. The block
-   // form keeps its matrices; neither elimination nor UMFPACK modifies them.
-   std::unique_ptr<mfem::SparseMatrix> get_tangent(const mfem::Vector &sol) const
+   // K(u,p) at every dof. Convert the full block tangent to a sparse matrix
+   // kept here; the nonlinear solver copies it before eliminating boundaries.
+   const mfem::SparseMatrix &get_tangent(const mfem::Vector &sol) const
    {
       const auto &block_op = dynamic_cast<const mfem::BlockOperator &>(
          global_assembly.GetGradient(sol));
@@ -87,19 +89,27 @@ public:
             if (!block_op.IsZeroBlock(ii, jj))
                block_mat.SetBlock(ii, jj, const_cast<mfem::SparseMatrix *>(
                   &dynamic_cast<const mfem::SparseMatrix &>(block_op.GetBlock(ii, jj))));
-      return std::unique_ptr<mfem::SparseMatrix>(block_mat.CreateMonolithic());
+      tangent.reset(block_mat.CreateMonolithic());
+      return *tangent;
    }
 
+   // R zero on the constrained dofs, which carry no equation.
    void set_essential_bdr(mfem::Vector &residual) const
    {
       for (int dof : ess_tdof_list)
          residual(dof) = 0.0;
    }
+
+   // K the identity on the constrained dofs.
    void set_essential_bdr(mfem::SparseMatrix &tangent) const
    {
       for (int dof : ess_tdof_list)
          tangent.EliminateRowCol(dof, mfem::Operator::DIAG_ONE);
    }
+
+   // K the identity on the constrained dofs, with the increment g of the
+   // prescribed displacement on them moved to the right-hand side:
+   //    rhs -= K g on the free dofs,   rhs = g on the constrained dofs.
    void set_essential_bdr(mfem::SparseMatrix &tangent,
                           const mfem::Vector &prescribed_increment,
                           mfem::Vector &rhs) const
@@ -108,16 +118,21 @@ public:
          tangent.EliminateRowCol(dof, prescribed_increment(dof), rhs);
    }
 
+   // The Dirichlet boundary conditions, whose values the nonlinear solver sets.
+   const DirichletBoundary &get_dirichlet() const { return *dirichlet; }
+
+   // The Neumann boundary conditions.
+   const NeumannBoundary &get_neumann() const { return *neumann; }
 
 private:
-   // Boundary coefficients and spaces outlive the forms that borrow them.
+   // Declared before global_assembly, so that the borrowing form goes first.
+   const std::unique_ptr<LocalAssembly_Mixed> local_assembly;
    const std::unique_ptr<DirichletBoundary> dirichlet;
    const std::unique_ptr<NeumannBoundary> neumann;
-   mfem::Array<mfem::FiniteElementSpace *> spaces;
-   const mfem::Array<int> offsets;
-   mfem::BlockNonlinearForm global_assembly;
+   SystemTools::BlockNonlinearForm global_assembly;
    mfem::LinearForm external_force;
    const mfem::Array<int> ess_tdof_list;
+   mutable std::unique_ptr<mfem::SparseMatrix> tangent;  // Monolithic block tangent.
 };
 
 #endif

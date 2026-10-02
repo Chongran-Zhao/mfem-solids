@@ -56,10 +56,10 @@ public:
       const NeumannBoundary &neumann = global_assembly->get_neumann();
       if (neumann.is_traction_load())
          global_assembly->set_traction_load(tt);
-      initial_guess(tt, sol);
+      initial_guess(tt, sol, *disp.FESpace());
 
-      mfem::GridFunction disp_view, pres_view;
-      global_assembly->make_solution_views(sol, disp_view, pres_view);
+      mfem::GridFunction disp_view;
+      disp_view.MakeRef(disp.FESpace(), sol.GetBlock(0), 0);
       if (dirichlet.is_disp_load())
          dirichlet.print_disp_load_by_step(disp_view);
       else
@@ -83,7 +83,7 @@ public:
    // Owned tangent copy, with identity at the constrained dofs.
    mfem::Operator &GetGradient(const mfem::Vector &sol) const override
    {
-      tangent = global_assembly->get_tangent(sol);
+      tangent = std::make_unique<mfem::SparseMatrix>(global_assembly->get_tangent(sol));
       global_assembly->set_essential_bdr(*tangent);
       return *tangent;
    }
@@ -92,11 +92,11 @@ public:
 private:
    // K_ff d(u,p)_f = -R_f(u,p) - K_fe g. Boundary elimination moves the
    // constrained columns to the right-hand side, as in the displacement solver.
-   void initial_guess(double tt, mfem::BlockVector &sol)
+   void initial_guess(double tt, mfem::BlockVector &sol, mfem::FiniteElementSpace &space_u)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
-      mfem::GridFunction disp, pres;
-      global_assembly->make_solution_views(sol, disp, pres);
+      mfem::GridFunction disp;
+      disp.MakeRef(&space_u, sol.GetBlock(0), 0);
       mfem::GridFunction disp_target(disp);
       dirichlet.apply_fixed_bc(disp_target);
       if (dirichlet.is_disp_load())
@@ -109,7 +109,7 @@ private:
       mfem::Vector rhs(global_assembly->get_num_dofs());
       global_assembly->set_residual(sol, rhs);
       rhs.Neg();
-      tangent = global_assembly->get_tangent(sol);
+      tangent = std::make_unique<mfem::SparseMatrix>(global_assembly->get_tangent(sol));
       global_assembly->set_essential_bdr(*tangent, prescribed_increment, rhs);
 
       mfem::Vector predicted_increment(global_assembly->get_num_dofs());
