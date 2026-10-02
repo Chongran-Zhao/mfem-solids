@@ -67,20 +67,20 @@ public:
       global_assembly->set_essential_bdr(residual);
    }
 
-   // R_dyn = R(disp_alpha, t_alpha_f) + M dot_velo_alpha.
-   // pre_* is the previous state; dot_velo is acceleration.
+   // R_dyn = R(disp_alpha, t_alpha_f) + M acce_alpha.
+   // pre_* is the previous state; acce is acceleration.
    void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
    {
-      MFEM_VERIFY(pre_disp && pre_dot_velo && disp_predictor, "No active dynamic step.");
+      MFEM_VERIFY(pre_disp && pre_acce && disp_predictor, "No active dynamic step.");
       residual.SetSize(Height());
-      mfem::Vector disp_alpha(*pre_disp), dot_velo_alpha(disp);
+      mfem::Vector disp_alpha(*pre_disp), acce_alpha(disp);
       disp_alpha *= 1.0 - alpha_f;
       disp_alpha.Add(alpha_f, disp);
-      dot_velo_alpha -= *disp_predictor;
-      dot_velo_alpha *= alpha_m * acce_factor;
-      dot_velo_alpha.Add(1.0 - alpha_m, *pre_dot_velo);
+      acce_alpha -= *disp_predictor;
+      acce_alpha *= alpha_m * acce_factor;
+      acce_alpha.Add(1.0 - alpha_m, *pre_acce);
       global_assembly->assemble_residual(disp_alpha, residual);
-      mass->AddMult(dot_velo_alpha, residual);
+      mass->AddMult(acce_alpha, residual);
    }
 
    std::unique_ptr<mfem::SparseMatrix> assemble_tangent(const mfem::Vector &disp) const
@@ -106,7 +106,7 @@ public:
    // Time integration supplies scalar weights and known vectors, not an operator.
    int solve(double stage_time, double end_time,
              double input_alpha_m, double input_alpha_f, double input_acce_factor,
-             const mfem::Vector &input_pre_disp, const mfem::Vector &input_pre_dot_velo,
+             const mfem::Vector &input_pre_disp, const mfem::Vector &input_pre_acce,
              const mfem::Vector &input_predictor, mfem::GridFunction &disp)
    {
       MFEM_VERIFY(disp.Size() == mass->Height(), "Dynamics requires a conforming space.");
@@ -115,7 +115,7 @@ public:
       alpha_f = input_alpha_f;
       acce_factor = input_acce_factor;
       pre_disp = &input_pre_disp;
-      pre_dot_velo = &input_pre_dot_velo;
+      pre_acce = &input_pre_acce;
       disp_predictor = &input_predictor;
       initial_guess(end_time, disp);
       mfem::Vector u;
@@ -126,7 +126,7 @@ public:
                   "Dynamic Newton did not converge at t = " << end_time << ".");
 
       disp.SetFromTrueDofs(u);
-      pre_disp = pre_dot_velo = disp_predictor = nullptr;
+      pre_disp = pre_acce = disp_predictor = nullptr;
       return newton_solver.GetNumIterations();
    }
 
@@ -183,7 +183,7 @@ private:
    SystemTools::NewtonMonitor newton_monitor;
    // Known vectors are borrowed only for the active solve; the unknown stays external.
    double alpha_m = 0.0, alpha_f = 0.0, acce_factor = 0.0;
-   const mfem::Vector *pre_disp = nullptr, *pre_dot_velo = nullptr, *disp_predictor = nullptr;
+   const mfem::Vector *pre_disp = nullptr, *pre_acce = nullptr, *disp_predictor = nullptr;
    mutable std::unique_ptr<mfem::SparseMatrix> tangent;
    mfem::NewtonSolver newton_solver;
 };

@@ -75,28 +75,28 @@ public:
       MFEM_VERIFY(std::isfinite(dt) && dt > 0.0, "The time step must be positive.");
       MFEM_VERIFY(disp.FESpace() == velo.FESpace() && disp.FESpace() == acce.FESpace(),
                   "Dynamic fields must share one displacement space.");
-      mfem::Vector pre_disp, pre_velo, pre_dot_velo;
-      disp.GetTrueDofs(pre_disp); velo.GetTrueDofs(pre_velo); acce.GetTrueDofs(pre_dot_velo);
+      mfem::Vector pre_disp, pre_velo, pre_acce;
+      disp.GetTrueDofs(pre_disp); velo.GetTrueDofs(pre_velo); acce.GetTrueDofs(pre_acce);
       const double alpha_m = time_method.get_alpha_m();
       const double alpha_f = time_method.get_alpha_f();
       const double acce_factor = 1.0 / (time_method.get_beta() * dt * dt);
       mfem::Vector predictor(pre_disp);
       predictor.Add(dt, pre_velo);
-      predictor.Add(dt * dt * (0.5 - time_method.get_beta()), pre_dot_velo);
+      predictor.Add(dt * dt * (0.5 - time_method.get_beta()), pre_acce);
       mfem::Vector u(pre_disp);
-      u.Add(dt, pre_velo); u.Add(0.5 * dt * dt, pre_dot_velo);
+      u.Add(dt, pre_velo); u.Add(0.5 * dt * dt, pre_acce);
       mfem::GridFunction next_disp(disp.FESpace());
       next_disp.SetFromTrueDofs(u);
       const int iterations = nonlinear_solver->solve(time + alpha_f * dt, time + dt,
-         alpha_m, alpha_f, acce_factor, pre_disp, pre_dot_velo, predictor, next_disp);
+         alpha_m, alpha_f, acce_factor, pre_disp, pre_acce, predictor, next_disp);
       next_disp.GetTrueDofs(u);
 
       mfem::Vector a(u);
       a -= pre_disp; a.Add(-dt, pre_velo);
-      a.Add(-dt * dt * (0.5 - time_method.get_beta()), pre_dot_velo);
+      a.Add(-dt * dt * (0.5 - time_method.get_beta()), pre_acce);
       a /= time_method.get_beta() * dt * dt;
       mfem::Vector v(pre_velo);
-      v.Add(dt * (1.0 - time_method.get_gamma()), pre_dot_velo);
+      v.Add(dt * (1.0 - time_method.get_gamma()), pre_acce);
       v.Add(dt * time_method.get_gamma(), a);
       disp.SetFromTrueDofs(u); velo.SetFromTrueDofs(v); acce.SetFromTrueDofs(a);
       return iterations;
