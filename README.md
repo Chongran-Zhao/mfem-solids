@@ -31,8 +31,9 @@ integrates the saved pressure field. Pressure is scalar and is written once per
 face, independently of the reported directions.
 
 Both drivers follow the same structure: global assembly, a nonlinear solver for
-one load step, and a time solver for load stepping and output. The mixed structure
-and ownership are described in `static_mixed/README.md`.
+one load step, and a time solver for load stepping and output. In the mixed form,
+the nonlinear solver packs the displacement and the pressure into one block vector
+for Newton's method, and the block tangent is copied into one sparse matrix for UMFPACK.
 
 ## Setting up a problem
 

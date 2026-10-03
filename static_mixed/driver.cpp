@@ -96,13 +96,15 @@ int main(int argc, char *argv[])
    // 5. Set up the material model.
    std::unique_ptr<MaterialModel> material = set_material_model();
 
-   // 6. The local assembly owns the material; global assembly owns it and
-   //    the boundary conditions.
+   // 6. Set up the assembly: the material goes to the local assembly, and the
+   //    local assembly and the boundary conditions to the global one, which
+   //    owns them.
    auto local_assembly = std::make_unique<LocalAssembly_Mixed>(std::move(material));
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
-   // 7. The nonlinear solver owns global assembly; the time solver owns it.
+   // 7. Set up the nonlinear solver, which owns the global assembly, and the
+   //    time solver, which owns the nonlinear solver.
    auto nonlinear_solver = std::make_unique<NonlinearSolver_Static_Mixed>(
       std::move(global_assembly), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();

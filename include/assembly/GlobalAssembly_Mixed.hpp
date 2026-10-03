@@ -2,12 +2,13 @@
 // GlobalAssembly_Mixed.hpp
 //
 // Global assembly of the mixed displacement-pressure form, with the
-// Dirichlet and Neumann boundary conditions:
-//    external force  F_ext, from the tractions, on displacement only;
-//    residual        R(u,p) = F_int(u,p) - F_ext;
+// Dirichlet and the Neumann boundary conditions:
+//    external force  F_ext, from the tractions, on the displacement only;
+//    residual        R(u,p) = F_int(u,p) - F_ext, from one block form over
+//                    LocalAssembly_Mixed;
 //    tangent         K(u,p) = dR/d(u,p), assembled from the element tangents.
 // set_essential_bdr sets R to zero and K to the identity on the constrained
-// displacement dofs, and, with an increment of prescribed displacement,
+// displacement dofs, and, with an increment of the prescribed displacement,
 // also moves the constrained columns of K to the right-hand side.
 //
 // Author: Chongran Zhao
@@ -22,16 +23,16 @@
 
 #include <mfem.hpp>
 
+#include "BlockNonlinearForm_External.hpp"
 #include "DirichletBoundary.hpp"
 #include "LocalAssembly_Mixed.hpp"
 #include "NeumannBoundary.hpp"
-#include "SystemTools.hpp"
 
 class GlobalAssembly_Mixed
 {
 public:
-   // Takes ownership of local assembly and boundary conditions; the block
-   // form only borrows local assembly, as in GlobalAssembly_Disp.
+   // Takes the ownership of the local assembly and of the boundary
+   // conditions; the global_assembly only borrows the local assembly.
    GlobalAssembly_Mixed(mfem::FiniteElementSpace &space_u,
                         mfem::FiniteElementSpace &space_p,
                         std::unique_ptr<LocalAssembly_Mixed> input_local_assembly,
@@ -45,7 +46,6 @@ public:
    {
       mfem::Array<mfem::FiniteElementSpace *> spaces({&space_u, &space_p});
       global_assembly.SetSpaces(spaces);
-      global_assembly.UseExternalIntegrators();
       global_assembly.AddDomainIntegrator(local_assembly.get());
 
       external_force = 0.0;
@@ -60,37 +60,38 @@ public:
       external_force.Assemble();
    }
 
-   // Number of unknowns.
+   // Number of unknowns, displacement and pressure.
    int get_num_dofs() const { return global_assembly.Height(); }
 
-   // The mixed solver needs the displacement-pressure block offsets.
+   // Offsets of the displacement and the pressure blocks, [0, n_u, n_u + n_p].
    const mfem::Array<int> &get_offsets() const
    {
       return global_assembly.GetBlockTrueOffsets();
    }
 
-   // R(u,p) at every dof; pressure has no external force.
+   // R(u,p) at every dof; the pressure has no external force.
    void assemble_residual(const mfem::Vector &sol, mfem::Vector &residual) const
    {
       global_assembly.Mult(sol, residual);
-      mfem::BlockVector residual_blocks(residual, get_offsets());
+      mfem::BlockVector residual_blocks(residual, global_assembly.GetBlockTrueOffsets());
       residual_blocks.GetBlock(0) -= external_force;
    }
 
-   // K(u,p) at every dof. Convert the full block tangent to a sparse matrix
-   // kept here; the nonlinear solver copies it before eliminating boundaries.
-   const mfem::SparseMatrix &assemble_tangent(const mfem::Vector &sol) const
+   // K(u,p) at every dof. The blocks, owned by global_assembly, are copied
+   // into one new SparseMatrix, which the caller owns.
+   std::unique_ptr<mfem::SparseMatrix> assemble_tangent(const mfem::Vector &sol) const
    {
       const auto &block_op = dynamic_cast<const mfem::BlockOperator &>(
          global_assembly.GetGradient(sol));
+
+      // block_mat only points to the blocks.
       mfem::BlockMatrix block_mat(block_op.RowOffsets(), block_op.ColOffsets());
       for (int ii = 0; ii < block_op.NumRowBlocks(); ii++)
          for (int jj = 0; jj < block_op.NumColBlocks(); jj++)
             if (!block_op.IsZeroBlock(ii, jj))
                block_mat.SetBlock(ii, jj, const_cast<mfem::SparseMatrix *>(
                   &dynamic_cast<const mfem::SparseMatrix &>(block_op.GetBlock(ii, jj))));
-      tangent.reset(block_mat.CreateMonolithic());
-      return *tangent;
+      return std::unique_ptr<mfem::SparseMatrix>(block_mat.CreateMonolithic());
    }
 
    // R zero on the constrained dofs, which carry no equation.
@@ -125,14 +126,14 @@ public:
    const NeumannBoundary &get_neumann() const { return *neumann; }
 
 private:
-   // Declared before global_assembly, so that the borrowing form goes first.
+   // Declared before global_assembly, so that global_assembly, which
+   // borrows it, goes first.
    const std::unique_ptr<LocalAssembly_Mixed> local_assembly;
-   const std::unique_ptr<DirichletBoundary> dirichlet;
-   const std::unique_ptr<NeumannBoundary> neumann;
-   SystemTools::BlockNonlinearForm global_assembly;
-   mfem::LinearForm external_force;
-   const mfem::Array<int> ess_tdof_list;
-   mutable std::unique_ptr<mfem::SparseMatrix> tangent;  // Monolithic block tangent.
+   const std::unique_ptr<DirichletBoundary> dirichlet;    // constrained dofs and their values
+   const std::unique_ptr<NeumannBoundary> neumann;        // tractions
+   BlockNonlinearForm_External global_assembly;           // R + F_ext and K, without constraints
+   mfem::LinearForm external_force;                       // F_ext, on the displacement
+   const mfem::Array<int> ess_tdof_list;                  // constrained displacement dofs
 };
 
 #endif

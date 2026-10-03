@@ -3,10 +3,10 @@
 //
 // Writes mean displacement, mean pressure and reaction force on the faces and
 // directions of the csv_writer section of config.yaml at each load step, one
-// CSV file per face. The reaction is the residual R(u,p) = F_int(d) - F_ext at
-// the saved displacement and pressure, on the constrained dofs: the force the supports
-// exert; it is computed with the material of MaterialModelData, which must be
-// the one the driver ran with.
+// CSV file per face. The reaction is the displacement part of the residual
+// R(u,p) = F_int(u,p) - F_ext at the saved displacement and pressure, on the
+// constrained dofs: the force the supports exert; it is computed with the
+// material of MaterialModelData, which must be the one the driver ran with.
 //
 // Author: Chongran Zhao
 // Date: Sep. 26, 2026
@@ -63,27 +63,27 @@ int main(int argc, char *argv[])
    const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    MFEM_VERIFY(order >= 2, "The mixed csv_writer needs space.order >= 2.");
-   mfem::H1_FECollection fec(order, dim);
-   mfem::FiniteElementSpace fespace(&mesh, &fec, dim, mfem::Ordering::byVDIM);
-   mfem::GridFunction disp(&fespace);
-   mfem::H1_FECollection fec_p(order - 1, dim);
+   mfem::H1_FECollection fec_u(order, dim), fec_p(order - 1, dim);
+   mfem::FiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
    mfem::FiniteElementSpace space_p(&mesh, &fec_p);
-   mfem::GridFunction pres(&space_p);
-   mfem::Array<int> offsets({0, fespace.GetTrueVSize(),
-                             fespace.GetTrueVSize() + space_p.GetTrueVSize()});
-   mfem::BlockVector sol(offsets);
-   SystemTools::print_space(fespace);
+   SystemTools::print_space(space_u);
+   SystemTools::print_space(space_p);
+
+   mfem::GridFunction disp(&space_u), pres(&space_p);
 
    // The global assembly of the driver, for the residual R(u,p): the material
    // and the boundary conditions are created anew from MaterialModelData and
    // config.yaml.
-   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], fespace);
-   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], fespace);
+   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
    const bool is_traction_load = neumann->is_traction_load();
    auto local_assembly = std::make_unique<LocalAssembly_Mixed>(set_material_model());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
-      fespace, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
-   mfem::Vector residual(offsets.Last());
+      space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
+
+   // sol = [u; p], the input of the residual.
+   mfem::BlockVector sol(global_assembly->get_offsets());
+   mfem::Vector residual(global_assembly->get_num_dofs());
 
    // 4. Collect the faces and directions of the csv_writer section.
    const int load_steps = config["loading"]["load_steps"].as<int>();
@@ -103,8 +103,8 @@ int main(int argc, char *argv[])
          if (face_marker[mesh.GetBdrAttribute(be) - 1] == 0)
             continue;
 
-         const mfem::FiniteElement &face_elem = *fespace.GetBE(be);
-         mfem::ElementTransformation &face_map = *fespace.GetBdrElementTransformation(be);
+         const mfem::FiniteElement &face_elem = *space_u.GetBE(be);
+         mfem::ElementTransformation &face_map = *space_u.GetBdrElementTransformation(be);
          const mfem::IntegrationRule &quad_rule =
             mfem::IntRules.Get(face_elem.GetGeomType(), 2 * face_elem.GetOrder());
          for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
          face.name = input_face;
          face.face_marker = mesh.bdr_attribute_sets.GetAttributeSetMarker(input_face);
          for (int axis = 0; axis < 3; axis++)
-            fespace.GetEssentialTrueDofs(face.face_marker, face.component_dofs[axis], axis);
+            space_u.GetEssentialTrueDofs(face.face_marker, face.component_dofs[axis], axis);
          face.area = get_area(face.face_marker);
          faces.push_back(std::move(face));
          found = faces.end() - 1;
@@ -157,14 +157,14 @@ int main(int argc, char *argv[])
          if (face.face_marker[mesh.GetBdrAttribute(be) - 1] == 0)
             continue;
 
-         const mfem::FiniteElement &face_elem = *fespace.GetBE(be);
-         mfem::ElementTransformation &face_map = *fespace.GetBdrElementTransformation(be);
+         const mfem::FiniteElement &face_elem = *space_u.GetBE(be);
+         mfem::ElementTransformation &face_map = *space_u.GetBdrElementTransformation(be);
          const mfem::IntegrationRule &quad_rule =
             mfem::IntRules.Get(face_elem.GetGeomType(), 2 * face_elem.GetOrder());
 
          const int num_nodes = face_elem.GetDof();
          shape.SetSize(num_nodes);
-         fespace.GetBdrElementVDofs(be, vdofs);
+         space_u.GetBdrElementVDofs(be, vdofs);
          disp.GetSubVector(vdofs, face_disp);
 
          for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
@@ -213,8 +213,8 @@ int main(int argc, char *argv[])
       target = file_gf;
    };
 
-   // 5. Read the displacement of each step, saved by the driver, and write,
-   //    for each face,
+   // 5. Read the displacement and the pressure of each step, saved by the
+   //    driver, and write, for each face,
    //       u_mean_k = (1 / A_0) int u_k dA        mean displacement
    //       F_k      = sum_{a on face} R^a_k       reaction force
    //       area     = A_0                        reference face area
