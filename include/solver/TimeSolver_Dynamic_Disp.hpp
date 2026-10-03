@@ -63,26 +63,26 @@ public:
       // N steps; a last step shorter than 1e-12 dt is left out.
       const int num_steps = static_cast<int>(std::ceil(final_time / nominal_dt - 1.0e-12));
 
-      // The state of step n - 1, from which step n is solved.
-      mfem::GridFunction disp_old(disp), velo_old(velo), acce_old(acce);
+      // The state at t_n, from which the step to t_{n+1} is solved.
+      mfem::GridFunction disp_n(disp), velo_n(velo), acce_n(acce);
 
       mfem::StopWatch step_timer;
-      double time_old = 0.0;
+      double time_n = 0.0;
       for (int step = 1; step <= num_steps; step++)
       {
          // Wall-clock time of the step, up to the convergence.
          step_timer.Restart();
 
-         // t_n = n dt, the last one the final time.
+         // t_{n+1} = step dt, the last one the final time.
          const double time = (step == num_steps) ? final_time : step * nominal_dt;
-         const double dt = time - time_old;
+         const double dt = time - time_n;
 
          mfem::out << std::string(74, '=') << '\n'
                    << "Time step " << step << " / " << num_steps << ", t = " << time
                    << ", dt = " << dt << '\n';
 
-         const int iterations = nonlinear_solver->solve(time_old, dt, disp_old, velo_old,
-                                                        acce_old, disp, velo, acce);
+         const int iterations = nonlinear_solver->solve(time_n, dt, disp_n, velo_n, acce_n,
+                                                        disp, velo, acce);
 
          mfem::out << "converged in " << iterations
                    << " iterations. Time taken: " << std::fixed << std::setprecision(2)
@@ -94,10 +94,10 @@ public:
          SystemTools::save_gf(results_dir, "acce", step, acce);
          time_file << step << ',' << time << ',' << dt << ',' << iterations << '\n';
 
-         disp_old = disp;
-         velo_old = velo;
-         acce_old = acce;
-         time_old = time;
+         disp_n = disp;
+         velo_n = velo;
+         acce_n = acce;
+         time_n = time;
       }
    }
 
