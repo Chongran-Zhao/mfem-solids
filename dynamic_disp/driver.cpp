@@ -100,14 +100,14 @@ int main(int argc, char *argv[])
 
    // 8. Set up the nonlinear solver, which owns the global assembly and the
    //    time method, and the time solver, which owns the nonlinear solver.
-   const YAML::Node dynamics = config["dynamics"];
-   auto time_method = std::make_unique<TimeMethod_GenAlpha>(dynamics["rho_inf"].as<double>());
+   auto time_method =
+      std::make_unique<TimeMethod_GenAlpha>(config["time_method"]["rho_inf"].as<double>());
    auto nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic_Disp>(
       std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver_Dynamic_Disp>(
-      std::move(nonlinear_solver), dynamics["dt"].as<double>(),
-      dynamics["final_time"].as<double>(), results_dir);
+      std::move(nonlinear_solver), config["time"]["dt"].as<double>(),
+      config["time"]["final_time"].as<double>(), results_dir);
 
    // 9. Solve the time steps.
    time_solver->run(disp, velo, acce);
