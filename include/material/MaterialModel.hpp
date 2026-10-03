@@ -89,6 +89,9 @@ public:
    double get_J(double p) const { return vol_model->get_J(p); }
    double get_dJ_dp(double p) const { return vol_model->get_dJ_dp(p); }
 
+   // Reference density rho_0 of the volumetric model.
+   double get_rho_0() const { return vol_model->get_rho_0(); }
+
 private:
    // AA from S and CC: AA_iJkL = F_iM CC_MJNL F_kN + delta_ik S_JL.
    static Tensor4_3D from_CC_to_AA(const Tensor2_3D &F, const Tensor2_3D &PK2,

@@ -1,8 +1,8 @@
 // ============================================================================
 // VTK_Tools.hpp
 //
-// Writes one VTU file per load step on the deformed mesh, and a PVD file
-// listing them, for ParaView.
+// Writes one VTU file per load or time step on the deformed mesh, and a PVD
+// file listing them, for ParaView.
 //
 // Author: Chongran Zhao
 // Date: Sep. 26, 2026
@@ -41,6 +41,60 @@ public:
              const mfem::GridFunction &pres, const std::vector<Tensor2_3D> &PK1,
              const std::vector<Tensor2_3D> &PK2)
    {
+      write_step(step, time, disp, {}, pres, PK1, PK2);
+   }
+
+   // As save above, for the dynamics, with the velocity and the
+   // acceleration, in the space of disp, also at the vertices.
+   void save(int step, double time, const mfem::GridFunction &disp,
+             const mfem::GridFunction &velo, const mfem::GridFunction &acce,
+             const mfem::GridFunction &pres, const std::vector<Tensor2_3D> &PK1,
+             const std::vector<Tensor2_3D> &PK2)
+   {
+      write_step(step, time, disp, {{"velocity", &velo}, {"acceleration", &acce}},
+                 pres, PK1, PK2);
+   }
+
+   // F at the center of element ee, for the output of the stress.
+   static Tensor2_3D get_center_deformation_gradient(const mfem::FiniteElementSpace &fespace,
+                                                     const mfem::GridFunction &disp, int ee)
+   {
+      const mfem::FiniteElement &elem = *fespace.GetFE(ee);
+      mfem::ElementTransformation &elem_map = *fespace.GetElementTransformation(ee);
+      const mfem::IntegrationPoint &center = mfem::Geometries.GetCenter(elem.GetGeomType());
+      elem_map.SetIntPoint(&center);
+
+      const int num_nodes = elem.GetDof();
+      mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
+      elem.CalcDShape(center, dN_dxi);
+      mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
+
+      // Element displacement: x of all nodes, then y, then z.
+      mfem::Array<int> vdofs;
+      mfem::Vector elem_disp;
+      fespace.GetElementVDofs(ee, vdofs);
+      disp.GetSubVector(vdofs, elem_disp);
+
+      return LocalAssemblyTools::get_deformation_gradient(elem_disp, dN_dX);
+   }
+
+   // Path of the PVD file, the one to open in ParaView.
+   std::filesystem::path get_pvd_path() const
+   {
+      return dir / (dir.filename().string() + ".pvd");
+   }
+
+private:
+   std::filesystem::path dir;
+   std::vector<std::pair<double, std::string>> steps; // time and file of each step
+
+   // step_XXXX.vtu of save, with the named nodal_vectors, in the space of
+   // disp, written at the vertices after the displacement.
+   void write_step(int step, double time, const mfem::GridFunction &disp,
+                   const std::vector<std::pair<std::string, const mfem::GridFunction *>> &nodal_vectors,
+                   const mfem::GridFunction &pres, const std::vector<Tensor2_3D> &PK1,
+                   const std::vector<Tensor2_3D> &PK2)
+   {
       const mfem::FiniteElementSpace &fespace = *disp.FESpace();
       const mfem::Mesh &mesh = *fespace.GetMesh();
       // Only the vertex values are written; in an H1 space of any order, the
@@ -61,13 +115,11 @@ public:
           << "<Piece NumberOfPoints=\"" << mesh.GetNV()
           << "\" NumberOfCells=\"" << mesh.GetNE() << "\">\n";
 
-      // Displacement at the vertices.
+      // Displacement, and the other nodal vectors, at the vertices.
       out << "<PointData Vectors=\"displacement\">\n";
-      begin_array(out, "displacement", {"x", "y", "z"});
-      for (int vv = 0; vv < mesh.GetNV(); vv++)
-         out << disp(fespace.DofToVDof(vv, 0)) << ' ' << disp(fespace.DofToVDof(vv, 1))
-             << ' ' << disp(fespace.DofToVDof(vv, 2)) << '\n';
-      out << "</DataArray>\n";
+      write_vertex_vector(out, "displacement", disp);
+      for (const auto &[name, field] : nodal_vectors)
+         write_vertex_vector(out, name, *field);
 
       // Nodal pressure at the vertices.
       if (is_nodal_pres)
@@ -146,22 +198,17 @@ public:
       write_pvd();
    }
 
-   // Shared with assembly; keep the existing postprocessing interface.
-   static Tensor2_3D get_center_deformation_gradient(const mfem::FiniteElementSpace &fespace,
-                                                     const mfem::GridFunction &disp, int ee)
+   // A vector field of the space of disp at the vertices.
+   static void write_vertex_vector(std::ofstream &out, const std::string &name,
+                                   const mfem::GridFunction &field)
    {
-      return LocalAssemblyTools::get_center_deformation_gradient(fespace, disp, ee);
+      const mfem::FiniteElementSpace &fespace = *field.FESpace();
+      begin_array(out, name, {"x", "y", "z"});
+      for (int vv = 0; vv < fespace.GetMesh()->GetNV(); vv++)
+         out << field(fespace.DofToVDof(vv, 0)) << ' ' << field(fespace.DofToVDof(vv, 1))
+             << ' ' << field(fespace.DofToVDof(vv, 2)) << '\n';
+      out << "</DataArray>\n";
    }
-
-   // Path of the PVD file, the one to open in ParaView.
-   std::filesystem::path get_pvd_path() const
-   {
-      return dir / (dir.filename().string() + ".pvd");
-   }
-
-private:
-   std::filesystem::path dir;
-   std::vector<std::pair<double, std::string>> steps; // time and file of each step
 
    // Opening tag of a Float64 array with named components.
    static void begin_array(std::ofstream &out, const std::string &name,

@@ -1,12 +1,14 @@
 // ============================================================================
-// driver.cpp of static_disp
+// driver.cpp of dynamic_disp
 //
-// Hyperelastostatics in the displacement form, the displacement being the
-// only unknown. Boundary conditions are read from config.yaml and refer to
-// faces by name; the material is given by MaterialModelData.
+// Hyperelastodynamics in the displacement form, with the generalized-alpha
+// method in physical time. The time steps and the boundary conditions are
+// read from config.yaml, the latter referring to faces by name; the material
+// is given by MaterialModelData, and the initial velocity and the loading by
+// LoadData. The initial displacement is zero.
 //
 // Author: Chongran Zhao
-// Date: Sep. 28, 2026
+// Date: Oct. 3, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #include <filesystem>
@@ -21,13 +23,16 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Disp.hpp"
+#include "LoadData.hpp"
 #include "LocalAssembly_Disp.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
-#include "NonlinearSolver_Static_Disp.hpp"
+#include "NonlinearSolver_Dynamic_Disp.hpp"
 #include "SystemTools.hpp"
-#include "TimeSolver_Static_Disp.hpp"
+#include "TimeMethod_GenAlpha.hpp"
+#include "TimeSolver_Dynamic_Disp.hpp"
+#include "Vector_3D.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -48,63 +53,64 @@ int main(int argc, char *argv[])
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
 
-   // 3. Set up the finite element space of the displacement.
+   // 3. Set up the finite element space of the displacement, also that of
+   //    the velocity and the acceleration. The mass matrix and the solvers
+   //    work on the GridFunctions directly, so the mesh must be conforming.
    const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    mfem::H1_FECollection fec_u(order, dim);
    mfem::FiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
-   mfem::GridFunction disp(&space_u);
-   disp = 0.0;
+   MFEM_VERIFY(space_u.GetVSize() == space_u.GetTrueVSize(),
+               "The dynamic driver needs a conforming mesh.");
    SystemTools::print_space(space_u);
 
-   // 4. Set up the boundary conditions.
+   // 4. Set the initial state: zero displacement, and the velocity
+   //    LoadData::initial_velo at the nodes.
+   mfem::VectorFunctionCoefficient initial_velo_value(dim,
+      [](const mfem::Vector &pt, mfem::Vector &value)
+   {
+      const Vector_3D velo_0 = LoadData::initial_velo(pt);
+      for (int comp = 0; comp < 3; comp++)
+         value(comp) = velo_0(comp);
+   });
+   mfem::GridFunction disp(&space_u), velo(&space_u), acce(&space_u);
+   disp = 0.0;
+   velo.ProjectCoefficient(initial_velo_value);
+   acce = 0.0;
+
+   // 5. Set up the boundary conditions; a prescribed displacement and a
+   //    traction may act together.
    auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
    auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
-
-   // The loading is either a prescribed displacement or a traction.
-   const std::string loading_type = config["loading"]["type"].as<std::string>();
-   if (loading_type == "displacement")
-   {
-      MFEM_VERIFY(dirichlet->is_disp_load() && !neumann->is_traction_load(),
-                  "The loading type is displacement, so disp_bc must have an "
-                  "entry and Neumann no face.");
-   }
-   else if (loading_type == "traction")
-   {
-      MFEM_VERIFY(neumann->is_traction_load() && !dirichlet->is_disp_load(),
-                  "The loading type is traction, so Neumann must have a face "
-                  "and disp_bc no entry.");
-   }
-   else
-      MFEM_ABORT("Unknown loading type \"" << loading_type << "\".");
-
    dirichlet->print_fixed_bc();
    if (dirichlet->is_disp_load())
       dirichlet->print_disp_load();
-   else
+   if (neumann->is_traction_load())
       neumann->print_traction_load();
 
-   // 5. Set up the material model.
+   // 6. Set up the material model.
    std::unique_ptr<MaterialModel> material = set_material_model();
 
-   // 6. Set up the assembly: the material goes to the local assembly, and the
+   // 7. Set up the assembly: the material goes to the local assembly, and the
    //    local assembly and the boundary conditions to the global one, which
    //    owns them.
    auto local_assembly = std::make_unique<LocalAssembly_Disp>(std::move(material));
    auto global_assembly = std::make_unique<GlobalAssembly_Disp>(
       space_u, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
-   // 7. Set up the nonlinear solver, which owns the global assembly, and the
-   //    time solver, which owns the nonlinear solver.
-   auto nonlinear_solver = std::make_unique<NonlinearSolver_Static_Disp>(
-      std::move(global_assembly), config["solver"]);
-   const int num_load_steps = config["loading"]["load_steps"].as<int>();
+   // 8. Set up the nonlinear solver, which owns the global assembly and the
+   //    time method, and the time solver, which owns the nonlinear solver.
+   auto time_method =
+      std::make_unique<TimeMethod_GenAlpha>(config["time_method"]["rho_inf"].as<double>());
+   auto nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic_Disp>(
+      std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
-   auto time_solver = std::make_unique<TimeSolver_Static_Disp>(
-      std::move(nonlinear_solver), num_load_steps, results_dir);
+   auto time_solver = std::make_unique<TimeSolver_Dynamic_Disp>(
+      std::move(nonlinear_solver), config["time"]["dt"].as<double>(),
+      config["time"]["final_time"].as<double>(), results_dir);
 
-   // 8. Solve the load steps.
-   time_solver->run(disp);
+   // 9. Solve the time steps.
+   time_solver->run(disp, velo, acce);
 
    mfem::out << std::string(74, '=') << "\n\n";
    mfem::out << "Job finished on " << SystemTools::get_time() << ' ' << SystemTools::get_date()

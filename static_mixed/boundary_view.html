@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<!--
+  Template of the boundary view written by read_mesh. read_mesh replaces
+  __DATA__ below with the boundary faces of the mesh and saves the result.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Boundary faces</title>
+<style>
+  :root { --fg: #1f2328; --muted: #57606a; --panel: rgba(255, 255, 255, 0.92); --line: #d0d7de; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #f6f8fa;
+               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  #panel { position: absolute; top: 12px; left: 12px; padding: 10px 14px; background: var(--panel);
+           border: 1px solid var(--line); border-radius: 8px; color: var(--fg); font-size: 13px; }
+  #panel h1 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+  #panel .file { color: var(--muted); font-size: 12px; margin-bottom: 8px; word-break: break-all; max-width: 360px; }
+  #panel table { border-collapse: collapse; }
+  #panel td { padding: 2px 8px 2px 0; white-space: nowrap; }
+  #panel .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; vertical-align: -1px; }
+  #panel .hint { margin-top: 8px; color: var(--muted); font-size: 12px; }
+  .face-label { padding: 2px 8px; border-radius: 10px; color: #fff; font-size: 13px; font-weight: 600;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); pointer-events: none; }
+  .axis-label { font-size: 14px; font-weight: 700; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h1>Boundary faces</h1>
+  <div class="file" id="file"></div>
+  <table id="legend"></table>
+  <div class="hint">Drag to rotate, scroll to zoom, right-drag to pan.</div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// Filled in by read_mesh: the mesh file, the bounding box and, for each
+// label, its name, attribute, label position and boundary faces (each face a
+// flat list x0, y0, z0, x1, y1, z1, ...).
+const data = __DATA__;
+
+const colors = ['#e4572e', '#29335c', '#f3a712', '#669bbc', '#2e933c', '#a8327d', '#7a7a7a'];
+
+const scene = new THREE.Scene();
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0xf6f8fa);
+document.body.appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+document.body.appendChild(labelRenderer.domElement);
+
+// Camera looking at the bounding box, with z up as in the mesh.
+const [xmin, xmax, ymin, ymax, zmin, zmax] = data.box;
+const center = new THREE.Vector3((xmin + xmax) / 2, (ymin + ymax) / 2, (zmin + zmax) / 2);
+const size = Math.hypot(xmax - xmin, ymax - ymin, zmax - zmin);
+
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, size / 1000, size * 100);
+camera.up.set(0, 0, 1);
+camera.position.set(center.x + 0.55 * size, center.y - 1.1 * size, center.z + 0.6 * size);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(center);
+controls.update();
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+const light = new THREE.DirectionalLight(0xffffff, 0.9);
+camera.add(light);
+scene.add(camera);
+
+// One colored surface, its element edges and a name label per face group.
+document.getElementById('file').textContent = data.file;
+const legend = document.getElementById('legend');
+
+for (const face of data.faces) {
+  const color = colors[(face.attribute - 1) % colors.length];
+
+  const positions = [];
+  const edges = [];
+  for (const poly of face.polygons) {
+    const num = poly.length / 3;
+    const corner = (kk) => [poly[3 * kk], poly[3 * kk + 1], poly[3 * kk + 2]];
+    for (let kk = 1; kk + 1 < num; kk++)
+      positions.push(...corner(0), ...corner(kk), ...corner(kk + 1));
+    for (let kk = 0; kk < num; kk++)
+      edges.push(...corner(kk), ...corner((kk + 1) % num));
+  }
+
+  const surface = new THREE.BufferGeometry();
+  surface.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  surface.computeVertexNormals();
+  scene.add(new THREE.Mesh(surface, new THREE.MeshLambertMaterial({
+    color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })));
+
+  const lines = new THREE.BufferGeometry();
+  lines.setAttribute('position', new THREE.Float32BufferAttribute(edges, 3));
+  scene.add(new THREE.LineSegments(lines, new THREE.LineBasicMaterial({ color: 0x24292f, transparent: true, opacity: 0.35 })));
+
+  const tag = document.createElement('div');
+  tag.className = 'face-label';
+  tag.style.background = color;
+  tag.textContent = face.name;
+  const label = new CSS2DObject(tag);
+  label.position.set(...face.label_position);
+  scene.add(label);
+
+  const row = legend.insertRow();
+  row.insertCell().innerHTML = `<span class="swatch" style="background:${color}"></span>`;
+  row.insertCell().textContent = face.attribute;
+  row.insertCell().textContent = face.name;
+  row.insertCell().textContent = face.plane;
+  row.insertCell().textContent = `${face.polygons.length} bdr elems`;
+}
+
+// Axes next to the corner (xmin, ymin, zmin), moved out of the box so that
+// they do not run along its edges.
+const origin = new THREE.Vector3(xmin, ymin, zmin).addScalar(-0.12 * size);
+const axis_length = 0.25 * size;
+const axes = [['x', new THREE.Vector3(1, 0, 0), 0xd1242f],
+              ['y', new THREE.Vector3(0, 1, 0), 0x1a7f37],
+              ['z', new THREE.Vector3(0, 0, 1), 0x0969da]];
+for (const [name, dir, color] of axes) {
+  scene.add(new THREE.ArrowHelper(dir, origin, axis_length, color, 0.08 * axis_length, 0.05 * axis_length));
+  const tag = document.createElement('div');
+  tag.className = 'axis-label';
+  tag.style.color = '#' + color.toString(16).padStart(6, '0');
+  tag.textContent = name;
+  const label = new CSS2DObject(tag);
+  label.position.copy(origin).addScaledVector(dir, 1.15 * axis_length);
+  scene.add(label);
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+renderer.setAnimationLoop(() => {
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 //
 // Fully incompressible volumetric model, J = 1 for any pressure. It has no
 // strain energy as a function of J, so it is used only in the mixed
-// formulation.
+// formulation. Its reference density rho_0 is also the current one.
 //
 // Author: Chongran Zhao
 // Date: Sep. 29, 2026
@@ -19,6 +19,8 @@
 class MaterialModel_vol_Incompressible : public IMaterialModel_vol
 {
 public:
+   MaterialModel_vol_Incompressible(double input_rho_0) : rho_0(input_rho_0) {}
+
    double get_energy(double J) const override
    {
       MFEM_ABORT("MaterialModel_vol_Incompressible has no Psi_vol(J).");
@@ -42,6 +44,11 @@ public:
 
    // dJ/dp = 0
    double get_dJ_dp(double p) const override { return 0.0; }
+
+   double get_rho_0() const override { return rho_0; }
+
+private:
+   const double rho_0;
 };
 
 #endif

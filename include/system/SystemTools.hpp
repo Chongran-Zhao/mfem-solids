@@ -116,7 +116,8 @@ public:
             initial_norm = norm;
          mfem::out << std::left << std::setw(12) << it << std::scientific
                    << std::setprecision(6) << std::setw(18) << norm
-                   << norm / initial_norm << std::defaultfloat << '\n';
+                   << (initial_norm > 0.0 ? norm / initial_norm : 0.0)
+                   << std::defaultfloat << '\n';
       }
 
    private:
@@ -168,29 +169,6 @@ public:
    private:
       const mfem::Array<int> offsets;             // [0, n_u, n_u + n_p]
       std::array<double, 2> initial_norm = {1.0, 1.0};
-   };
-
-   // MFEM's block form lacks NonlinearForm::UseExternalIntegrators().
-   // Add the same ownership option, without changing assembly behavior.
-   class BlockNonlinearForm : public mfem::BlockNonlinearForm
-   {
-   public:
-      void UseExternalIntegrators() { external_integrators = true; }
-
-      ~BlockNonlinearForm() override
-      {
-         if (external_integrators)
-         {
-            // The base destructor otherwise deletes these borrowed pointers.
-            dnfi.SetSize(0);
-            bnfi.SetSize(0);
-            fnfi.SetSize(0);
-            bfnfi.SetSize(0);
-         }
-      }
-
-   private:
-      bool external_integrators = false;
    };
 
    // Creates an empty folder; an existing one is emptied first, so that no

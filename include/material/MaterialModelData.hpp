@@ -19,15 +19,18 @@
 #include "MaterialModel_ich_NeoHookean.hpp"
 #include "MaterialModel_vol_Quadratic.hpp"
 
-// Young's modulus and Poisson's ratio of the reference case.
+// Young's modulus, Poisson's ratio and reference density of the reference
+// case; the density matters only to the dynamics.
 inline constexpr double young = 540.0e3;
 inline constexpr double poisson = 0.324;
+inline constexpr double density = 1000.0;
 
-// Volumetric model: quadratic, with kappa from young and poisson.
+// Volumetric model: quadratic, with kappa from young and poisson, and the
+// density.
 inline std::unique_ptr<IMaterialModel_vol> set_vol_model()
 {
    const double kappa = young / (3.0 * (1.0 - 2.0 * poisson));
-   return std::make_unique<MaterialModel_vol_Quadratic>(kappa);
+   return std::make_unique<MaterialModel_vol_Quadratic>(density, kappa);
 }
 
 // Isochoric model: Neo-Hookean, with mu from young and poisson.

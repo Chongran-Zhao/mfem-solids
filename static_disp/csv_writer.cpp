@@ -235,7 +235,7 @@ int main(int argc, char *argv[])
       const double factor = static_cast<double>(step) / load_steps;
       if (is_traction_load)
          global_assembly->set_traction_load(factor);
-      global_assembly->set_residual(disp, residual);
+      global_assembly->assemble_residual(disp, residual);
 
       mfem::out << std::string(74, '=') << '\n'
                 << "Load step " << step << " / " << load_steps << "\n\n"

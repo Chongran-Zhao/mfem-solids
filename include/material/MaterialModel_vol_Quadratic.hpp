@@ -1,7 +1,8 @@
 // ============================================================================
 // MaterialModel_vol_Quadratic.hpp
 //
-// Quadratic volumetric energy with bulk modulus kappa.
+// Quadratic volumetric energy with bulk modulus kappa, and reference
+// density rho_0.
 //
 // Reference:
 //   C.O. Horgan, J.G. Murphy, On the volumetric part of strain-energy
@@ -21,7 +22,8 @@
 class MaterialModel_vol_Quadratic : public IMaterialModel_vol
 {
 public:
-   MaterialModel_vol_Quadratic(double input_kappa) : kappa(input_kappa) {}
+   MaterialModel_vol_Quadratic(double input_rho_0, double input_kappa)
+      : rho_0(input_rho_0), kappa(input_kappa) {}
 
    // Psi_vol = kappa/2 (J - 1)^2
    double get_energy(double J) const override { return 0.5 * kappa * (J - 1.0) * (J - 1.0); }
@@ -38,7 +40,10 @@ public:
    // dJ/dp = -1/kappa
    double get_dJ_dp(double p) const override { return -1.0 / kappa; }
 
+   double get_rho_0() const override { return rho_0; }
+
 private:
+   const double rho_0;
    const double kappa;
 };
 

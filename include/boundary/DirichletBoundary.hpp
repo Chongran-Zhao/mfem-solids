@@ -54,7 +54,7 @@ public:
          disp_fixed_list.push_back(fixed);
       }
 
-      // Displacement-driven faces; the values come from LoadData::disp_driven.
+      // Displacement-driven faces; the values come from LoadData::disp_loading.
       for (const YAML::Node &bc : paras["disp_bc"])
       {
          const std::string input_face = bc["face"].as<std::string>();
@@ -88,20 +88,20 @@ public:
             disp(dof) = 0.0;
    }
 
-   // Apply the disp loading given by LoadData::disp_driven(pt, tt).
+   // Apply the disp loading given by LoadData::disp_loading(pt, tt).
    void apply_disp_load_bc(double tt, mfem::GridFunction &disp) const
    {
-      for (const disp_load &load : disp_load_list)
-      {
-         mfem::FunctionCoefficient value([&](const mfem::Vector &pt)
-         { return LoadData::disp_driven(pt, tt, load.face)(load.dir); });
-
-         mfem::Coefficient *coeff[3] = {nullptr, nullptr, nullptr};
-         coeff[load.dir] = &value;
-         disp.ProjectBdrCoefficient(coeff, face_attribute_map.at(load.face));
-      }
+      apply_load_bc(disp, [tt](const mfem::Vector &pt, const std::string &face, int dir)
+      { return LoadData::disp_loading(pt, tt, face)(dir); });
    }
 
+   // Apply the velocity of the disp loading, LoadData::velo_loading(pt, tt),
+   // for the initial state of the dynamics.
+   void apply_velo_load_bc(double tt, mfem::GridFunction &velo) const
+   {
+      apply_load_bc(velo, [tt](const mfem::Vector &pt, const std::string &face, int dir)
+      { return LoadData::velo_loading(pt, tt, face)(dir); });
+   }
 
    // Print the fixed faces and the number of all constrained unknowns.
    void print_fixed_bc() const
@@ -164,6 +164,22 @@ public:
    }
 
 private:
+   // Project value(pt, face, dir), the prescribed displacement or one of its
+   // time derivatives, onto the dofs of every entry of disp_bc.
+   template <typename Value>
+   void apply_load_bc(mfem::GridFunction &field, const Value &value) const
+   {
+      for (const disp_load &load : disp_load_list)
+      {
+         mfem::FunctionCoefficient load_value([&](const mfem::Vector &pt)
+         { return value(pt, load.face, load.dir); });
+
+         mfem::Coefficient *coeff[3] = {nullptr, nullptr, nullptr};
+         coeff[load.dir] = &load_value;
+         field.ProjectBdrCoefficient(coeff, face_attribute_map.at(load.face));
+      }
+   }
+
    // One direction on a fixed face.
    struct disp_fixed
    {
