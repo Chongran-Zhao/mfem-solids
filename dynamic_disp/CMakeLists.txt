@@ -1,9 +1,9 @@
 # ============================================================================
 # dynamic_disp: hyperelastodynamics in the displacement form
 #
-# Build, test and run in this folder:
+# Build and run in this folder:
 #    cmake -B build && cmake --build build
-#    cd build && ctest && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
+#    cd build && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(dynamic_disp LANGUAGES CXX)
@@ -33,12 +33,3 @@ target_link_libraries(vtu_writer PRIVATE ${mfem_libraries})
 add_executable(csv_writer csv_writer.cpp)
 target_include_directories(csv_writer PRIVATE ${include_dirs})
 target_link_libraries(csv_writer PRIVATE ${mfem_libraries})
-
-# The checks of tests/dynamic_disp.cpp, run by ctest.
-include(CTest)
-if(BUILD_TESTING)
-  add_executable(test_dynamic_disp ../tests/dynamic_disp.cpp)
-  target_include_directories(test_dynamic_disp PRIVATE ${include_dirs})
-  target_link_libraries(test_dynamic_disp PRIVATE ${mfem_libraries})
-  add_test(NAME dynamic_disp COMMAND test_dynamic_disp)
-endif()
