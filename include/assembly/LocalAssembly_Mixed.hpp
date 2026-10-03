@@ -234,6 +234,9 @@ public:
       }
    }
 
+   // Reference density rho_0 of the material, for the mass matrix.
+   double get_rho_0() const { return material->get_rho_0(); }
+
 private:
    const std::unique_ptr<const MaterialModel> material;
 };

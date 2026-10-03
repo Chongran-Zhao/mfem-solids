@@ -32,6 +32,13 @@ public:
       return vol_model->get_energy(F.det()) + ich_model->get_energy(F);
    }
 
+   // Strain energy of the mixed form, Psi_vol(J(p)) + Psi_ich(F) per
+   // reference volume, with the volume ratio of the pressure.
+   double get_strain_energy(const Tensor2_3D &F, double p) const
+   {
+      return vol_model->get_energy(vol_model->get_J(p)) + ich_model->get_energy(F);
+   }
+
    // Second Piola-Kirchhoff stress S = -J p C^-1 + S_ich.
    Tensor2_3D get_2nd_PK_stress(const Tensor2_3D &F) const
    {

@@ -12,7 +12,8 @@ and traction conditions on named faces, load stepping and Newton's method.
 | `driver` (`static_disp/`) | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
 | `driver` (`static_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | displacement `disp_XXXX.gf` and nodal pressure `pres_XXXX.gf` at each load step |
 | `driver` (`dynamic_disp/`) | `beam.mesh`, the time steps, the boundary conditions and solver settings | displacement, velocity and acceleration of each time step, `disp_XXXX.gf`, `velo_XXXX.gf`, `acce_XXXX.gf`, and the time and Newton iterations of each step, `time.csv` |
-| `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with displacement, pressure and element-center first and second Piola-Kirchhoff stresses; pressure is p(J) in the displacement form and the saved nodal field in the mixed form; in `dynamic_disp/` also velocity and acceleration, at the physical times of `time.csv`; open `results_vtu.pvd` in ParaView |
+| `driver` (`dynamic_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | the files of `dynamic_disp/` and nodal pressure `pres_XXXX.gf` at each time step |
+| `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with displacement, pressure and element-center first and second Piola-Kirchhoff stresses; pressure is p(J) in the displacement form and the saved nodal field in the mixed form; in `dynamic_disp/` and `dynamic_mixed/` also velocity and acceleration, at the physical times of `time.csv`; open `results_vtu.pvd` in ParaView |
 | `csv_writer` | `results_gf/` and the material | `results_csv/<face>.csv`: mean displacement, reaction force F, reference face area and face-mean pressure p on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the formulation's residual on the constrained dofs of the face |
 
 `scripts/plot_csv.m` (MATLAB) plots the CSV files of `csv_writer` against the load factor,
@@ -30,6 +31,15 @@ acceleration is zero, as in MixPERIGEE. `ctest` runs the checks of
 `tests/dynamic_disp.cpp`. Its `csv_writer` writes the face columns of the static one at the
 physical times, with reactions M a + F_int - F_ext that include the inertia, and
 `energy.csv`, the kinetic, strain and total energies of the whole body.
+
+`dynamic_mixed/` solves the mixed dynamics, M a + F_int(u,p) = F_ext(t) with J(u) = J(p)
+weakly, by the same second-order generalized-alpha method: u_{n+1} and p_{n+1} are the
+unknowns of Newton's method, both equations hold at the intermediate states, and the
+pressure has no inertia. The initial pressure is zero, consistent with the zero initial
+displacement. `ctest` runs the checks of `tests/dynamic_mixed.cpp`. Its `csv_writer`
+writes the columns of the one of `dynamic_disp/`, with the strain energy of the mixed form,
+int Psi_vol(J(p)) + Psi_ich(F) dV. Its default `rho_inf` is 0.5: with 1, the pressure
+keeps the oscillations of the high frequencies of Q2 that dt does not resolve.
 
 Each formulation has its own `config.yaml`; the material, the density included, is in `include/material/MaterialModelData.hpp`,
 and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
@@ -83,7 +93,7 @@ Requires CMake 3.20 or newer, MFEM built with CMake and SuiteSparse (developed a
 them in `../../lib`; change the paths in `cmake/mfem-solids.cmake` if yours are elsewhere.
 
 The programs of each formulation are in their own folder, `static_disp/`,
-`static_mixed/` and `dynamic_disp/`, a CMake project of its own; the settings they share are in
+`static_mixed/`, `dynamic_disp/` and `dynamic_mixed/`, a CMake project of its own; the settings they share are in
 `cmake/mfem-solids.cmake`. The displacement form is built and run in `static_disp/`:
 
 ```bash
@@ -98,7 +108,7 @@ cd build && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
 with `space.order >= 2`. Its driver saves displacement and pressure; its
 postprocessors read both fields to compute stresses and reactions.
 
-`dynamic_disp/` builds `read_mesh`, `driver`, `vtu_writer`, `csv_writer` and the checks run by `ctest`:
+`dynamic_disp/` and `dynamic_mixed/` build `read_mesh`, `driver`, `vtu_writer`, `csv_writer` and the checks run by `ctest`:
 
 ```bash
 cd build && ctest && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
