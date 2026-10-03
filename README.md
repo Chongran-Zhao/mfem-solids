@@ -12,7 +12,7 @@ and traction conditions on named faces, load stepping and Newton's method.
 | `driver` (`static_disp/`) | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
 | `driver` (`static_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | displacement `disp_XXXX.gf` and nodal pressure `pres_XXXX.gf` at each load step |
 | `driver` (`dynamic_disp/`) | `beam.mesh`, the time steps, the boundary conditions and solver settings | displacement, velocity and acceleration of each time step, `disp_XXXX.gf`, `velo_XXXX.gf`, `acce_XXXX.gf`, and the time and Newton iterations of each step, `time.csv` |
-| `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with displacement, pressure and element-center first and second Piola-Kirchhoff stresses; pressure is p(J) in the displacement form and the saved nodal field in the mixed form; open `results_vtu.pvd` in ParaView |
+| `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with displacement, pressure and element-center first and second Piola-Kirchhoff stresses; pressure is p(J) in the displacement form and the saved nodal field in the mixed form; in `dynamic_disp/` also velocity and acceleration, at the physical times of `time.csv`; open `results_vtu.pvd` in ParaView |
 | `csv_writer` | `results_gf/` and the material | `results_csv/<face>.csv`: mean displacement, reaction force F, reference face area and face-mean pressure p on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the formulation's residual on the constrained dofs of the face |
 
 `scripts/plot_csv.m` (MATLAB) plots the CSV files of `csv_writer` against the load factor,
@@ -27,7 +27,7 @@ traction may act together. The initial displacement is zero and the initial velo
 `LoadData::initial_velo`. On the displacement-driven faces, the initial velocity is
 `LoadData::velo_loading`, kept consistent with `disp_loading` by hand, and the initial
 acceleration is zero, as in MixPERIGEE. `ctest` runs the checks of
-`tests/dynamic_disp.cpp`. Stresses, reactions and energies of the dynamics are not
+`tests/dynamic_disp.cpp`. Reactions and energies of the dynamics are not
 written yet; the static `csv_writer` reactions leave out the inertia.
 
 Each formulation has its own `config.yaml`; the material, the density included, is in `include/material/MaterialModelData.hpp`,
@@ -97,10 +97,10 @@ cd build && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
 with `space.order >= 2`. Its driver saves displacement and pressure; its
 postprocessors read both fields to compute stresses and reactions.
 
-`dynamic_disp/` builds `read_mesh`, `driver` and the checks run by `ctest`:
+`dynamic_disp/` builds `read_mesh`, `driver`, `vtu_writer` and the checks run by `ctest`:
 
 ```bash
-cd build && ctest && ./read_mesh && ./driver
+cd build && ctest && ./read_mesh && ./driver && ./vtu_writer
 ```
 
 Each folder has its own `config.yaml`, which CMake copies into its `build/`,

@@ -62,7 +62,7 @@ public:
          mfem::out << "converged in " << iterations
                    << " iterations. Time taken: " << std::fixed << std::setprecision(2)
                    << step_timer.RealTime() << " sec. " << SystemTools::get_time()
-                   << std::defaultfloat << '\n';
+                   << std::defaultfloat << std::setprecision(6) << '\n';
 
          SystemTools::save_gf(results_dir, "disp", step, disp);
       }

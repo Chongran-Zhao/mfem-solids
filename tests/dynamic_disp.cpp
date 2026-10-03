@@ -11,7 +11,8 @@
 //    free vibration     a small longitudinal vibration against the midpoint
 //                       rule of its linear oscillator, its energy, and the
 //                       second-order convergence in time;
-//    prescribed motion  disp_bc on the right face, LoadData::disp_loading;
+//    prescribed motion  disp_bc on the right face, LoadData::disp_loading and
+//                       velo_loading;
 //    traction impulse   the momentum against the impulse of the traction on
 //                       the right face, LoadData::surface_traction.
 // Run by CTest; prints PASS, or the failed check and exits with 1.
@@ -34,6 +35,7 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Disp.hpp"
+#include "LoadData.hpp"
 #include "LocalAssembly_Disp.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
@@ -284,8 +286,9 @@ static double check_free_vibration(double dt)
 }
 
 // The cube fixed on the left face and driven along z on the right one by
-// LoadData::disp_loading, -0.5 t: after one step, u_z = -0.5 t, v_z = -0.5
-// and a_z = 0 there.
+// LoadData::disp_loading, linear in time, with the velocity
+// LoadData::velo_loading: after one step, u_z and v_z there are those of
+// LoadData, and a_z = 0.
 static void check_prescribed_motion()
 {
    UnitCube cube("{fixed_bc: [{face: left, dir: x}, {face: left, dir: y}, {face: left, dir: z}],"
@@ -299,13 +302,19 @@ static void check_prescribed_motion()
    const double dt = 0.001;
    solve_step(*nonlinear_solver, 0.0, dt, disp, velo, acce);
 
-   mfem::Array<int> right_dofs;
-   cube.space_u.GetEssentialTrueDofs(
-      cube.mesh.bdr_attribute_sets.GetAttributeSetMarker("right"), right_dofs, 2);
-   for (int dof : right_dofs)
-      check(std::abs(disp(dof) + 0.5 * dt) < 1.0e-14 && std::abs(velo(dof) + 0.5) < 1.0e-12 &&
+   // The vertices of the right face, x = 1, are its z dofs in Q1.
+   for (int vv = 0; vv < cube.mesh.GetNV(); vv++)
+   {
+      mfem::Vector pt(cube.mesh.GetVertex(vv), 3);
+      if (std::abs(pt(0) - 1.0) > 1.0e-12)
+         continue;
+      const int dof = cube.space_u.DofToVDof(vv, 2);
+      const double disp_z = LoadData::disp_loading(pt, dt, "right")(2);
+      const double velo_z = LoadData::velo_loading(pt, dt, "right")(2);
+      check(std::abs(disp(dof) - disp_z) < 1.0e-14 && std::abs(velo(dof) - velo_z) < 1.0e-12 &&
             std::abs(acce(dof)) < 1.0e-8,
             "Prescribed motion: wrong displacement, velocity or acceleration.");
+   }
 }
 
 // A free cube loaded on the right face by LoadData::surface_traction. The

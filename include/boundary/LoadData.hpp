@@ -26,11 +26,14 @@ public:
    // Initial velocity v_0(pt) of the dynamics, at the reference position pt;
    // the initial displacement is zero, as in MixPERIGEE.
    // Examples:
-   //   bending of the beam x in [0, 1], growing linearly from its fixed end:
-   //     return Vector_3D(0.0, 0.0, 0.01 * pt(0));
+   //   the default case: the beam x in [0, 1], fixed at x = 0, set swinging
+   //   along z, with a velocity growing linearly from its fixed end:
+   //     return Vector_3D(0.0, 0.0, 2.0 * pt(0));
+   //   about the first bending mode, close to the static deflection shape:
+   //     return Vector_3D(0.0, 0.0, 0.5 * pt(0) * pt(0) * (3.0 - pt(0)));
    static Vector_3D initial_velo(const mfem::Vector &pt)
    {
-      return Vector_3D(0.0, 0.0, 0.01 * pt(0));
+      return Vector_3D(0.0, 0.0, 2.0 * pt(0));
    }
 
    // Body force per unit reference volume, rho_0 b(pt, tt).

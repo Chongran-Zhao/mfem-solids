@@ -109,7 +109,7 @@ int main(int argc, char *argv[])
    mfem::out << std::string(74, '=') << "\n\n";
    mfem::out << "Job finished on " << SystemTools::get_time() << ' ' << SystemTools::get_date()
              << ". Time taken: " << std::fixed << std::setprecision(2) << total_timer.RealTime()
-             << " sec.\n\n" << std::defaultfloat;
+             << " sec.\n\n" << std::defaultfloat << std::setprecision(6);
    SystemTools::print_saved(results_dir);
    mfem::out << '\n';
 

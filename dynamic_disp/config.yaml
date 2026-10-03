@@ -1,9 +1,11 @@
-# Input of read_mesh and driver of dynamic_disp.
+# Input of read_mesh, driver and vtu_writer of dynamic_disp.
 # CMake copies it into dynamic_disp/build/, and the programs read the copy of
 # the directory they run in, or the file given as first argument. mesh.file is
 # relative to the project directory. Times are physical, in seconds; the
 # loading functions of LoadData receive the physical time. The initial
 # velocity is LoadData::initial_velo, and the initial displacement zero.
+# The default case is the beam fixed on its left face, set swinging along z
+# by the initial velocity, without load.
 
 mesh:
   # Mesh file in MFEM format.
@@ -53,6 +55,7 @@ solver:
   newton_abs_tol: 1.0e-10
   newton_max_iter: 20
 
-# Output folder, in the directory the programs run in.
+# Output folders, in the directory the programs run in.
 output:
+  vtu: results_vtu
   gf: results_gf
