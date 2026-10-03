@@ -2,7 +2,7 @@
 // NonlinearSolver_Dynamic_Disp.hpp
 //
 // Solves one time step of the displacement dynamics,
-//    M a_{n+1} + F_int(u_{n+1}) = F_ext(t_{n+1}),
+//    M a + F_int(u) = F_ext(t),
 // with the generalized-alpha method: the equation holds at the intermediate
 // states u_alpha, a_alpha and the time t_alpha, and Newmark's formulas give
 // a_{n+1} and v_{n+1} from u_{n+1}, the unknown of Newton's method. It also
@@ -89,41 +89,35 @@ public:
       linear_solver.Mult(rhs, acce);
    }
 
-   // Solves the step from time tt to tt + input_dt, from the state of time tt
-   // into disp, velo and acce of time tt + input_dt, and returns the number
-   // of Newton iterations.
-   int solve(double tt, double input_dt, const mfem::GridFunction &input_disp_n,
+   // Solves the step from time_n to time_n + input_dt, from the state of
+   // time_n into disp, velo and acce of time_n + input_dt, and returns the
+   // number of Newton iterations.
+   int solve(double time_n, double input_dt, const mfem::GridFunction &input_disp_n,
              const mfem::GridFunction &input_velo_n, const mfem::GridFunction &input_acce_n,
              mfem::GridFunction &disp, mfem::GridFunction &velo, mfem::GridFunction &acce)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
-      const NeumannBoundary &neumann = global_assembly->get_neumann();
       const double gamma = time_method->get_gamma();
       const double beta = time_method->get_beta();
 
-      set_step(tt, input_dt, input_disp_n, input_velo_n, input_acce_n);
+      set_step(time_n, input_dt, input_disp_n, input_velo_n, input_acce_n);
 
       // Newton's method starts from u_pred, the displacement with
-      // a_{n+1} = 0, with the prescribed values of time tt + dt on the
+      // a_{n+1} = 0, with the prescribed values of time time_n + dt on the
       // constrained dofs, as in MixPERIGEE; the Newton increments are zero
       // there.
       disp = disp_predict;
       dirichlet.apply_fixed_bc(disp);
       if (dirichlet.is_disp_load())
-         dirichlet.apply_disp_load_bc(tt + dt, disp);
+         dirichlet.apply_disp_load_bc(time_n + dt, disp);
 
-      // The load value: the prescribed displacement, or the traction faces.
-      if (dirichlet.is_disp_load())
-         dirichlet.print_disp_load_by_step(disp);
-      if (neumann.is_traction_load())
-         neumann.print_traction_load_by_step();
       SystemTools::print_newton_header();
 
       // Newton iterations for R_dyn(u_{n+1}) = 0; the empty right-hand side
       // means zero.
       newton_solver.Mult(mfem::Vector(), disp);
       MFEM_VERIFY(newton_solver.GetConverged(),
-                  "Newton did not converge at t = " << tt + dt << ".");
+                  "Newton did not converge at t = " << time_n + dt << ".");
 
       // a_{n+1} = (u_{n+1} - u_pred) / (beta dt^2),
       // v_{n+1} = v_n + dt ( (1 - gamma) a_n + gamma a_{n+1} ).
@@ -155,14 +149,14 @@ public:
       return *tangent;
    }
 
-protected:
-   // Sets the step from time tt to tt + input_dt: copies into members what
+private:
+   // Sets the step from time_n to time_n + input_dt: copies into members what
    // Mult and GetGradient need besides u_{n+1}, the known part of Newmark's
    // formula for u_{n+1},
    //    u_pred = u_n + dt v_n + dt^2 (1/2 - beta) a_n,
    // so that a_{n+1} = (u_{n+1} - u_pred) / (beta dt^2), and the traction at
    // t_alpha = t_n + alpha_f dt.
-   void set_step(double tt, double input_dt, const mfem::Vector &input_disp_n,
+   void set_step(double time_n, double input_dt, const mfem::Vector &input_disp_n,
                  const mfem::Vector &input_velo_n, const mfem::Vector &input_acce_n)
    {
       dt = input_dt;
@@ -174,7 +168,7 @@ protected:
       disp_predict.Add(dt * dt * (0.5 - time_method->get_beta()), acce_n);
 
       if (global_assembly->get_neumann().is_traction_load())
-         global_assembly->set_traction_load(tt + time_method->get_alpha_f() * dt);
+         global_assembly->set_traction_load(time_n + time_method->get_alpha_f() * dt);
    }
 
    // R_dyn(u_{n+1}) = R(u_alpha, t_alpha) + M a_alpha at every dof, with
@@ -216,7 +210,6 @@ protected:
                    alpha_f, global_assembly->assemble_tangent(disp_alpha)));
    }
 
-private:
    // newton_solver points to this operator, the linear solver and the
    // monitor, so it is declared last and goes first.
    const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R, K and M

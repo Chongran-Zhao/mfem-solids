@@ -3,8 +3,9 @@
 //
 // Checks of the displacement dynamics on one hexahedron, the unit cube, with
 // the material and the density of MaterialModelData:
-//    tangent            K_eff against central differences of R_dyn, without
-//                       and with the constraints, for rho_inf = 0, 0.5, 1;
+//    tangent            K_eff against central differences of R_dyn, through
+//                       Mult and GetGradient, without and with constraints,
+//                       for rho_inf = 0, 0.5, 1;
 //    rigid translation  constant velocity, zero acceleration, the output
 //                       times and files of the time solver;
 //    free vibration     a small longitudinal vibration against the midpoint
@@ -51,17 +52,6 @@ static void check(bool condition, const std::string &message)
       throw std::runtime_error(message);
 }
 
-// The nonlinear solver, with its step functions made public for the
-// tangent check.
-class NonlinearSolver_Dynamic_Disp_Test : public NonlinearSolver_Dynamic_Disp
-{
-public:
-   using NonlinearSolver_Dynamic_Disp::NonlinearSolver_Dynamic_Disp;
-   using NonlinearSolver_Dynamic_Disp::set_step;
-   using NonlinearSolver_Dynamic_Disp::assemble_residual;
-   using NonlinearSolver_Dynamic_Disp::assemble_tangent;
-};
-
 // The unit cube, its faces left (x = 0), right (x = 1) and all, the
 // displacement space, and the boundary conditions of a check.
 struct UnitCube
@@ -106,12 +96,10 @@ struct UnitCube
          std::make_unique<NeumannBoundary>(neumann_config, space_u));
    }
 
-   template <typename Solver = NonlinearSolver_Dynamic_Disp>
-   std::unique_ptr<Solver> make_nonlinear_solver(double rho_inf)
+   std::unique_ptr<NonlinearSolver_Dynamic_Disp> make_nonlinear_solver(double rho_inf)
    {
-      return std::make_unique<Solver>(make_global_assembly(),
-                                      std::make_unique<TimeMethod_GenAlpha>(rho_inf),
-                                      YAML::Load(newton_settings));
+      return std::make_unique<NonlinearSolver_Dynamic_Disp>(make_global_assembly(),
+         std::make_unique<TimeMethod_GenAlpha>(rho_inf), YAML::Load(newton_settings));
    }
 
    // M, for the momentum and the kinetic energy.
@@ -146,61 +134,54 @@ static void solve_step(NonlinearSolver_Dynamic_Disp &nonlinear_solver, double tt
 
 // K_eff against the central difference of R_dyn along a direction dd,
 //    ( R_dyn(u + eps dd) - R_dyn(u - eps dd) ) / (2 eps) = K_eff dd + O(eps^2),
-// at every dof, and through Mult and GetGradient, with the constraints, for
+// through Mult and GetGradient, which keep the step of the last solve: on a
+// free cube, at every dof, and on a cube fixed along x on the left face, for
 // a dd zero on the constrained dofs, which carry the identity.
 static void check_tangent()
 {
-   UnitCube cube("{fixed_bc: [{face: left, dir: x}], disp_bc: []}", "{faces: []}");
-   const int num_dofs = cube.space_u.GetTrueVSize();
-   mfem::Vector disp_old(num_dofs), velo_old(num_dofs), acce_old(num_dofs);
-   mfem::Vector disp(num_dofs), direction(num_dofs);
-   for (int ii = 0; ii < num_dofs; ii++)
+   for (const char *dirichlet_input : {"{fixed_bc: [], disp_bc: []}",
+                                       "{fixed_bc: [{face: left, dir: x}], disp_bc: []}"})
    {
-      disp_old(ii) = 0.001 * std::sin(ii + 1.0);
-      velo_old(ii) = 0.01 * std::cos(ii + 1.0);
-      acce_old(ii) = 0.1 * std::sin(2.0 * ii);
-      disp(ii) = disp_old(ii) + 0.002 * std::cos(ii);
-      direction(ii) = std::sin(0.7 * ii + 0.3);
-   }
-   const double eps = 1.0e-7;
-
-   for (double rho_inf : {0.0, 0.5, 1.0})
-   {
-      auto nonlinear_solver =
-         cube.make_nonlinear_solver<NonlinearSolver_Dynamic_Disp_Test>(rho_inf);
-      nonlinear_solver->set_step(0.0, 0.01, disp_old, velo_old, acce_old);
-
-      mfem::Vector disp_plus(disp), disp_minus(disp);
-      disp_plus.Add(eps, direction);
-      disp_minus.Add(-eps, direction);
-      mfem::Vector residual_plus(num_dofs), residual_minus(num_dofs), tangent_dir(num_dofs);
-
-      // At every dof.
-      nonlinear_solver->assemble_residual(disp_plus, residual_plus);
-      nonlinear_solver->assemble_residual(disp_minus, residual_minus);
-      nonlinear_solver->assemble_tangent(disp)->Mult(direction, tangent_dir);
-      residual_plus -= residual_minus;
-      residual_plus /= 2.0 * eps;
-      residual_plus -= tangent_dir;
-      check(residual_plus.Norml2() < 1.0e-7 * tangent_dir.Norml2(),
-            "The tangent differs from the central difference of the residual.");
-
-      // With the constraints, along a direction zero on the constrained dofs.
-      mfem::Vector direction_free(direction);
+      UnitCube cube(dirichlet_input, "{faces: []}");
+      const int num_dofs = cube.space_u.GetTrueVSize();
+      mfem::GridFunction disp_n(&cube.space_u), velo_n(&cube.space_u), acce_n(&cube.space_u);
+      mfem::Vector shift(num_dofs), direction(num_dofs);
+      for (int ii = 0; ii < num_dofs; ii++)
+      {
+         disp_n(ii) = 0.001 * std::sin(ii + 1.0);
+         velo_n(ii) = 0.01 * std::cos(ii + 1.0);
+         acce_n(ii) = 0.1 * std::sin(2.0 * ii);
+         shift(ii) = 0.002 * std::cos(ii);
+         direction(ii) = std::sin(0.7 * ii + 0.3);
+      }
       for (int dof : cube.make_global_assembly()->get_dirichlet().get_ess_tdof_list())
-         direction_free(dof) = 0.0;
-      disp_plus = disp;
-      disp_minus = disp;
-      disp_plus.Add(eps, direction_free);
-      disp_minus.Add(-eps, direction_free);
-      nonlinear_solver->Mult(disp_plus, residual_plus);
-      nonlinear_solver->Mult(disp_minus, residual_minus);
-      nonlinear_solver->GetGradient(disp).Mult(direction_free, tangent_dir);
-      residual_plus -= residual_minus;
-      residual_plus /= 2.0 * eps;
-      residual_plus -= tangent_dir;
-      check(residual_plus.Norml2() < 1.0e-7 * tangent_dir.Norml2(),
-            "The constrained tangent differs from the central difference of the residual.");
+         direction(dof) = 0.0;
+      const double eps = 1.0e-7;
+
+      for (double rho_inf : {0.0, 0.5, 1.0})
+      {
+         // One step from the state n sets the step of Mult and GetGradient.
+         auto nonlinear_solver = cube.make_nonlinear_solver(rho_inf);
+         mfem::GridFunction disp(disp_n), velo(velo_n), acce(acce_n);
+         nonlinear_solver->solve(0.0, 0.01, disp_n, velo_n, acce_n, disp, velo, acce);
+
+         // A displacement away from the solution of the step.
+         mfem::Vector state(disp);
+         state += shift;
+         mfem::Vector state_plus(state), state_minus(state);
+         state_plus.Add(eps, direction);
+         state_minus.Add(-eps, direction);
+
+         mfem::Vector residual_plus(num_dofs), residual_minus(num_dofs), tangent_dir(num_dofs);
+         nonlinear_solver->Mult(state_plus, residual_plus);
+         nonlinear_solver->Mult(state_minus, residual_minus);
+         nonlinear_solver->GetGradient(state).Mult(direction, tangent_dir);
+         residual_plus -= residual_minus;
+         residual_plus /= 2.0 * eps;
+         residual_plus -= tangent_dir;
+         check(residual_plus.Norml2() < 1.0e-7 * tangent_dir.Norml2(),
+               "The tangent differs from the central difference of the residual.");
+      }
    }
 }
 
