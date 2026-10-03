@@ -27,8 +27,9 @@ traction may act together. The initial displacement is zero and the initial velo
 `LoadData::initial_velo`. On the displacement-driven faces, the initial velocity is
 `LoadData::velo_loading`, kept consistent with `disp_loading` by hand, and the initial
 acceleration is zero, as in MixPERIGEE. `ctest` runs the checks of
-`tests/dynamic_disp.cpp`. Reactions and energies of the dynamics are not
-written yet; the static `csv_writer` reactions leave out the inertia.
+`tests/dynamic_disp.cpp`. Its `csv_writer` writes the face columns of the static one at the
+physical times, with reactions M a + F_int - F_ext that include the inertia, and
+`energy.csv`, the kinetic, strain and total energies of the whole body.
 
 Each formulation has its own `config.yaml`; the material, the density included, is in `include/material/MaterialModelData.hpp`,
 and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
@@ -97,10 +98,10 @@ cd build && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
 with `space.order >= 2`. Its driver saves displacement and pressure; its
 postprocessors read both fields to compute stresses and reactions.
 
-`dynamic_disp/` builds `read_mesh`, `driver`, `vtu_writer` and the checks run by `ctest`:
+`dynamic_disp/` builds `read_mesh`, `driver`, `vtu_writer`, `csv_writer` and the checks run by `ctest`:
 
 ```bash
-cd build && ctest && ./read_mesh && ./driver && ./vtu_writer
+cd build && ctest && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
 ```
 
 Each folder has its own `config.yaml`, which CMake copies into its `build/`,

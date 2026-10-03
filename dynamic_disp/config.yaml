@@ -1,4 +1,4 @@
-# Input of read_mesh, driver and vtu_writer of dynamic_disp.
+# Input of read_mesh, driver, vtu_writer and csv_writer of dynamic_disp.
 # CMake copies it into dynamic_disp/build/, and the programs read the copy of
 # the directory they run in, or the file given as first argument. mesh.file is
 # relative to the project directory. Times are physical, in seconds; the
@@ -55,7 +55,14 @@ solver:
   newton_abs_tol: 1.0e-10
   newton_max_iter: 20
 
+# Faces and directions reported by csv_writer, one entry per face and
+# direction; csv_writer also writes the energies of the whole body.
+csv_writer:
+  - { face: left, dir: z }
+  - { face: right, dir: z }
+
 # Output folders, in the directory the programs run in.
 output:
   vtu: results_vtu
   gf: results_gf
+  csv: results_csv
