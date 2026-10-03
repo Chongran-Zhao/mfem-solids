@@ -1,7 +1,8 @@
 // ============================================================================
 // MaterialModel_vol_SimoPister.hpp
 //
-// Logarithmic volumetric energy with bulk modulus kappa.
+// Logarithmic volumetric energy with bulk modulus kappa, and reference
+// density rho_0.
 //
 // Reference:
 //   J.C. Simo, K.S. Pister, Remarks on rate constitutive equations for finite
@@ -24,7 +25,8 @@
 class MaterialModel_vol_SimoPister : public IMaterialModel_vol
 {
 public:
-   MaterialModel_vol_SimoPister(double input_kappa) : kappa(input_kappa) {}
+   MaterialModel_vol_SimoPister(double input_rho_0, double input_kappa)
+      : rho_0(input_rho_0), kappa(input_kappa) {}
 
    // Psi_vol = kappa/2 (ln J)^2
    double get_energy(double J) const override { return 0.5 * kappa * std::log(J) * std::log(J); }
@@ -49,7 +51,10 @@ public:
       return 0.0;
    }
 
+   double get_rho_0() const override { return rho_0; }
+
 private:
+   const double rho_0;
    const double kappa;
 };
 

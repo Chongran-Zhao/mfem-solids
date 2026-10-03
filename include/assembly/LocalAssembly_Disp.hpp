@@ -27,7 +27,7 @@
 class LocalAssembly_Disp : public mfem::NonlinearFormIntegrator
 {
 public:
-   // Takes the ownership of the material->
+   // Takes the ownership of the material.
    LocalAssembly_Disp(std::unique_ptr<const MaterialModel> input_material)
       : material(std::move(input_material)) {}
 
@@ -143,6 +143,9 @@ public:
          }
       }
    }
+
+   // Reference density rho_0 of the material, for the mass matrix.
+   double get_rho_0() const { return material->get_rho_0(); }
 
 private:
    const std::unique_ptr<const MaterialModel> material;

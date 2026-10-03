@@ -34,16 +34,15 @@ class NonlinearSolver_Dynamic_Disp : public mfem::Operator
 {
 public:
    // Takes the ownership of the global assembly and of the time method, and
-   // assembles the mass matrix with the reference density; the Newton
-   // settings come from the solver section of config.yaml.
+   // assembles the mass matrix; the Newton settings come from the solver
+   // section of config.yaml.
    NonlinearSolver_Dynamic_Disp(std::unique_ptr<GlobalAssembly_Disp> input_global_assembly,
-                                double density,
                                 std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
                                 const YAML::Node &solver)
       : mfem::Operator(input_global_assembly->get_num_dofs()),
         global_assembly(std::move(input_global_assembly)),
         time_method(std::move(input_time_method)),
-        mass(global_assembly->assemble_mass(density))
+        mass(global_assembly->assemble_mass())
    {
       newton_solver.SetOperator(*this);
       newton_solver.SetSolver(linear_solver);

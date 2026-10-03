@@ -61,11 +61,12 @@ public:
    // Number of unknowns.
    int get_num_dofs() const { return global_assembly.Height(); }
 
-   // Consistent mass M_ab = int rho_0 N_a N_b dV, without constraints. It is
-   // assembled once, for the dynamics, and the caller owns it.
-   std::unique_ptr<mfem::SparseMatrix> assemble_mass(double density)
+   // Consistent mass M_ab = int rho_0 N_a N_b dV, without constraints, with
+   // rho_0 of the material. It is assembled once, for the dynamics, and the
+   // caller owns it.
+   std::unique_ptr<mfem::SparseMatrix> assemble_mass()
    {
-      mfem::ConstantCoefficient rho(density);
+      mfem::ConstantCoefficient rho(local_assembly->get_rho_0());
       mfem::BilinearForm mass(global_assembly.FESpace());
       mass.AddDomainIntegrator(new mfem::VectorMassIntegrator(rho));
       mass.Assemble();

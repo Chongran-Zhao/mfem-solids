@@ -28,7 +28,7 @@ at t = 0 are finite differences of `LoadData::disp_driven`. `ctest` runs the che
 `tests/dynamic_disp.cpp`. Stresses, reactions and energies of the dynamics are not
 written yet; the static `csv_writer` reactions leave out the inertia.
 
-Each formulation has its own `config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
+Each formulation has its own `config.yaml`; the material, the density included, is in `include/material/MaterialModelData.hpp`,
 and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
 
 The CSV column `area` is the undeformed reference area of the reported face.

@@ -24,8 +24,6 @@ space:
 
 # Time integration.
 dynamics:
-  # Reference density.
-  density: 1000.0
   # Time step; the last step is shortened to end at final_time.
   dt: 0.001
   final_time: 0.05

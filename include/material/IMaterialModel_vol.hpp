@@ -4,7 +4,8 @@
 // Interface of the volumetric part of a hyperelastic material: given the
 // volume ratio J, return its strain energy Psi_vol(J), the pressure p(J) and
 // dp/dJ; given the pressure p, return the inverse J(p) and dJ/dp, used by
-// the mixed formulation.
+// the mixed formulation; and the reference density rho_0, used by the
+// dynamics. As in PERIGEE, the density belongs to the volumetric model.
 //
 // Author: Chongran Zhao
 // Date: Sep. 29, 2026
@@ -32,6 +33,9 @@ public:
 
    // dJ/dp, the derivative of get_J.
    virtual double get_dJ_dp(double p) const = 0;
+
+   // Reference density rho_0, mass per reference volume.
+   virtual double get_rho_0() const = 0;
 };
 
 #endif

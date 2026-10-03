@@ -116,8 +116,7 @@ int main(int argc, char *argv[])
    const YAML::Node dynamics = config["dynamics"];
    auto time_method = std::make_unique<TimeMethod_GenAlpha>(dynamics["rho_inf"].as<double>());
    auto nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic_Disp>(
-      std::move(global_assembly), dynamics["density"].as<double>(), std::move(time_method),
-      config["solver"]);
+      std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver_Dynamic_Disp>(
       std::move(nonlinear_solver), dynamics["dt"].as<double>(),

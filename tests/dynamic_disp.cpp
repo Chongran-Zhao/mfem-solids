@@ -2,7 +2,7 @@
 // dynamic_disp.cpp of tests
 //
 // Checks of the displacement dynamics on one hexahedron, the unit cube, with
-// the material of MaterialModelData:
+// the material and the density of MaterialModelData:
 //    tangent            K_eff against central differences of R_dyn, without
 //                       and with the constraints, for rho_inf = 0, 0.5, 1;
 //    rigid translation  constant velocity, zero acceleration, the output
@@ -39,9 +39,6 @@
 #include "NonlinearSolver_Dynamic_Disp.hpp"
 #include "TimeMethod_GenAlpha.hpp"
 #include "TimeSolver_Dynamic_Disp.hpp"
-
-// Reference density of every check.
-static constexpr double density = 1000.0;
 
 // Newton settings of every check.
 static const char *newton_settings =
@@ -112,7 +109,7 @@ struct UnitCube
    template <typename Solver = NonlinearSolver_Dynamic_Disp>
    std::unique_ptr<Solver> make_nonlinear_solver(double rho_inf)
    {
-      return std::make_unique<Solver>(make_global_assembly(), density,
+      return std::make_unique<Solver>(make_global_assembly(),
                                       std::make_unique<TimeMethod_GenAlpha>(rho_inf),
                                       YAML::Load(newton_settings));
    }
@@ -120,7 +117,7 @@ struct UnitCube
    // M, for the momentum and the kinetic energy.
    std::unique_ptr<mfem::SparseMatrix> make_mass()
    {
-      return make_global_assembly()->assemble_mass(density);
+      return make_global_assembly()->assemble_mass();
    }
 
    // A field of the constant vector value.
