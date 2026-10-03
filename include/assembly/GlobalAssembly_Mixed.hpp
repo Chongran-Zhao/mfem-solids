@@ -69,6 +69,19 @@ public:
       return global_assembly.GetBlockTrueOffsets();
    }
 
+   // Consistent mass M_ab = int rho_0 N_a N_b dV of the displacement, without
+   // constraints, with rho_0 of the material; the pressure has no mass. It is
+   // assembled once, for the dynamics, and the caller owns it.
+   std::unique_ptr<mfem::SparseMatrix> assemble_mass()
+   {
+      mfem::ConstantCoefficient rho(local_assembly->get_rho_0());
+      mfem::BilinearForm mass(global_assembly.FESpace(0));
+      mass.AddDomainIntegrator(new mfem::VectorMassIntegrator(rho));
+      mass.Assemble();
+      mass.Finalize();
+      return std::unique_ptr<mfem::SparseMatrix>(mass.LoseMat());
+   }
+
    // R(u,p) at every dof; the pressure has no external force.
    void assemble_residual(const mfem::Vector &sol, mfem::Vector &residual) const
    {

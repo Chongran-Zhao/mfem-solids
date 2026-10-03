@@ -1,0 +1,74 @@
+# Input of read_mesh, driver, vtu_writer and csv_writer of dynamic_mixed.
+# CMake copies it into dynamic_mixed/build/, and the programs read the copy of
+# the directory they run in, or the file given as first argument. mesh.file is
+# relative to the project directory. Times are physical, in seconds; the
+# loading functions of LoadData receive the physical time. The initial
+# velocity is LoadData::initial_velo, and the initial displacement and
+# pressure zero.
+# The default case is the beam fixed on its left face, set swinging along z
+# by the initial velocity, without load.
+
+mesh:
+  # Mesh file in MFEM format.
+  file: mesh_files/Beam_coarse-hex.mesh
+
+  # Number of uniform refinements.
+  refine_levels: 0
+
+  # Name of the mesh file written by read_mesh.
+  output: beam.mesh
+
+  # Web page showing the named faces in 3D, and whether to open it.
+  output_html: beam_boundary.html
+  open_html: false
+
+space:
+  # Order of the continuous shape functions of the displacement, at least 2;
+  # the pressure is one order lower (Taylor-Hood).
+  order: 2
+
+# Time integration method, read into TimeMethod_GenAlpha.
+time_method:
+  # Spectral radius at infinite frequency of generalized-alpha, in [0, 1];
+  # 1 is the midpoint rule, without numerical damping. 0.5 damps the high
+  # frequencies of Q2, unresolved by dt, which make the pressure oscillate.
+  rho_inf: 0.5
+
+# Time steps, read into TimeSolver_Dynamic_Mixed.
+time:
+  # Time step; the last step is shortened to end at final_time.
+  dt: 0.01
+  final_time: 5.0
+
+# Displacement boundary conditions, one entry per face and direction.
+Dirichlet:
+  # Zero displacement.
+  fixed_bc:
+    - { face: left, dir: x }
+    - { face: left, dir: y }
+    - { face: left, dir: z }
+  # Prescribed displacement, given by LoadData::disp_loading.
+  disp_bc: []
+
+# Traction faces; the traction is given by LoadData::surface_traction.
+Neumann:
+  faces: []
+
+# Newton's method settings.
+# The linear solver is UMFPACK.
+solver:
+  newton_rel_tol: 1.0e-8
+  newton_abs_tol: 1.0e-10
+  newton_max_iter: 20
+
+# Faces and directions reported by csv_writer, one entry per face and
+# direction; csv_writer also writes the energies of the whole body.
+csv_writer:
+  - { face: left, dir: z }
+  - { face: right, dir: z }
+
+# Output folders, in the directory the programs run in.
+output:
+  vtu: results_vtu
+  gf: results_gf
+  csv: results_csv
