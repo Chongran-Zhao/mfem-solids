@@ -35,7 +35,7 @@ Dirichlet:
     - { face: left, dir: x }
     - { face: left, dir: y }
     - { face: left, dir: z }
-  # Prescribed displacement, given by LoadData::disp_driven.
+  # Prescribed displacement, given by LoadData::disp_loading.
   disp_bc:
     - { face: right, dir: z }
 

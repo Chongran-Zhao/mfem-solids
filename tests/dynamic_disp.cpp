@@ -10,7 +10,7 @@
 //    free vibration     a small longitudinal vibration against the midpoint
 //                       rule of its linear oscillator, its energy, and the
 //                       second-order convergence in time;
-//    prescribed motion  disp_bc on the right face, LoadData::disp_driven;
+//    prescribed motion  disp_bc on the right face, LoadData::disp_loading;
 //    traction impulse   the momentum against the impulse of the traction on
 //                       the right face, LoadData::surface_traction.
 // Run by CTest; prints PASS, or the failed check and exits with 1.
@@ -303,7 +303,7 @@ static double check_free_vibration(double dt)
 }
 
 // The cube fixed on the left face and driven along z on the right one by
-// LoadData::disp_driven, -0.5 t: after one step, u_z = -0.5 t, v_z = -0.5
+// LoadData::disp_loading, -0.5 t: after one step, u_z = -0.5 t, v_z = -0.5
 // and a_z = 0 there.
 static void check_prescribed_motion()
 {

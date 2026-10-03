@@ -1,11 +1,10 @@
 // ============================================================================
 // LoadData.hpp
 //
-// Defines the loading (body force, prescribed displacement and traction).
-// The time tt is the load factor t = n / N in the static programs, and the
-// physical time in seconds in the dynamic one. The dynamics takes the
-// velocity and the acceleration of the prescribed displacement from
-// disp_driven by finite differences.
+// Defines the loading (body force, prescribed displacement and traction)
+// and, for the dynamics, the initial velocity. The time tt is the load factor
+// t = n / N in the static programs, and the physical time in seconds in the
+// dynamic one.
 //
 // Author: Chongran Zhao
 // Date: Sep. 27, 2026
@@ -24,6 +23,16 @@
 class LoadData
 {
 public:
+   // Initial velocity v_0(pt) of the dynamics, at the reference position pt;
+   // the initial displacement is zero, as in MixPERIGEE.
+   // Examples:
+   //   bending of the beam x in [0, 1], growing linearly from its fixed end:
+   //     return Vector_3D(0.0, 0.0, 0.01 * pt(0));
+   static Vector_3D initial_velo(const mfem::Vector &pt)
+   {
+      return Vector_3D(0.0, 0.0, 0.01 * pt(0));
+   }
+
    // Body force per unit reference volume, rho_0 b(pt, tt).
    // Examples:
    //   gravity along -z, rho_0 = 1000:
@@ -71,8 +80,8 @@ public:
    //     const double y = pt(1) - 0.05, z = pt(2) - 0.05;
    //     return Vector_3D(0.0, std::cos(a) * y - std::sin(a) * z - y,
    //                           std::sin(a) * y + std::cos(a) * z - z);
-   static Vector_3D disp_driven(const mfem::Vector &pt, double tt,
-                                const std::string &face)
+   static Vector_3D disp_loading(const mfem::Vector &pt, double tt,
+                                 const std::string &face)
    {
       switch (get_face(face))
       {
@@ -80,6 +89,31 @@ public:
             return Vector_3D(0.0, 0.0, 0.0);
          case faces::right:
             return Vector_3D(0.0, 0.0, -0.5 * tt);
+         case faces::front:
+            return Vector_3D(0.0, 0.0, 0.0);
+         case faces::back:
+            return Vector_3D(0.0, 0.0, 0.0);
+         case faces::bottom:
+            return Vector_3D(0.0, 0.0, 0.0);
+         case faces::top:
+            return Vector_3D(0.0, 0.0, 0.0);
+      }
+      return Vector_3D(0.0, 0.0, 0.0);
+   }
+
+   // Velocity of the prescribed displacement, the time derivative of
+   // disp_loading, for the initial state of the dynamics; keep the two
+   // consistent. Its acceleration is not needed: the initial acceleration
+   // is zero on the constrained dofs, as in MixPERIGEE.
+   static Vector_3D velo_loading(const mfem::Vector &pt, double tt,
+                                 const std::string &face)
+   {
+      switch (get_face(face))
+      {
+         case faces::left:
+            return Vector_3D(0.0, 0.0, 0.0);
+         case faces::right:
+            return Vector_3D(0.0, 0.0, -0.5);
          case faces::front:
             return Vector_3D(0.0, 0.0, 0.0);
          case faces::back:

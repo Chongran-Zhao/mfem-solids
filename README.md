@@ -11,7 +11,7 @@ and traction conditions on named faces, load stepping and Newton's method.
 | `read_mesh` | the mesh in `config.yaml` | `beam.mesh` with the six box faces named `left`, `right`, `front`, `back`, `bottom`, `top`, and a 3D view of them, `beam_boundary.html` |
 | `driver` (`static_disp/`) | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
 | `driver` (`static_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | displacement `disp_XXXX.gf` and nodal pressure `pres_XXXX.gf` at each load step |
-| `driver` (`dynamic_disp/`) | `beam.mesh`, the initial displacement and velocity, the time steps, the boundary conditions and solver settings | displacement, velocity and acceleration of each time step, `disp_XXXX.gf`, `velo_XXXX.gf`, `acce_XXXX.gf`, and the time and Newton iterations of each step, `time.csv` |
+| `driver` (`dynamic_disp/`) | `beam.mesh`, the time steps, the boundary conditions and solver settings | displacement, velocity and acceleration of each time step, `disp_XXXX.gf`, `velo_XXXX.gf`, `acce_XXXX.gf`, and the time and Newton iterations of each step, `time.csv` |
 | `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with displacement, pressure and element-center first and second Piola-Kirchhoff stresses; pressure is p(J) in the displacement form and the saved nodal field in the mixed form; open `results_vtu.pvd` in ParaView |
 | `csv_writer` | `results_gf/` and the material | `results_csv/<face>.csv`: mean displacement, reaction force F, reference face area and face-mean pressure p on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the formulation's residual on the constrained dofs of the face |
 
@@ -23,8 +23,10 @@ generalized-alpha method in physical time. Its nonlinear solver owns the mass ma
 `TimeMethod_GenAlpha`, and solves each step for u_{n+1} by Newton's method at the
 intermediate states; Newmark's formulas then give a_{n+1} and v_{n+1}. The initial
 acceleration solves the equation of motion at t = 0. A prescribed displacement and a
-traction may act together; the velocity and acceleration of the prescribed displacement
-at t = 0 are finite differences of `LoadData::disp_driven`. `ctest` runs the checks of
+traction may act together. The initial displacement is zero and the initial velocity is
+`LoadData::initial_velo`. On the displacement-driven faces, the initial velocity is
+`LoadData::velo_loading`, kept consistent with `disp_loading` by hand, and the initial
+acceleration is zero, as in MixPERIGEE. `ctest` runs the checks of
 `tests/dynamic_disp.cpp`. Stresses, reactions and energies of the dynamics are not
 written yet; the static `csv_writer` reactions leave out the inertia.
 
@@ -50,7 +52,7 @@ for Newton's method, and the block tangent is copied into one sparse matrix for 
 - **Loading.** The load is raised in `loading.load_steps` equal steps of the pseudo time
   t = n / N. It is either a prescribed displacement or a traction, not both:
   - displacement: list the driven faces and directions in `Dirichlet.disp_bc`, leave
-    `Neumann.faces` empty, and give the displacement in `LoadData::disp_driven`;
+    `Neumann.faces` empty, and give the displacement in `LoadData::disp_loading`;
   - traction: list the loaded faces in `Neumann.faces`, leave `Dirichlet.disp_bc`
     empty, and give the nominal traction in `LoadData::surface_traction`.
 

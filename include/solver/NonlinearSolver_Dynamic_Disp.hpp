@@ -57,7 +57,9 @@ public:
    // The initial state at time tt: sets the boundary values of disp and
    // velo, and solves the equation of motion for the initial acceleration,
    //    M a_0 = F_ext(t_0) - F_int(u_0),
-   // with the prescribed acceleration on the constrained dofs.
+   // on the free dofs; on the constrained ones a_0 = 0, as in MixPERIGEE. A
+   // wrong a_0 there only makes their acceleration alternate about its
+   // value, whereas a wrong v_0 would disturb the whole solution.
    void initialize(double tt, mfem::GridFunction &disp, mfem::GridFunction &velo,
                    mfem::GridFunction &acce)
    {
@@ -66,23 +68,22 @@ public:
 
       dirichlet.apply_fixed_bc(disp);
       dirichlet.apply_fixed_bc(velo);
-      acce = 0.0;
       if (dirichlet.is_disp_load())
       {
          dirichlet.apply_disp_load_bc(tt, disp);
          dirichlet.apply_velo_load_bc(tt, velo);
-         dirichlet.apply_acce_load_bc(tt, acce);
       }
       if (neumann.is_traction_load())
          global_assembly->set_traction_load(tt);
 
-      // rhs = -R(u_0); the prescribed acceleration in acce goes to the
-      // right-hand side as the prescribed increment of the static predictor.
+      // rhs = -R(u_0), and M the identity on the constrained dofs, where rhs
+      // is zero.
       mfem::Vector rhs(global_assembly->get_num_dofs());
       global_assembly->assemble_residual(disp, rhs);
       rhs.Neg();
+      global_assembly->set_essential_bdr(rhs);
       mfem::SparseMatrix constrained_mass(*mass);
-      global_assembly->set_essential_bdr(constrained_mass, acce, rhs);
+      global_assembly->set_essential_bdr(constrained_mass);
 
       linear_solver.SetOperator(constrained_mass);
       linear_solver.Mult(rhs, acce);

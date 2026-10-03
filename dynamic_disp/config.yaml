@@ -2,7 +2,8 @@
 # CMake copies it into dynamic_disp/build/, and the programs read the copy of
 # the directory they run in, or the file given as first argument. mesh.file is
 # relative to the project directory. Times are physical, in seconds; the
-# loading functions of LoadData receive the physical time.
+# loading functions of LoadData receive the physical time. The initial
+# velocity is LoadData::initial_velo, and the initial displacement zero.
 
 mesh:
   # Mesh file in MFEM format.
@@ -31,13 +32,6 @@ dynamics:
   # 1 is the midpoint rule, without numerical damping.
   rho_inf: 1.0
 
-# Initial displacement and velocity: three components, times 1 for the
-# uniform profile, or times (x - x_min) / (x_max - x_min) for linear_x.
-initial:
-  profile: linear_x
-  displacement: [0.0, 0.0, 0.0]
-  velocity: [0.0, 0.0, 0.01]
-
 # Displacement boundary conditions, one entry per face and direction.
 Dirichlet:
   # Zero displacement.
@@ -45,7 +39,7 @@ Dirichlet:
     - { face: left, dir: x }
     - { face: left, dir: y }
     - { face: left, dir: z }
-  # Prescribed displacement, given by LoadData::disp_driven.
+  # Prescribed displacement, given by LoadData::disp_loading.
   disp_bc: []
 
 # Traction faces; the traction is given by LoadData::surface_traction.

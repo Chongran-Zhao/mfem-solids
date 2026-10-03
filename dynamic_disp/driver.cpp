@@ -2,9 +2,10 @@
 // driver.cpp of dynamic_disp
 //
 // Hyperelastodynamics in the displacement form, with the generalized-alpha
-// method in physical time. The initial displacement and velocity, the time
-// steps and the boundary conditions are read from config.yaml, the latter
-// referring to faces by name; the material is given by MaterialModelData.
+// method in physical time. The time steps and the boundary conditions are
+// read from config.yaml, the latter referring to faces by name; the material
+// is given by MaterialModelData, and the initial velocity and the loading by
+// LoadData. The initial displacement is zero.
 //
 // Author: Chongran Zhao
 // Date: Oct. 3, 2026
@@ -22,6 +23,7 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Disp.hpp"
+#include "LoadData.hpp"
 #include "LocalAssembly_Disp.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
@@ -30,6 +32,7 @@
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha.hpp"
 #include "TimeSolver_Dynamic_Disp.hpp"
+#include "Vector_3D.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -61,34 +64,18 @@ int main(int argc, char *argv[])
                "The dynamic driver needs a conforming mesh.");
    SystemTools::print_space(space_u);
 
-   // 4. Set the initial displacement and velocity: the three components of
-   //    config.yaml, times 1 for the uniform profile, or times
-   //    (x - x_min) / (x_max - x_min) for linear_x.
-   const std::string profile = config["initial"]["profile"].as<std::string>();
-   MFEM_VERIFY(profile == "uniform" || profile == "linear_x",
-               "Unknown initial profile \"" << profile << "\".");
-   mfem::Vector box_min, box_max;
-   mesh.GetBoundingBox(box_min, box_max);
-
-   auto get_initial_field = [&](const std::string &field_name)
+   // 4. Set the initial state: zero displacement, and the velocity
+   //    LoadData::initial_velo at the nodes.
+   mfem::VectorFunctionCoefficient initial_velo_value(dim,
+      [](const mfem::Vector &pt, mfem::Vector &value)
    {
-      mfem::Vector amplitude(dim);
-      for (int comp = 0; comp < dim; comp++)
-         amplitude(comp) = config["initial"][field_name][comp].as<double>();
-
-      mfem::VectorFunctionCoefficient value(dim, [&](const mfem::Vector &pt, mfem::Vector &out)
-      {
-         out = amplitude;
-         if (profile == "linear_x")
-            out *= (pt(0) - box_min(0)) / (box_max(0) - box_min(0));
-      });
-      mfem::GridFunction field(&space_u);
-      field.ProjectCoefficient(value);
-      return field;
-   };
-   mfem::GridFunction disp = get_initial_field("displacement");
-   mfem::GridFunction velo = get_initial_field("velocity");
-   mfem::GridFunction acce(&space_u);
+      const Vector_3D velo_0 = LoadData::initial_velo(pt);
+      for (int comp = 0; comp < 3; comp++)
+         value(comp) = velo_0(comp);
+   });
+   mfem::GridFunction disp(&space_u), velo(&space_u), acce(&space_u);
+   disp = 0.0;
+   velo.ProjectCoefficient(initial_velo_value);
    acce = 0.0;
 
    // 5. Set up the boundary conditions; a prescribed displacement and a
