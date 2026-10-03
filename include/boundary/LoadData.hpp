@@ -2,6 +2,10 @@
 // LoadData.hpp
 //
 // Defines the loading (body force, prescribed displacement and traction).
+// The time tt is the load factor t = n / N in the static programs, and the
+// physical time in seconds in the dynamic one. The dynamics takes the
+// velocity and the acceleration of the prescribed displacement from
+// disp_driven by finite differences.
 //
 // Author: Chongran Zhao
 // Date: Sep. 27, 2026
@@ -85,21 +89,6 @@ public:
          case faces::top:
             return Vector_3D(0.0, 0.0, 0.0);
       }
-      return Vector_3D(0.0, 0.0, 0.0);
-   }
-
-   // Physical-time derivatives of disp_driven, for dynamic initial motion.
-   // Keep these consistent when changing the prescribed displacement law.
-   static Vector_3D velo_driven(const mfem::Vector &pt, double tt,
-                                const std::string &face)
-   {
-      return face == "right" ? Vector_3D(0.0, 0.0, -0.5)
-                             : Vector_3D(0.0, 0.0, 0.0);
-   }
-
-   static Vector_3D acce_driven(const mfem::Vector &pt, double tt,
-                                const std::string &face)
-   {
       return Vector_3D(0.0, 0.0, 0.0);
    }
 

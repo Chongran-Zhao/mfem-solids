@@ -11,14 +11,22 @@ and traction conditions on named faces, load stepping and Newton's method.
 | `read_mesh` | the mesh in `config.yaml` | `beam.mesh` with the six box faces named `left`, `right`, `front`, `back`, `bottom`, `top`, and a 3D view of them, `beam_boundary.html` |
 | `driver` (`static_disp/`) | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
 | `driver` (`static_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | displacement `disp_XXXX.gf` and nodal pressure `pres_XXXX.gf` at each load step |
+| `driver` (`dynamic_disp/`) | `beam.mesh`, the initial displacement and velocity, the time steps, the boundary conditions and solver settings | displacement, velocity and acceleration of each time step, `disp_XXXX.gf`, `velo_XXXX.gf`, `acce_XXXX.gf`, and the time and Newton iterations of each step, `time.csv` |
 | `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with displacement, pressure and element-center first and second Piola-Kirchhoff stresses; pressure is p(J) in the displacement form and the saved nodal field in the mixed form; open `results_vtu.pvd` in ParaView |
 | `csv_writer` | `results_gf/` and the material | `results_csv/<face>.csv`: mean displacement, reaction force F, reference face area and face-mean pressure p on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the formulation's residual on the constrained dofs of the face |
 
 `scripts/plot_csv.m` (MATLAB) plots the CSV files of `csv_writer` against the load factor,
 overlaying the result folders listed at its top.
 
-`dynamic_disp/` adds displacement dynamics with generalized-alpha integration,
-initial motion and physical time. See [its usage and solver structure](dynamic_disp/README.md).
+`dynamic_disp/` solves the displacement dynamics, M a + F_int(u) = F_ext(t), with the
+generalized-alpha method in physical time. Its nonlinear solver owns the mass matrix and
+`TimeMethod_GenAlpha`, and solves each step for u_{n+1} by Newton's method at the
+intermediate states; Newmark's formulas then give a_{n+1} and v_{n+1}. The initial
+acceleration solves the equation of motion at t = 0. A prescribed displacement and a
+traction may act together; the velocity and acceleration of the prescribed displacement
+at t = 0 are finite differences of `LoadData::disp_driven`. `ctest` runs the checks of
+`tests/dynamic_disp.cpp`. Stresses, reactions and energies of the dynamics are not
+written yet; the static `csv_writer` reactions leave out the inertia.
 
 Each formulation has its own `config.yaml`; the material is in `include/material/MaterialModelData.hpp`,
 and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
@@ -71,8 +79,8 @@ Requires CMake 3.20 or newer, MFEM built with CMake and SuiteSparse (developed a
 4.10.1; the linear systems are solved with UMFPACK) and yaml-cpp. The build looks for
 them in `../../lib`; change the paths in `cmake/mfem-solids.cmake` if yours are elsewhere.
 
-The programs of each formulation are in their own folder, `static_disp/` and
-`static_mixed/`, a CMake project of its own; the settings they share are in
+The programs of each formulation are in their own folder, `static_disp/`,
+`static_mixed/` and `dynamic_disp/`, a CMake project of its own; the settings they share are in
 `cmake/mfem-solids.cmake`. The displacement form is built and run in `static_disp/`:
 
 ```bash
@@ -87,7 +95,13 @@ cd build && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
 with `space.order >= 2`. Its driver saves displacement and pressure; its
 postprocessors read both fields to compute stresses and reactions.
 
+`dynamic_disp/` builds `read_mesh`, `driver` and the checks run by `ctest`:
+
+```bash
+cd build && ctest && ./read_mesh && ./driver
+```
+
 Each folder has its own `config.yaml`, which CMake copies into its `build/`,
 again whenever it changes; each program reads the `config.yaml` of the directory it runs in,
 or the file given as its first argument. `mesh.file` is relative to the project directory,
-whose `mesh_files/` both formulations share.
+whose `mesh_files/` all formulations share.

@@ -1,8 +1,23 @@
-// Assembles and solves a dynamic step at the times requested by the time solver.
+// ============================================================================
+// NonlinearSolver_Dynamic_Disp.hpp
+//
+// Solves one time step of the displacement dynamics,
+//    M a_{n+1} + F_int(u_{n+1}) = F_ext(t_{n+1}),
+// with the generalized-alpha method: the equation holds at the intermediate
+// states u_alpha, a_alpha and the time t_alpha, and Newmark's formulas give
+// a_{n+1} and v_{n+1} from u_{n+1}, the unknown of Newton's method. It also
+// computes the initial acceleration. It owns the global assembly, the mass
+// matrix, the time method and the solvers; the loop over the time steps is
+// left to its caller. It is also the mfem::Operator that its NewtonSolver
+// solves, through Mult and GetGradient.
+//
+// Author: Chongran Zhao
+// Date: Oct. 3, 2026
+// Email: chongran_zhao@brown.edu
+// ============================================================================
 #ifndef NONLINEAR_SOLVER_DYNAMIC_DISP_HPP
 #define NONLINEAR_SOLVER_DYNAMIC_DISP_HPP
 
-#include <cmath>
 #include <memory>
 #include <utility>
 
@@ -11,19 +26,24 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Disp.hpp"
+#include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha.hpp"
 
 class NonlinearSolver_Dynamic_Disp : public mfem::Operator
 {
 public:
-   NonlinearSolver_Dynamic_Disp(std::unique_ptr<GlobalAssembly_Disp> input_assembly,
-                                double density, std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
+   // Takes the ownership of the global assembly and of the time method, and
+   // assembles the mass matrix with the reference density; the Newton
+   // settings come from the solver section of config.yaml.
+   NonlinearSolver_Dynamic_Disp(std::unique_ptr<GlobalAssembly_Disp> input_global_assembly,
+                                double density,
+                                std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
                                 const YAML::Node &solver)
-      : mfem::Operator(input_assembly->get_num_dofs()),
-        global_assembly(std::move(input_assembly)),
-        mass(global_assembly->assemble_mass(density)),
-        time_method(std::move(input_time_method))
+      : mfem::Operator(input_global_assembly->get_num_dofs()),
+        global_assembly(std::move(input_global_assembly)),
+        time_method(std::move(input_time_method)),
+        mass(global_assembly->assemble_mass(density))
    {
       newton_solver.SetOperator(*this);
       newton_solver.SetSolver(linear_solver);
@@ -35,74 +55,95 @@ public:
       newton_solver.SetMonitor(newton_monitor);
    }
 
-   // Enforce initial motion and solve M a_0 = F_ext(t_0) - F_int(u_0),
-   // including prescribed acceleration through the full mass coupling.
-   void initialize(double time, mfem::GridFunction &disp,
-                   mfem::GridFunction &velo, mfem::GridFunction &acce)
+   // The initial state at time tt: sets the boundary values of disp and
+   // velo, and solves the equation of motion for the initial acceleration,
+   //    M a_0 = F_ext(t_0) - F_int(u_0),
+   // with the prescribed acceleration on the constrained dofs.
+   void initialize(double tt, mfem::GridFunction &disp, mfem::GridFunction &velo,
+                   mfem::GridFunction &acce)
    {
-      check_fields(disp, velo, acce);
-      const auto &dirichlet = global_assembly->get_dirichlet();
+      const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
+      const NeumannBoundary &neumann = global_assembly->get_neumann();
+
       dirichlet.apply_fixed_bc(disp);
       dirichlet.apply_fixed_bc(velo);
       acce = 0.0;
       if (dirichlet.is_disp_load())
       {
-         dirichlet.apply_disp_load_bc(time, disp);
-         dirichlet.apply_velo_load_bc(time, velo);
-         dirichlet.apply_acce_load_bc(time, acce);
+         dirichlet.apply_disp_load_bc(tt, disp);
+         dirichlet.apply_velo_load_bc(tt, velo);
+         dirichlet.apply_acce_load_bc(tt, acce);
       }
-      global_assembly->set_traction_load(time);
-      mfem::Vector u, prescribed_acce, rhs(mass->Height()), a(mass->Height());
-      disp.GetTrueDofs(u);
-      acce.GetTrueDofs(prescribed_acce);
-      global_assembly->assemble_residual(u, rhs);
+      if (neumann.is_traction_load())
+         global_assembly->set_traction_load(tt);
+
+      // rhs = -R(u_0); the prescribed acceleration in acce goes to the
+      // right-hand side as the prescribed increment of the static predictor.
+      mfem::Vector rhs(global_assembly->get_num_dofs());
+      global_assembly->assemble_residual(disp, rhs);
       rhs.Neg();
       mfem::SparseMatrix constrained_mass(*mass);
-      global_assembly->set_essential_bdr(constrained_mass, prescribed_acce, rhs);
+      global_assembly->set_essential_bdr(constrained_mass, acce, rhs);
+
       linear_solver.SetOperator(constrained_mass);
-      linear_solver.Mult(rhs, a);
-      acce.SetFromTrueDofs(a);
+      linear_solver.Mult(rhs, acce);
    }
 
-   // Required by MFEM: Newton's residual at the intermediate states.
+   // Solves the step from time tt to tt + input_dt, from the state of time tt
+   // into disp, velo and acce of time tt + input_dt, and returns the number
+   // of Newton iterations.
+   int solve(double tt, double input_dt, const mfem::GridFunction &input_disp_old,
+             const mfem::GridFunction &input_velo_old, const mfem::GridFunction &input_acce_old,
+             mfem::GridFunction &disp, mfem::GridFunction &velo, mfem::GridFunction &acce)
+   {
+      const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
+      const NeumannBoundary &neumann = global_assembly->get_neumann();
+      const double gamma = time_method->get_gamma();
+      const double beta = time_method->get_beta();
+
+      set_step(tt, input_dt, input_disp_old, input_velo_old, input_acce_old);
+
+      // Newton's method starts from u_pred, the displacement with
+      // a_{n+1} = 0, corrected by the consistent predictor.
+      disp = disp_predict;
+      initial_guess(tt + dt, disp);
+
+      // The load value: the prescribed displacement, or the traction faces.
+      if (dirichlet.is_disp_load())
+         dirichlet.print_disp_load_by_step(disp);
+      if (neumann.is_traction_load())
+         neumann.print_traction_load_by_step();
+      SystemTools::print_newton_header();
+
+      // Newton iterations for R_dyn(u_{n+1}) = 0; the empty right-hand side
+      // means zero.
+      newton_solver.Mult(mfem::Vector(), disp);
+      MFEM_VERIFY(newton_solver.GetConverged(),
+                  "Newton did not converge at t = " << tt + dt << ".");
+
+      // a_{n+1} = (u_{n+1} - u_pred) / (beta dt^2),
+      // v_{n+1} = v_n + dt ( (1 - gamma) a_n + gamma a_{n+1} ).
+      acce = disp;
+      acce -= disp_predict;
+      acce /= beta * dt * dt;
+      velo = input_velo_old;
+      velo.Add(dt * (1.0 - gamma), acce_old);
+      velo.Add(dt * gamma, acce);
+      return newton_solver.GetNumIterations();
+   }
+
+   // Required by MFEM: overrides mfem::Operator::Mult, which NewtonSolver
+   // calls at every iteration for the residual.
+   // R_dyn(u_{n+1}), zero on the constrained dofs.
    void Mult(const mfem::Vector &disp, mfem::Vector &residual) const override
    {
       assemble_residual(disp, residual);
       global_assembly->set_essential_bdr(residual);
    }
 
-   // R_dyn = R(disp_alpha, t_alpha_f) + M acce_alpha.
-   // *_old is the previous state; acce is acceleration.
-   void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
-   {
-      MFEM_VERIFY(disp_old && acce_old && disp_predict && dt > 0.0, "No active dynamic step.");
-      const double alpha_m = time_method->get_alpha_m();
-      const double alpha_f = time_method->get_alpha_f();
-      residual.SetSize(Height());
-      mfem::Vector disp_alpha(*disp_old), acce_alpha(disp);
-      disp_alpha *= 1.0 - alpha_f;
-      disp_alpha.Add(alpha_f, disp);
-      acce_alpha -= *disp_predict;
-      acce_alpha *= alpha_m / (time_method->get_beta() * dt * dt);
-      acce_alpha.Add(1.0 - alpha_m, *acce_old);
-      global_assembly->assemble_residual(disp_alpha, residual);
-      mass->AddMult(acce_alpha, residual);
-   }
-
-   std::unique_ptr<mfem::SparseMatrix> assemble_tangent(const mfem::Vector &disp) const
-   {
-      MFEM_VERIFY(disp_old && dt > 0.0, "No active dynamic step.");
-      const double alpha_m = time_method->get_alpha_m();
-      const double alpha_f = time_method->get_alpha_f();
-      mfem::Vector disp_alpha(*disp_old);
-      disp_alpha *= 1.0 - alpha_f;
-      disp_alpha.Add(alpha_f, disp);
-      return std::unique_ptr<mfem::SparseMatrix>(mfem::Add(
-         alpha_m / (time_method->get_beta() * dt * dt), *mass,
-         alpha_f, global_assembly->assemble_tangent(disp_alpha)));
-   }
-
-   // Required by MFEM: effective tangent after essential elimination.
+   // Required by MFEM: overrides mfem::Operator::GetGradient, which
+   // NewtonSolver calls at every iteration for the tangent.
+   // K_eff(u_{n+1}), the identity on the constrained dofs.
    mfem::Operator &GetGradient(const mfem::Vector &disp) const override
    {
       tangent = assemble_tangent(disp);
@@ -110,112 +151,119 @@ public:
       return *tangent;
    }
 
-   // Read the state at time and solve into separate fields at time + dt.
-   int solve(double time, double input_dt,
-             const mfem::GridFunction &disp_old, const mfem::GridFunction &velo_old,
-             const mfem::GridFunction &acce_old, mfem::GridFunction &disp_new,
-             mfem::GridFunction &velo_new, mfem::GridFunction &acce_new)
+protected:
+   // Sets the step from time tt to tt + input_dt: copies into members what
+   // Mult and GetGradient need besides u_{n+1}, the known part of Newmark's
+   // formula for u_{n+1},
+   //    u_pred = u_n + dt v_n + dt^2 (1/2 - beta) a_n,
+   // so that a_{n+1} = (u_{n+1} - u_pred) / (beta dt^2), and the traction at
+   // t_alpha = t_n + alpha_f dt.
+   void set_step(double tt, double input_dt, const mfem::Vector &input_disp_old,
+                 const mfem::Vector &input_velo_old, const mfem::Vector &input_acce_old)
    {
-      MFEM_VERIFY(std::isfinite(input_dt) && input_dt > 0.0, "The time step must be positive.");
-      check_fields(disp_old, velo_old, acce_old);
-      check_fields(disp_new, velo_new, acce_new);
-      MFEM_VERIFY(disp_old.FESpace() == disp_new.FESpace() &&
-                  &disp_old != &disp_new && &velo_old != &velo_new && &acce_old != &acce_new,
-                  "Old and new states must be separate fields on the same space.");
       dt = input_dt;
-      const double end_time = time + dt;
-      global_assembly->set_traction_load(time + time_method->get_alpha_f() * dt);
-      mfem::Vector disp_old_true, velo_old_true, acce_old_true;
-      disp_old.GetTrueDofs(disp_old_true);
-      velo_old.GetTrueDofs(velo_old_true);
-      acce_old.GetTrueDofs(acce_old_true);
-      mfem::Vector predictor(disp_old_true);
-      predictor.Add(dt, velo_old_true);
-      predictor.Add(dt * dt * (0.5 - time_method->get_beta()), acce_old_true);
-      this->disp_old = &disp_old_true;
-      this->acce_old = &acce_old_true;
-      disp_predict = &predictor;
+      disp_old = input_disp_old;
+      acce_old = input_acce_old;
 
-      mfem::Vector u(disp_old_true);
-      u.Add(dt, velo_old_true); u.Add(0.5 * dt * dt, acce_old_true);
-      mfem::GridFunction next_disp(disp_new.FESpace());
-      next_disp.SetFromTrueDofs(u);
-      initial_guess(end_time, next_disp);
-      next_disp.GetTrueDofs(u);
-      SystemTools::print_newton_header();
-      newton_solver.Mult(mfem::Vector(), u);
-      MFEM_VERIFY(newton_solver.GetConverged(),
-                  "Dynamic Newton did not converge at t = " << end_time << ".");
+      disp_predict = disp_old;
+      disp_predict.Add(dt, input_velo_old);
+      disp_predict.Add(dt * dt * (0.5 - time_method->get_beta()), acce_old);
 
-      mfem::Vector a(u);
-      a -= disp_old_true; a.Add(-dt, velo_old_true);
-      a.Add(-dt * dt * (0.5 - time_method->get_beta()), acce_old_true);
-      a /= time_method->get_beta() * dt * dt;
-      mfem::Vector v(velo_old_true);
-      v.Add(dt * (1.0 - time_method->get_gamma()), acce_old_true);
-      v.Add(dt * time_method->get_gamma(), a);
-      disp_new.SetFromTrueDofs(u); velo_new.SetFromTrueDofs(v); acce_new.SetFromTrueDofs(a);
-      this->disp_old = this->acce_old = disp_predict = nullptr;
-      dt = 0.0;
-      return newton_solver.GetNumIterations();
+      if (global_assembly->get_neumann().is_traction_load())
+         global_assembly->set_traction_load(tt + time_method->get_alpha_f() * dt);
    }
 
-   double get_kinetic_energy(const mfem::GridFunction &velo) const
+   // R_dyn(u_{n+1}) = R(u_alpha, t_alpha) + M a_alpha at every dof, with
+   //    u_alpha = (1 - alpha_f) u_n + alpha_f u_{n+1},
+   //    a_alpha = (1 - alpha_m) a_n + alpha_m (u_{n+1} - u_pred) / (beta dt^2).
+   void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
    {
-      mfem::Vector v, mv(mass->Height());
-      velo.GetTrueDofs(v); mass->Mult(v, mv);
-      return 0.5 * (v * mv);
+      const double alpha_m = time_method->get_alpha_m();
+      const double alpha_f = time_method->get_alpha_f();
+      const double beta = time_method->get_beta();
+
+      mfem::Vector disp_alpha(disp_old);
+      disp_alpha *= 1.0 - alpha_f;
+      disp_alpha.Add(alpha_f, disp);
+
+      mfem::Vector acce_alpha(disp);
+      acce_alpha -= disp_predict;
+      acce_alpha *= alpha_m / (beta * dt * dt);
+      acce_alpha.Add(1.0 - alpha_m, acce_old);
+
+      global_assembly->assemble_residual(disp_alpha, residual);
+      mass->AddMult(acce_alpha, residual);
+   }
+
+   // K_eff(u_{n+1}) = dR_dyn/du_{n+1} = alpha_m / (beta dt^2) M + alpha_f K(u_alpha)
+   // at every dof, in a new SparseMatrix, which the caller owns.
+   std::unique_ptr<mfem::SparseMatrix> assemble_tangent(const mfem::Vector &disp) const
+   {
+      const double alpha_m = time_method->get_alpha_m();
+      const double alpha_f = time_method->get_alpha_f();
+      const double beta = time_method->get_beta();
+
+      mfem::Vector disp_alpha(disp_old);
+      disp_alpha *= 1.0 - alpha_f;
+      disp_alpha.Add(alpha_f, disp);
+
+      return std::unique_ptr<mfem::SparseMatrix>(
+         mfem::Add(alpha_m / (beta * dt * dt), *mass,
+                   alpha_f, global_assembly->assemble_tangent(disp_alpha)));
    }
 
 private:
-   // One effective-tangent correction from the time solver's predictor.
-   // Include prescribed displacement increments through the full mass/stiffness
-   // coupling, then impose their end-time values exactly before Newton.
-   void initial_guess(double end_time, mfem::GridFunction &disp)
+   // Consistent predictor, as in NonlinearSolver_Static_Disp: one linear step
+   // of R_dyn = 0 from disp, so that the interior follows the prescribed
+   // boundary increment g at time tt instead of only the boundary nodes
+   // moving,
+   //    K_eff,ff du_f = -R_dyn,f(u) - K_eff,fe g,
+   // with K_eff,fe g moved to the right-hand side by set_essential_bdr.
+   void initial_guess(double tt, mfem::GridFunction &disp)
    {
-      mfem::Vector u;
-      disp.GetTrueDofs(u);
-      mfem::GridFunction target(disp.FESpace());
-      target.SetFromTrueDofs(u);
-      const auto &dirichlet = global_assembly->get_dirichlet();
-      dirichlet.apply_fixed_bc(target);
+      const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
+
+      // Zero on the fixed faces, the prescribed values at time tt on the
+      // displacement-driven ones; g is their difference from disp.
+      mfem::GridFunction disp_target(disp);
+      dirichlet.apply_fixed_bc(disp_target);
       if (dirichlet.is_disp_load())
-         dirichlet.apply_disp_load_bc(end_time, target);
-      mfem::Vector prescribed_increment, rhs, increment(u.Size());
-      target.GetTrueDofs(prescribed_increment);
-      prescribed_increment -= u;
-      assemble_residual(u, rhs); rhs.Neg();
-      tangent = assemble_tangent(u);
+         dirichlet.apply_disp_load_bc(tt, disp_target);
+      mfem::Vector prescribed_increment(disp_target);
+      prescribed_increment -= disp;
+
+      mfem::Vector rhs(global_assembly->get_num_dofs());
+      assemble_residual(disp, rhs);
+      rhs.Neg();
+      tangent = assemble_tangent(disp);
       global_assembly->set_essential_bdr(*tangent, prescribed_increment, rhs);
+
+      mfem::Vector predicted_increment(global_assembly->get_num_dofs());
       linear_solver.SetOperator(*tangent);
-      linear_solver.Mult(rhs, increment);
-      u += increment;
+      linear_solver.Mult(rhs, predicted_increment);
+      disp += predicted_increment;
 
-      target.SetFromTrueDofs(u);
-      dirichlet.apply_fixed_bc(target);
+      // Set the prescribed values exactly, free of round-off.
+      dirichlet.apply_fixed_bc(disp);
       if (dirichlet.is_disp_load())
-         dirichlet.apply_disp_load_bc(end_time, target);
-      target.GetTrueDofs(u);
-      disp.SetFromTrueDofs(u);
+         dirichlet.apply_disp_load_bc(tt, disp);
    }
 
-   void check_fields(const mfem::GridFunction &disp, const mfem::GridFunction &velo,
-                     const mfem::GridFunction &acce) const
-   {
-      MFEM_VERIFY(disp.FESpace() == velo.FESpace() && disp.FESpace() == acce.FESpace() &&
-                  disp.Size() == mass->Height(),
-                  "Dynamics currently requires one conforming displacement space for all fields.");
-   }
+   // newton_solver points to this operator, the linear solver and the
+   // monitor, so it is declared last and goes first.
+   const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R, K and M
+   const std::unique_ptr<TimeMethod_GenAlpha> time_method;       // alpha_m, alpha_f, gamma, beta
+   const std::unique_ptr<mfem::SparseMatrix> mass;               // M, assembled once
+   mfem::UMFPackSolver linear_solver;                            // direct solver of the tangent
+   SystemTools::NewtonMonitor newton_monitor;                    // prints the residual norms
+   mutable std::unique_ptr<mfem::SparseMatrix> tangent;          // tangent of the predictor and of Newton's method
 
-   const std::unique_ptr<GlobalAssembly_Disp> global_assembly;
-   const std::unique_ptr<mfem::SparseMatrix> mass;
-   const std::unique_ptr<TimeMethod_GenAlpha> time_method;
-   mfem::UMFPackSolver linear_solver;
-   SystemTools::NewtonMonitor newton_monitor;
-   // Known vectors are local to solve(); callbacks borrow them only while it runs.
-   double dt = 0.0;
-   const mfem::Vector *disp_old = nullptr, *acce_old = nullptr, *disp_predict = nullptr;
-   mutable std::unique_ptr<mfem::SparseMatrix> tangent;
+   // The step being solved, set by set_step.
+   double dt = 0.0;                                              // time step
+   mfem::Vector disp_old;                                        // u_n
+   mfem::Vector acce_old;                                        // a_n
+   mfem::Vector disp_predict;                                    // u_pred
+
    mfem::NewtonSolver newton_solver;
 };
 

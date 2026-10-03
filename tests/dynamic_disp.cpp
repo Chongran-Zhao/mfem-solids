@@ -1,4 +1,24 @@
-#include <chrono>
+// ============================================================================
+// dynamic_disp.cpp of tests
+//
+// Checks of the displacement dynamics on one hexahedron, the unit cube, with
+// the material of MaterialModelData:
+//    tangent            K_eff against central differences of R_dyn, without
+//                       and with the constraints, for rho_inf = 0, 0.5, 1;
+//    rigid translation  constant velocity, zero acceleration, the output
+//                       times and files of the time solver;
+//    free vibration     a small longitudinal vibration against the midpoint
+//                       rule of its linear oscillator, its energy, and the
+//                       second-order convergence in time;
+//    prescribed motion  disp_bc on the right face, LoadData::disp_driven;
+//    traction impulse   the momentum against the impulse of the traction on
+//                       the right face, LoadData::surface_traction.
+// Run by CTest; prints PASS, or the failed check and exits with 1.
+//
+// Author: Chongran Zhao
+// Date: Oct. 3, 2026
+// Email: chongran_zhao@brown.edu
+// ============================================================================
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -20,277 +40,356 @@
 #include "TimeMethod_GenAlpha.hpp"
 #include "TimeSolver_Dynamic_Disp.hpp"
 
-namespace
-{
-constexpr double density = 1000.0;
+// Reference density of every check.
+static constexpr double density = 1000.0;
 
-void require(bool condition, const std::string &message)
+// Newton settings of every check.
+static const char *newton_settings =
+   "{newton_rel_tol: 1.0e-10, newton_abs_tol: 1.0e-10, newton_max_iter: 20}";
+
+// Throws the message if the condition fails.
+static void check(bool condition, const std::string &message)
 {
-   if (!condition) throw std::runtime_error(message);
+   if (!condition)
+      throw std::runtime_error(message);
 }
 
-struct Fixture
+// The nonlinear solver, with its step functions made public for the
+// tangent check.
+class NonlinearSolver_Dynamic_Disp_Test : public NonlinearSolver_Dynamic_Disp
+{
+public:
+   using NonlinearSolver_Dynamic_Disp::NonlinearSolver_Dynamic_Disp;
+   using NonlinearSolver_Dynamic_Disp::set_step;
+   using NonlinearSolver_Dynamic_Disp::assemble_residual;
+   using NonlinearSolver_Dynamic_Disp::assemble_tangent;
+};
+
+// The unit cube, its faces left (x = 0), right (x = 1) and all, the
+// displacement space, and the boundary conditions of a check.
+struct UnitCube
 {
    mfem::Mesh mesh = mfem::Mesh::MakeCartesian3D(1, 1, 1, mfem::Element::HEXAHEDRON);
-   mfem::H1_FECollection fec{1, 3};
-   mfem::FiniteElementSpace space{&mesh, &fec, 3, mfem::Ordering::byVDIM};
-   mfem::GridFunction u{&space}, v{&space}, a{&space};
-   YAML::Node config;
-   NonlinearSolver_Dynamic_Disp *nonlinear = nullptr;
-   const std::filesystem::path results_dir = std::filesystem::temp_directory_path() /
-      ("mfem-dynamics-test-" + std::to_string(
-         std::chrono::steady_clock::now().time_since_epoch().count()));
+   mfem::H1_FECollection fec_u{1, 3};
+   mfem::FiniteElementSpace space_u{&mesh, &fec_u, 3, mfem::Ordering::byVDIM};
+   YAML::Node dirichlet_config;
+   YAML::Node neumann_config;
+   const std::filesystem::path results_dir =
+      std::filesystem::temp_directory_path() / "mfem-solids-test-dynamic-disp";
 
-   ~Fixture() { std::filesystem::remove_all(results_dir); }
-
-   explicit Fixture(const std::string &boundary = "fixed_bc: []\ndisp_bc: []")
+   UnitCube(const std::string &dirichlet_input, const std::string &neumann_input)
+      : dirichlet_config(YAML::Load(dirichlet_input)),
+        neumann_config(YAML::Load(neumann_input))
    {
       mfem::Array<int> left, right, all;
-      for (int i = 0; i < mesh.GetNBE(); ++i)
+      for (int be = 0; be < mesh.GetNBE(); be++)
       {
-         auto *tr = mesh.GetBdrElementTransformation(i);
-         mfem::Vector x(3);
-         tr->Transform(mfem::Geometries.GetCenter(tr->GetGeometryType()), x);
-         const int attr = mesh.GetBdrAttribute(i);
-         all.Append(attr);
-         if (std::abs(x(0)) < 1e-12) left.Append(attr);
-         if (std::abs(x(0) - 1.0) < 1e-12) right.Append(attr);
+         mfem::ElementTransformation &face_map = *mesh.GetBdrElementTransformation(be);
+         mfem::Vector center(3);
+         face_map.Transform(mfem::Geometries.GetCenter(face_map.GetGeometryType()), center);
+         const int attribute = mesh.GetBdrAttribute(be);
+         all.Append(attribute);
+         if (std::abs(center(0)) < 1.0e-12)
+            left.Append(attribute);
+         if (std::abs(center(0) - 1.0) < 1.0e-12)
+            right.Append(attribute);
       }
       mesh.bdr_attribute_sets.SetAttributeSet("left", left);
       mesh.bdr_attribute_sets.SetAttributeSet("right", right);
       mesh.bdr_attribute_sets.SetAttributeSet("all", all);
-      config = YAML::Load(boundary);
-      u = 0.0; v = 0.0; a = 0.0;
    }
 
-   std::unique_ptr<GlobalAssembly_Disp> assembly(const std::string &traction = "faces: []")
+   ~UnitCube() { std::filesystem::remove_all(results_dir); }
+
+   std::unique_ptr<GlobalAssembly_Disp> make_global_assembly()
    {
-      return std::make_unique<GlobalAssembly_Disp>(space,
+      return std::make_unique<GlobalAssembly_Disp>(space_u,
          std::make_unique<LocalAssembly_Disp>(set_material_model()),
-         std::make_unique<DirichletBoundary>(config, space),
-         std::make_unique<NeumannBoundary>(YAML::Load(traction), space));
+         std::make_unique<DirichletBoundary>(dirichlet_config, space_u),
+         std::make_unique<NeumannBoundary>(neumann_config, space_u));
    }
 
-   std::unique_ptr<TimeSolver_Dynamic_Disp> solver(double rho_inf = 1.0)
+   template <typename Solver = NonlinearSolver_Dynamic_Disp>
+   std::unique_ptr<Solver> make_nonlinear_solver(double rho_inf)
    {
-      auto numerical = std::make_unique<NonlinearSolver_Dynamic_Disp>(assembly(), density,
-         std::make_unique<TimeMethod_GenAlpha>(rho_inf),
-         YAML::Load("newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20"));
-      nonlinear = numerical.get();
-      nonlinear->initialize(0.0, u, v, a);
-      return std::make_unique<TimeSolver_Dynamic_Disp>(std::move(numerical),
-         0.001, 0.02, results_dir);
+      return std::make_unique<Solver>(make_global_assembly(), density,
+                                      std::make_unique<TimeMethod_GenAlpha>(rho_inf),
+                                      YAML::Load(newton_settings));
+   }
+
+   // M, for the momentum and the kinetic energy.
+   std::unique_ptr<mfem::SparseMatrix> make_mass()
+   {
+      return make_global_assembly()->assemble_mass(density);
+   }
+
+   // A field of the constant vector value.
+   mfem::GridFunction make_uniform_field(double value_x, double value_y, double value_z)
+   {
+      mfem::Vector value(3);
+      value(0) = value_x;
+      value(1) = value_y;
+      value(2) = value_z;
+      mfem::VectorConstantCoefficient coeff(value);
+      mfem::GridFunction field(&space_u);
+      field.ProjectCoefficient(coeff);
+      return field;
    }
 };
 
-// The input state must remain unchanged after a separate-output solve.
-void advance(NonlinearSolver_Dynamic_Disp &solver, double time, double dt, Fixture &f)
+// One step with the nonlinear solver from the state disp, velo, acce into
+// itself.
+static void solve_step(NonlinearSolver_Dynamic_Disp &nonlinear_solver, double tt, double dt,
+                       mfem::GridFunction &disp, mfem::GridFunction &velo,
+                       mfem::GridFunction &acce)
 {
-   mfem::GridFunction disp_old(f.u), velo_old(f.v), acce_old(f.a);
-   const mfem::Vector saved_disp(disp_old), saved_velo(velo_old), saved_acce(acce_old);
-   solver.solve(time, dt, disp_old, velo_old, acce_old, f.u, f.v, f.a);
-   mfem::Vector change(disp_old); change -= saved_disp;
-   require(change.Normlinf() == 0.0, "Old displacement was modified");
-   change = velo_old; change -= saved_velo;
-   require(change.Normlinf() == 0.0, "Old velocity was modified");
-   change = acce_old; change -= saved_acce;
-   require(change.Normlinf() == 0.0, "Old acceleration was modified");
+   const mfem::GridFunction disp_old(disp), velo_old(velo), acce_old(acce);
+   nonlinear_solver.solve(tt, dt, disp_old, velo_old, acce_old, disp, velo, acce);
 }
 
-// Check the actual nonlinear solver operator while Newton has an active step.
-class TangentCheckSolver : public NonlinearSolver_Dynamic_Disp
+// K_eff against the central difference of R_dyn along a direction dd,
+//    ( R_dyn(u + eps dd) - R_dyn(u - eps dd) ) / (2 eps) = K_eff dd + O(eps^2),
+// at every dof, and through Mult and GetGradient, with the constraints, for
+// a dd zero on the constrained dofs, which carry the identity.
+static void check_tangent()
 {
-public:
-   TangentCheckSolver(std::unique_ptr<GlobalAssembly_Disp> assembly,
-                      const mfem::Array<int> &essential, double rho_inf)
-      : NonlinearSolver_Dynamic_Disp(std::move(assembly), density,
-           std::make_unique<TimeMethod_GenAlpha>(rho_inf),
-           YAML::Load("newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20")),
-        essential(essential) {}
-
-   mfem::Operator &GetGradient(const mfem::Vector &u) const override
+   UnitCube cube("{fixed_bc: [{face: left, dir: x}], disp_bc: []}", "{faces: []}");
+   const int num_dofs = cube.space_u.GetTrueVSize();
+   mfem::Vector disp_old(num_dofs), velo_old(num_dofs), acce_old(num_dofs);
+   mfem::Vector disp(num_dofs), direction(num_dofs);
+   for (int ii = 0; ii < num_dofs; ii++)
    {
-      for (bool constrained : {false, true})
-      {
-         mfem::Vector d(u.Size()), plus(u), minus(u), rp(u.Size()), rm(u.Size()), kd(u.Size());
-         for (int i = 0; i < d.Size(); ++i) d(i) = std::sin(0.7 * i + 0.3);
-         if (constrained) for (int i : essential) d(i) = 0.0;
-         const double eps = 1e-7;
-         plus.Add(eps, d); minus.Add(-eps, d);
-         if (constrained)
-         {
-            Mult(plus, rp); Mult(minus, rm);
-            NonlinearSolver_Dynamic_Disp::GetGradient(u).Mult(d, kd);
-         }
-         else
-         {
-            assemble_residual(plus, rp); assemble_residual(minus, rm);
-            assemble_tangent(u)->Mult(d, kd);
-         }
-         rp -= rm; rp /= 2.0 * eps; rp -= kd;
-         require(rp.Norml2() / kd.Norml2() < 1e-7, "Effective tangent finite difference");
-         ++checks;
-      }
-      return NonlinearSolver_Dynamic_Disp::GetGradient(u);
+      disp_old(ii) = 0.001 * std::sin(ii + 1.0);
+      velo_old(ii) = 0.01 * std::cos(ii + 1.0);
+      acce_old(ii) = 0.1 * std::sin(2.0 * ii);
+      disp(ii) = disp_old(ii) + 0.002 * std::cos(ii);
+      direction(ii) = std::sin(0.7 * ii + 0.3);
    }
+   const double eps = 1.0e-7;
 
-   mutable int checks = 0;
-private:
-   const mfem::Array<int> essential;
-};
+   for (double rho_inf : {0.0, 0.5, 1.0})
+   {
+      auto nonlinear_solver =
+         cube.make_nonlinear_solver<NonlinearSolver_Dynamic_Disp_Test>(rho_inf);
+      nonlinear_solver->set_step(0.0, 0.01, disp_old, velo_old, acce_old);
 
-void tangent_check()
-{
-   Fixture f("fixed_bc: [{face: left, dir: x}]\ndisp_bc: []");
-   const int n = f.space.GetTrueVSize();
-   mfem::Vector un(n), vn(n), an(n), u(n);
-   for (int i = 0; i < n; ++i)
-   {
-      un(i) = 0.001 * std::sin(i + 1.0);
-      vn(i) = 0.01 * std::cos(i + 1.0);
-      an(i) = 0.1 * std::sin(2.0 * i);
-      u(i) = un(i) + 0.002 * std::cos(i);
-   }
-   for (double rho : {0.0, 0.5, 1.0})
-   {
-      auto assembly = f.assembly();
-      const auto essential = assembly->get_dirichlet().get_ess_tdof_list();
-      TangentCheckSolver solver(std::move(assembly), essential, rho);
-      f.u.SetFromTrueDofs(u);
-      f.v.SetFromTrueDofs(vn);
-      f.a.SetFromTrueDofs(an);
-      const int before = solver.checks;
-      advance(solver, 0.0, 0.01, f);
-      require(solver.checks > before, "Newton must exercise its operator tangent");
+      mfem::Vector disp_plus(disp), disp_minus(disp);
+      disp_plus.Add(eps, direction);
+      disp_minus.Add(-eps, direction);
+      mfem::Vector residual_plus(num_dofs), residual_minus(num_dofs), tangent_dir(num_dofs);
+
+      // At every dof.
+      nonlinear_solver->assemble_residual(disp_plus, residual_plus);
+      nonlinear_solver->assemble_residual(disp_minus, residual_minus);
+      nonlinear_solver->assemble_tangent(disp)->Mult(direction, tangent_dir);
+      residual_plus -= residual_minus;
+      residual_plus /= 2.0 * eps;
+      residual_plus -= tangent_dir;
+      check(residual_plus.Norml2() < 1.0e-7 * tangent_dir.Norml2(),
+            "The tangent differs from the central difference of the residual.");
+
+      // With the constraints, along a direction zero on the constrained dofs.
+      mfem::Vector direction_free(direction);
+      for (int dof : cube.make_global_assembly()->get_dirichlet().get_ess_tdof_list())
+         direction_free(dof) = 0.0;
+      disp_plus = disp;
+      disp_minus = disp;
+      disp_plus.Add(eps, direction_free);
+      disp_minus.Add(-eps, direction_free);
+      nonlinear_solver->Mult(disp_plus, residual_plus);
+      nonlinear_solver->Mult(disp_minus, residual_minus);
+      nonlinear_solver->GetGradient(disp).Mult(direction_free, tangent_dir);
+      residual_plus -= residual_minus;
+      residual_plus /= 2.0 * eps;
+      residual_plus -= tangent_dir;
+      check(residual_plus.Norml2() < 1.0e-7 * tangent_dir.Norml2(),
+            "The constrained tangent differs from the central difference of the residual.");
    }
 }
 
-void translation_and_time_loop()
+// A free cube moving with a constant velocity v: u = v t and a = 0, at the
+// times 0, 0.003, 0.006, 0.009 and the shortened last step to 0.01.
+static void check_rigid_translation()
 {
-   Fixture f;
-   mfem::VectorFunctionCoefficient velocity(3, [](const mfem::Vector &, mfem::Vector &v)
-   { v.SetSize(3); v(0) = 0.02; v(1) = -0.01; v(2) = 0.03; });
-   f.v.ProjectCoefficient(velocity);
-   const auto &dir = f.results_dir;
-   TimeSolver_Dynamic_Disp time(
-      std::make_unique<NonlinearSolver_Dynamic_Disp>(f.assembly(), density,
-         std::make_unique<TimeMethod_GenAlpha>(0.5), YAML::Load(
-         "newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20")),
-      0.003, 0.01, dir);
-   time.run(f.u, f.v, f.a);
-   mfem::GridFunction expected(&f.space);
-   expected.ProjectCoefficient(velocity); expected *= 0.01;
-   expected -= f.u;
-   require(expected.Normlinf() < 1e-12 && f.a.Normlinf() < 1e-8,
-           "Rigid translation should have zero acceleration");
-   expected.ProjectCoefficient(velocity); expected -= f.v;
-   require(expected.Normlinf() < 1e-10, "Rigid translation velocity");
-   std::ifstream history(dir / "time.csv");
+   UnitCube cube("{fixed_bc: [], disp_bc: []}", "{faces: []}");
+   const mfem::GridFunction velocity = cube.make_uniform_field(0.02, -0.01, 0.03);
+   mfem::GridFunction disp(&cube.space_u), velo(velocity), acce(&cube.space_u);
+   disp = 0.0;
+   acce = 0.0;
+
+   TimeSolver_Dynamic_Disp time_solver(cube.make_nonlinear_solver(0.5), 0.003, 0.01,
+                                       cube.results_dir);
+   time_solver.run(disp, velo, acce);
+
+   mfem::GridFunction error(velocity);
+   error *= 0.01;
+   error -= disp;
+   check(error.Normlinf() < 1.0e-12, "Rigid translation: wrong displacement.");
+   error = velocity;
+   error -= velo;
+   check(error.Normlinf() < 1.0e-10, "Rigid translation: wrong velocity.");
+   check(acce.Normlinf() < 1.0e-8, "Rigid translation: nonzero acceleration.");
+
+   std::ifstream time_file(cube.results_dir / "time.csv");
    std::string line;
-   std::getline(history, line);
+   std::getline(time_file, line);
    for (double expected_time : {0.0, 0.003, 0.006, 0.009, 0.01})
    {
-      require(bool(std::getline(history, line)), "Missing time history row");
-      const auto begin = line.find(',') + 1;
-      require(std::abs(std::stod(line.substr(begin)) - expected_time) < 1e-14,
-              "Incorrect physical output time");
+      check(static_cast<bool>(std::getline(time_file, line)), "time.csv: a step is missing.");
+      const double time = std::stod(line.substr(line.find(',') + 1));
+      check(std::abs(time - expected_time) < 1.0e-14, "time.csv: wrong time.");
    }
-   require(!std::getline(history, line), "Extra time history row");
-   int gf_count = 0;
-   for (const auto &entry : std::filesystem::directory_iterator(dir))
-      if (entry.path().extension() == ".gf") ++gf_count;
-   require(gf_count == 15, "Displacement/velocity/acceleration output count");
-   std::filesystem::remove_all(dir);
+   check(!std::getline(time_file, line), "time.csv: too many steps.");
+
+   int num_gf_files = 0;
+   for (const std::filesystem::directory_entry &entry :
+        std::filesystem::directory_iterator(cube.results_dir))
+      if (entry.path().extension() == ".gf")
+         num_gf_files++;
+   check(num_gf_files == 15, "Not 5 steps of disp, velo and acce saved.");
 }
 
-// A single hex with lateral motion suppressed reduces to a longitudinal
-// oscillator: K = (kappa + 4 mu/3) A/L, M = rho A L/3.
-double vibration(double dt)
+// The cube with u_y = u_z = 0 everywhere and u_x = 0 on the left face, from
+// u_x = q x: one longitudinal mode, the oscillator
+//    m q'' + k q = 0,   k = (kappa + 4 mu / 3) A / L,   m = rho A L / 3,
+// for a small q, here 1e-6. With rho_inf = 1, the midpoint rule, its
+// discrete solution is q_n = q_0 cos(n 2 atan(omega dt / 2)), and its energy
+// stays constant. Returns the error at t = 0.02 against cos(omega t), for
+// the convergence check.
+static double check_free_vibration(double dt)
 {
-   Fixture f("fixed_bc: [{face: left, dir: x}, {face: all, dir: y}, {face: all, dir: z}]\ndisp_bc: []");
-   const double amplitude = 1e-6;
-   mfem::VectorFunctionCoefficient initial(3, [=](const mfem::Vector &x, mfem::Vector &u)
-   { u.SetSize(3); u = 0.0; u(0) = amplitude * x(0); });
-   f.u.ProjectCoefficient(initial);
-   auto solver = f.solver();
+   UnitCube cube("{fixed_bc: [{face: left, dir: x}, {face: all, dir: y}, {face: all, dir: z}],"
+                 " disp_bc: []}", "{faces: []}");
+   const double amplitude = 1.0e-6;
+   mfem::VectorFunctionCoefficient mode_value(3, [](const mfem::Vector &pt, mfem::Vector &value)
+   {
+      value = 0.0;
+      value(0) = pt(0);
+   });
+   mfem::GridFunction mode(&cube.space_u);
+   mode.ProjectCoefficient(mode_value);
+   const double mode_norm = mode * mode;
+
+   mfem::GridFunction disp(mode), velo(&cube.space_u), acce(&cube.space_u);
+   disp *= amplitude;
+   velo = 0.0;
+
    const double mu = young / (2.0 * (1.0 + poisson));
    const double kappa = young / (3.0 * (1.0 - 2.0 * poisson));
    const double stiffness = kappa + 4.0 * mu / 3.0;
    const double omega = std::sqrt(3.0 * stiffness / density);
-   mfem::VectorFunctionCoefficient mode(3, [](const mfem::Vector &x, mfem::Vector &u)
-   { u.SetSize(3); u = 0.0; u(0) = x(0); });
-   mfem::GridFunction shape(&f.space); shape.ProjectCoefficient(mode);
-   const double shape_norm = shape * shape;
-   const double energy0 = 0.5 * stiffness * amplitude * amplitude;
-   const int steps = int(std::lround(0.02 / dt));
-   double q = amplitude;
-   for (int step = 0; step < steps; ++step)
+   const double initial_energy = 0.5 * stiffness * amplitude * amplitude;
+
+   const std::unique_ptr<mfem::SparseMatrix> mass = cube.make_mass();
+   auto nonlinear_solver = cube.make_nonlinear_solver(1.0);
+   nonlinear_solver->initialize(0.0, disp, velo, acce);
+
+   const int num_steps = static_cast<int>(std::lround(0.02 / dt));
+   double mode_amplitude = amplitude;
+   mfem::Vector momentum(velo.Size());
+   for (int step = 0; step < num_steps; step++)
    {
-      advance(*f.nonlinear, step * dt, dt, f);
-      q = (shape * f.u) / shape_norm;
-      const double expected = amplitude * std::cos((step + 1) * 2.0 * std::atan(omega * dt / 2.0));
-      require(std::abs(q - expected) / amplitude < 2e-5, "Free vibration discrete frequency");
-      const double energy = f.nonlinear->get_kinetic_energy(f.v) + 0.5 * stiffness * q * q;
-      require(std::abs(energy / energy0 - 1.0) < 2e-5, "Small amplitude vibration energy");
+      solve_step(*nonlinear_solver, step * dt, dt, disp, velo, acce);
+      mode_amplitude = (mode * disp) / mode_norm;
+      const double discrete_amplitude =
+         amplitude * std::cos((step + 1) * 2.0 * std::atan(omega * dt / 2.0));
+      check(std::abs(mode_amplitude - discrete_amplitude) < 2.0e-5 * amplitude,
+            "Free vibration: not the discrete midpoint solution.");
+
+      mass->Mult(velo, momentum);
+      const double energy =
+         0.5 * (velo * momentum) + 0.5 * stiffness * mode_amplitude * mode_amplitude;
+      check(std::abs(energy / initial_energy - 1.0) < 2.0e-5,
+            "Free vibration: the energy is not conserved.");
    }
-   return std::abs(q / amplitude - std::cos(omega * 0.02));
+   return std::abs(mode_amplitude / amplitude - std::cos(omega * 0.02));
 }
 
-void prescribed_motion()
+// The cube fixed on the left face and driven along z on the right one by
+// LoadData::disp_driven, -0.5 t: after one step, u_z = -0.5 t, v_z = -0.5
+// and a_z = 0 there.
+static void check_prescribed_motion()
 {
-   Fixture f("fixed_bc: [{face: left, dir: x}, {face: left, dir: y}, {face: left, dir: z}]\ndisp_bc: [{face: right, dir: z}]");
-   auto solver = f.solver(0.5);
-   advance(*f.nonlinear, 0.0, 0.001, f);
-   mfem::Array<int> dofs;
-   f.space.GetEssentialTrueDofs(f.mesh.bdr_attribute_sets.GetAttributeSetMarker("right"), dofs, 2);
-   for (int i : dofs)
-      require(std::abs(f.u(i) + 0.0005) < 1e-14 &&
-              std::abs(f.v(i) + 0.5) < 1e-12 && std::abs(f.a(i)) < 1e-8,
-              "Consistent prescribed displacement/velocity/acceleration");
-}
+   UnitCube cube("{fixed_bc: [{face: left, dir: x}, {face: left, dir: y}, {face: left, dir: z}],"
+                 " disp_bc: [{face: right, dir: z}]}", "{faces: []}");
+   mfem::GridFunction disp(&cube.space_u), velo(&cube.space_u), acce(&cube.space_u);
+   disp = 0.0;
+   velo = 0.0;
 
-void traction_momentum()
-{
-   Fixture f;
-   auto assembly = f.assembly("faces: [right]");
-   auto mass = assembly->assemble_mass(density);
-   auto nonlinear = std::make_unique<NonlinearSolver_Dynamic_Disp>(std::move(assembly), density,
-      std::make_unique<TimeMethod_GenAlpha>(1.0),
-      YAML::Load("newton_rel_tol: 1e-10\nnewton_abs_tol: 1e-10\nnewton_max_iter: 20"));
-   nonlinear->initialize(0.0, f.u, f.v, f.a);
-   f.nonlinear = nonlinear.get();
-   TimeSolver_Dynamic_Disp solver(std::move(nonlinear), 0.001, 0.003, f.results_dir);
-   mfem::VectorFunctionCoefficient z(3, [](const mfem::Vector &, mfem::Vector &v)
-   { v.SetSize(3); v = 0.0; v(2) = 1.0; });
-   mfem::GridFunction translation(&f.space); translation.ProjectCoefficient(z);
+   auto nonlinear_solver = cube.make_nonlinear_solver(0.5);
+   nonlinear_solver->initialize(0.0, disp, velo, acce);
    const double dt = 0.001;
-   for (int step = 0; step < 3; ++step)
-   {
-      advance(*f.nonlinear, step * dt, dt, f);
-      mfem::Vector momentum(f.v.Size()); mass->Mult(f.v, momentum);
-      const double time = (step + 1) * dt;
-      const double expected = -0.5 * 2275.0 * time * time;
-      require(std::abs(translation * momentum - expected) < 1e-10,
-              "Traction must be evaluated at the intermediate physical time");
-   }
+   solve_step(*nonlinear_solver, 0.0, dt, disp, velo, acce);
+
+   mfem::Array<int> right_dofs;
+   cube.space_u.GetEssentialTrueDofs(
+      cube.mesh.bdr_attribute_sets.GetAttributeSetMarker("right"), right_dofs, 2);
+   for (int dof : right_dofs)
+      check(std::abs(disp(dof) + 0.5 * dt) < 1.0e-14 && std::abs(velo(dof) + 0.5) < 1.0e-12 &&
+            std::abs(acce(dof)) < 1.0e-8,
+            "Prescribed motion: wrong displacement, velocity or acceleration.");
 }
+
+// A free cube loaded on the right face by LoadData::surface_traction. The
+// internal forces sum to zero, so with rho_inf = 1 the momentum along z
+// grows by the impulse of the traction at the midpoints,
+//    P_{n+1} - P_n = dt F_z(t_n + dt / 2),
+// with F_z the total traction force along z.
+static void check_traction_impulse()
+{
+   UnitCube cube("{fixed_bc: [], disp_bc: []}", "{faces: [right]}");
+   mfem::GridFunction disp(&cube.space_u), velo(&cube.space_u), acce(&cube.space_u);
+   disp = 0.0;
+   velo = 0.0;
+
+   const std::unique_ptr<mfem::SparseMatrix> mass = cube.make_mass();
+   const mfem::GridFunction unit_z = cube.make_uniform_field(0.0, 0.0, 1.0);
+
+   // F_z(t), from the nodal traction forces.
+   NeumannBoundary neumann(cube.neumann_config, cube.space_u);
+   mfem::LinearForm traction_force(&cube.space_u);
+   neumann.add_traction_integrators(traction_force);
+   auto get_force_z = [&](double tt)
+   {
+      neumann.set_time(tt);
+      traction_force.Assemble();
+      return unit_z * traction_force;
+   };
+
+   auto nonlinear_solver = cube.make_nonlinear_solver(1.0);
+   nonlinear_solver->initialize(0.0, disp, velo, acce);
+   const double dt = 0.001;
+   double expected_momentum = 0.0;
+   mfem::Vector momentum(velo.Size());
+   for (int step = 0; step < 3; step++)
+   {
+      solve_step(*nonlinear_solver, step * dt, dt, disp, velo, acce);
+      expected_momentum += dt * get_force_z((step + 0.5) * dt);
+      mass->Mult(velo, momentum);
+      check(std::abs(unit_z * momentum - expected_momentum) < 1.0e-10,
+            "Traction impulse: the momentum differs from the impulse.");
+   }
 }
 
 int main()
 {
    try
    {
-      tangent_check();
-      translation_and_time_loop();
-      const double coarse = vibration(0.001), fine = vibration(0.0005);
-      require(coarse / fine > 3.5 && coarse / fine < 4.5, "Second order time convergence");
-      prescribed_motion();
-      traction_momentum();
-      std::cout << "PASS: tangent, rigid motion, vibration frequency/energy/convergence, prescribed motion, traction momentum, output times\n";
+      check_tangent();
+      check_rigid_translation();
+      const double coarse_error = check_free_vibration(0.001);
+      const double fine_error = check_free_vibration(0.0005);
+      check(coarse_error / fine_error > 3.5 && coarse_error / fine_error < 4.5,
+            "Free vibration: the time convergence is not of second order.");
+      check_prescribed_motion();
+      check_traction_impulse();
+      std::cout << "PASS: tangent, rigid translation, free vibration, prescribed motion, "
+                   "traction impulse\n";
    }
    catch (const std::exception &error)
    {
       std::cerr << error.what() << '\n';
       return 1;
    }
+   return 0;
 }

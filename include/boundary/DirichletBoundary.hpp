@@ -23,7 +23,6 @@
 #include <yaml-cpp/yaml.h>
 
 #include "LoadData.hpp"
-#include "Vector_3D.hpp"
 
 class DirichletBoundary
 {
@@ -92,17 +91,35 @@ public:
    // Apply the disp loading given by LoadData::disp_driven(pt, tt).
    void apply_disp_load_bc(double tt, mfem::GridFunction &disp) const
    {
-      apply_load_bc(tt, disp, LoadData::disp_driven);
+      apply_load_bc(disp, [tt](const mfem::Vector &pt, const std::string &face, int dir)
+      { return LoadData::disp_driven(pt, tt, face)(dir); });
    }
 
+   // Velocity of the disp loading at time tt, for the initial state of the
+   // dynamics: the central difference of LoadData::disp_driven,
+   //    v = ( d(tt + hh) - d(tt - hh) ) / (2 hh),
+   // so that it always follows disp_driven.
    void apply_velo_load_bc(double tt, mfem::GridFunction &velo) const
    {
-      apply_load_bc(tt, velo, LoadData::velo_driven);
+      apply_load_bc(velo, [tt](const mfem::Vector &pt, const std::string &face, int dir)
+      {
+         return (LoadData::disp_driven(pt, tt + time_diff_step, face)(dir)
+                 - LoadData::disp_driven(pt, tt - time_diff_step, face)(dir))
+                / (2.0 * time_diff_step);
+      });
    }
 
+   // Acceleration of the disp loading at time tt, as apply_velo_load_bc,
+   //    a = ( d(tt + hh) - 2 d(tt) + d(tt - hh) ) / hh^2.
    void apply_acce_load_bc(double tt, mfem::GridFunction &acce) const
    {
-      apply_load_bc(tt, acce, LoadData::acce_driven);
+      apply_load_bc(acce, [tt](const mfem::Vector &pt, const std::string &face, int dir)
+      {
+         return (LoadData::disp_driven(pt, tt + time_diff_step, face)(dir)
+                 - 2.0 * LoadData::disp_driven(pt, tt, face)(dir)
+                 + LoadData::disp_driven(pt, tt - time_diff_step, face)(dir))
+                / (time_diff_step * time_diff_step);
+      });
    }
 
    // Print the fixed faces and the number of all constrained unknowns.
@@ -166,18 +183,22 @@ public:
    }
 
 private:
-   // Project one component of a prescribed motion onto its boundary dofs.
-   void apply_load_bc(double tt, mfem::GridFunction &field,
-                     Vector_3D (*motion)(const mfem::Vector &, double,
-                                        const std::string &)) const
+   // Time step hh of the central differences of apply_velo_load_bc and
+   // apply_acce_load_bc.
+   static constexpr double time_diff_step = 1.0e-4;
+
+   // Project value(pt, face, dir), the prescribed displacement or one of its
+   // time derivatives, onto the dofs of every entry of disp_bc.
+   template <typename Value>
+   void apply_load_bc(mfem::GridFunction &field, const Value &value) const
    {
       for (const disp_load &load : disp_load_list)
       {
-         mfem::FunctionCoefficient value([&](const mfem::Vector &pt)
-         { return motion(pt, tt, load.face)(load.dir); });
+         mfem::FunctionCoefficient load_value([&](const mfem::Vector &pt)
+         { return value(pt, load.face, load.dir); });
 
          mfem::Coefficient *coeff[3] = {nullptr, nullptr, nullptr};
-         coeff[load.dir] = &value;
+         coeff[load.dir] = &load_value;
          field.ProjectBdrCoefficient(coeff, face_attribute_map.at(load.face));
       }
    }

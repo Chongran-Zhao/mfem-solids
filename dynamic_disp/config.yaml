@@ -1,40 +1,66 @@
-# All loading functions receive physical time in seconds.
+# Input of read_mesh and driver of dynamic_disp.
+# CMake copies it into dynamic_disp/build/, and the programs read the copy of
+# the directory they run in, or the file given as first argument. mesh.file is
+# relative to the project directory. Times are physical, in seconds; the
+# loading functions of LoadData receive the physical time.
+
 mesh:
+  # Mesh file in MFEM format.
   file: mesh_files/Beam_coarse-hex.mesh
+
+  # Number of uniform refinements.
   refine_levels: 0
+
+  # Name of the mesh file written by read_mesh.
   output: beam.mesh
+
+  # Web page showing the named faces in 3D, and whether to open it.
   output_html: beam_boundary.html
   open_html: false
 
 space:
+  # Order of the continuous shape functions.
   order: 1
 
+# Time integration.
 dynamics:
+  # Reference density.
   density: 1000.0
+  # Time step; the last step is shortened to end at final_time.
   dt: 0.001
   final_time: 0.05
+  # Spectral radius at infinite frequency of generalized-alpha, in [0, 1];
+  # 1 is the midpoint rule, without numerical damping.
   rho_inf: 1.0
 
-# Components multiply either 1 or (x - xmin)/(xmax - xmin).
+# Initial displacement and velocity: three components, times 1 for the
+# uniform profile, or times (x - x_min) / (x_max - x_min) for linear_x.
 initial:
   profile: linear_x
   displacement: [0.0, 0.0, 0.0]
   velocity: [0.0, 0.0, 0.01]
 
+# Displacement boundary conditions, one entry per face and direction.
 Dirichlet:
+  # Zero displacement.
   fixed_bc:
-    - {face: left, dir: x}
-    - {face: left, dir: y}
-    - {face: left, dir: z}
+    - { face: left, dir: x }
+    - { face: left, dir: y }
+    - { face: left, dir: z }
+  # Prescribed displacement, given by LoadData::disp_driven.
   disp_bc: []
 
+# Traction faces; the traction is given by LoadData::surface_traction.
 Neumann:
   faces: []
 
+# Newton's method settings.
+# The linear solver is UMFPACK.
 solver:
   newton_rel_tol: 1.0e-8
   newton_abs_tol: 1.0e-10
   newton_max_iter: 20
 
+# Output folder, in the directory the programs run in.
 output:
   gf: results_gf

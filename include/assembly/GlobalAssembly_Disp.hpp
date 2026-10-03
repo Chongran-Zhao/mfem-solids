@@ -18,7 +18,6 @@
 #ifndef GLOBAL_ASSEMBLY_DISP_HPP
 #define GLOBAL_ASSEMBLY_DISP_HPP
 
-#include <cmath>
 #include <memory>
 #include <utility>
 
@@ -62,19 +61,15 @@ public:
    // Number of unknowns.
    int get_num_dofs() const { return global_assembly.Height(); }
 
-   // Consistent reference mass on true dofs, without boundary elimination.
-   // Assemble once; the caller owns the returned matrix.
+   // Consistent mass M_ab = int rho_0 N_a N_b dV, without constraints. It is
+   // assembled once, for the dynamics, and the caller owns it.
    std::unique_ptr<mfem::SparseMatrix> assemble_mass(double density)
    {
-      MFEM_VERIFY(std::isfinite(density) && density > 0.0,
-                  "The reference density must be finite and positive.");
       mfem::ConstantCoefficient rho(density);
       mfem::BilinearForm mass(global_assembly.FESpace());
       mass.AddDomainIntegrator(new mfem::VectorMassIntegrator(rho));
       mass.Assemble();
-      mfem::Array<int> no_essential_dofs;
-      mfem::OperatorHandle mass_op;
-      mass.FormSystemMatrix(no_essential_dofs, mass_op);
+      mass.Finalize();
       return std::unique_ptr<mfem::SparseMatrix>(mass.LoseMat());
    }
 
