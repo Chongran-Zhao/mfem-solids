@@ -6,6 +6,9 @@
 // read from config.yaml, the latter referring to faces by name; the material
 // is given by MaterialModelData, and the initial velocity and the loading by
 // LoadData. The initial displacement is zero.
+// It runs in parallel, e.g. mpirun -np 4 ./driver: the mesh is split among
+// the MPI ranks, and the linear solver, MUMPS or MINRES with BoomerAMG, is
+// chosen in config.yaml.
 //
 // Author: Chongran Zhao
 // Date: Oct. 3, 2026
@@ -36,6 +39,12 @@
 
 int main(int argc, char *argv[])
 {
+   // Start MPI and hypre; only rank 0 prints.
+   mfem::Mpi::Init(argc, argv);
+   mfem::Hypre::Init();
+   if (!mfem::Mpi::Root())
+      mfem::out.Disable();
+
    // Wall-clock time of the whole run.
    mfem::StopWatch total_timer;
    total_timer.Start();
@@ -48,20 +57,19 @@ int main(int argc, char *argv[])
                  : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
-   // 2. Read the mesh file.
+   // 2. Read the mesh file on every rank and split it among the ranks.
    const std::string mesh_file = config["mesh"]["output"].as<std::string>();
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
+   mfem::ParMesh pmesh(MPI_COMM_WORLD, mesh);
+   mesh.Clear();
 
    // 3. Set up the finite element space of the displacement, also that of
-   //    the velocity and the acceleration. The mass matrix and the solvers
-   //    work on the GridFunctions directly, so the mesh must be conforming.
-   const int dim = mesh.Dimension();
+   //    the velocity and the acceleration.
+   const int dim = pmesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    mfem::H1_FECollection fec_u(order, dim);
-   mfem::FiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
-   MFEM_VERIFY(space_u.GetVSize() == space_u.GetTrueVSize(),
-               "The dynamic driver needs a conforming mesh.");
+   mfem::ParFiniteElementSpace space_u(&pmesh, &fec_u, dim, mfem::Ordering::byVDIM);
    SystemTools::print_space(space_u);
 
    // 4. Set the initial state: zero displacement, and the velocity
@@ -73,7 +81,7 @@ int main(int argc, char *argv[])
       for (int comp = 0; comp < 3; comp++)
          value(comp) = velo_0(comp);
    });
-   mfem::GridFunction disp(&space_u), velo(&space_u), acce(&space_u);
+   mfem::ParGridFunction disp(&space_u), velo(&space_u), acce(&space_u);
    disp = 0.0;
    velo.ProjectCoefficient(initial_velo_value);
    acce = 0.0;
@@ -107,7 +115,7 @@ int main(int argc, char *argv[])
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver_Dynamic_Disp>(
       std::move(nonlinear_solver), config["time"]["dt"].as<double>(),
-      config["time"]["final_time"].as<double>(), results_dir);
+      config["time"]["final_time"].as<double>(), results_dir, pmesh);
 
    // 9. Solve the time steps.
    time_solver->run(disp, velo, acce);

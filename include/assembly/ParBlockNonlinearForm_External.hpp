@@ -1,7 +1,7 @@
 // ============================================================================
-// BlockNonlinearForm_External.hpp
+// ParBlockNonlinearForm_External.hpp
 //
-// mfem::BlockNonlinearForm that only borrows its integrators. MFEM's
+// mfem::ParBlockNonlinearForm that only borrows its integrators. MFEM's
 // NonlinearForm can do so through UseExternalIntegrators(), but
 // BlockNonlinearForm has no such option and deletes every integrator added to
 // it; this class leaves them to their owner, as GlobalAssembly_Mixed needs for
@@ -11,17 +11,17 @@
 // Date: Oct. 3, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef BLOCK_NONLINEAR_FORM_EXTERNAL_HPP
-#define BLOCK_NONLINEAR_FORM_EXTERNAL_HPP
+#ifndef PAR_BLOCK_NONLINEAR_FORM_EXTERNAL_HPP
+#define PAR_BLOCK_NONLINEAR_FORM_EXTERNAL_HPP
 
 #include <mfem.hpp>
 
-class BlockNonlinearForm_External : public mfem::BlockNonlinearForm
+class ParBlockNonlinearForm_External : public mfem::ParBlockNonlinearForm
 {
 public:
    // Empties the lists of integrators before the base destructor, which would
    // otherwise delete them.
-   ~BlockNonlinearForm_External() override
+   ~ParBlockNonlinearForm_External() override
    {
       dnfi.SetSize(0);
       bnfi.SetSize(0);

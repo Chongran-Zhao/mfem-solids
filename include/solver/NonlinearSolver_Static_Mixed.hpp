@@ -6,6 +6,8 @@
 // Newton's method from it. It owns the global assembly and the solvers; the
 // loop over the load steps is left to its caller. It is also the
 // mfem::Operator that its NewtonSolver solves, through Mult and GetGradient.
+// The displacement and the pressure are the vectors of the true dofs of this
+// rank.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -22,19 +24,22 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
+#include "LinearSolver.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 
 class NonlinearSolver_Static_Mixed : public mfem::Operator
 {
 public:
-   // Takes the ownership of the global assembly; the Newton settings come
-   // from the solver section of config.yaml.
+   // Takes the ownership of the global assembly; the Newton and the linear
+   // solver settings come from the solver section of config.yaml.
    NonlinearSolver_Static_Mixed(std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
                                 const YAML::Node &solver)
       : mfem::Operator(input_global_assembly->get_num_dofs()),
         global_assembly(std::move(input_global_assembly)),
-        newton_monitor(global_assembly->get_offsets())
+        linear_solver(solver["linear_solver"], global_assembly->get_comm()),
+        newton_monitor(global_assembly->get_offsets(), global_assembly->get_comm()),
+        newton_solver(global_assembly->get_comm())
    {
       newton_solver.SetOperator(*this);
       newton_solver.SetSolver(linear_solver);
@@ -48,7 +53,7 @@ public:
 
    // Solves the load at time tt from the converged disp and pres of the
    // previous step, and returns the number of Newton iterations.
-   int solve(double tt, mfem::GridFunction &disp, mfem::GridFunction &pres)
+   int solve(double tt, mfem::Vector &disp, mfem::Vector &pres)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       const NeumannBoundary &neumann = global_assembly->get_neumann();
@@ -61,8 +66,7 @@ public:
                   "The displacement or pressure size differs from the solver space.");
       sol.GetBlock(0) = disp;
       sol.GetBlock(1) = pres;
-      mfem::GridFunction disp_view;
-      disp_view.MakeRef(disp.FESpace(), sol.GetBlock(0), 0);
+      mfem::Vector &disp_view = sol.GetBlock(0);
 
       if (neumann.is_traction_load())
          global_assembly->set_traction_load(tt);
@@ -112,14 +116,14 @@ private:
    //    K_ff d(u,p)_f = -R_f(u,p) - K_fe g,
    // with K_fe g moved to the right-hand side by set_essential_bdr. disp is
    // the displacement block of sol.
-   void initial_guess(double tt, mfem::BlockVector &sol, mfem::GridFunction &disp)
+   void initial_guess(double tt, mfem::BlockVector &sol, mfem::Vector &disp)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
 
       // Zero on the fixed faces, the prescribed values at time tt on the
       // displacement-driven ones; g is their difference from disp, and zero
       // for the pressure.
-      mfem::GridFunction disp_target(disp);
+      mfem::Vector disp_target(disp);
       dirichlet.apply_fixed_bc(disp_target);
       if (dirichlet.is_disp_load())
          dirichlet.apply_disp_load_bc(tt, disp_target);
@@ -148,9 +152,9 @@ private:
    // newton_solver points to this operator, the linear solver and the
    // monitor, so it is declared last and goes first.
    const std::unique_ptr<GlobalAssembly_Mixed> global_assembly;   // R and K
-   mfem::UMFPackSolver linear_solver;                             // direct solver of the tangent
+   LinearSolver linear_solver;                                    // solver of the tangent
    SystemTools::BlockNewtonMonitor newton_monitor;                // prints the residual norms of u and p
-   mutable std::unique_ptr<mfem::SparseMatrix> tangent;           // tangent of the predictor and of Newton's method
+   mutable std::unique_ptr<mfem::BlockOperator> tangent;          // tangent of the predictor and of Newton's method
    mfem::NewtonSolver newton_solver;
 };
 

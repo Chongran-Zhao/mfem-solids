@@ -41,21 +41,29 @@ struct reported_face
    std::string name;                                // face name
    mfem::Array<int> face_marker;                    // marker of its boundary attributes
    std::vector<int> dirs;                           // reported directions, 0, 1, 2 for x, y, z
-   std::array<mfem::Array<int>, 3> component_dofs;  // dofs of x, y, z on the face
+   std::array<mfem::Array<int>, 3> component_dofs;  // true dofs of this rank of x, y, z on the face
    double area;                                     // reference area A_0
    std::ofstream csv;                               // CSV file of the face
 };
 
 int main(int argc, char *argv[])
 {
+   // Start MPI and hypre; only rank 0 prints and writes the CSV files.
+   mfem::Mpi::Init(argc, argv);
+   mfem::Hypre::Init();
+   const bool is_root = mfem::Mpi::Root();
+   if (!is_root)
+      mfem::out.Disable();
+
    // 1. Read config.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
                  : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
-   // 2. Read the mesh file.
-   const std::string mesh_file = config["mesh"]["output"].as<std::string>();
+   // 2. Read the mesh the driver saved with its results, on which they live.
+   const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
+   const std::string mesh_file = (results_dir / "mesh.mesh").string();
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
 
@@ -71,15 +79,24 @@ int main(int argc, char *argv[])
 
    mfem::GridFunction disp(&space_u), pres(&space_p);
 
+   // The mesh split among the ranks, for the global assembly of the driver;
+   // partitioning, the rank of each element, splits the saved fields in the
+   // same way.
+   const std::unique_ptr<int[]> partitioning(mesh.GeneratePartitioning(mfem::Mpi::WorldSize()));
+   mfem::ParMesh pmesh(MPI_COMM_WORLD, mesh, partitioning.get());
+   mfem::ParFiniteElementSpace par_space_u(&pmesh, &fec_u, dim, mfem::Ordering::byVDIM);
+   mfem::ParFiniteElementSpace par_space_p(&pmesh, &fec_p);
+
    // The global assembly of the driver, for the residual R(u,p): the material
    // and the boundary conditions are created anew from MaterialModelData and
    // config.yaml.
-   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
-   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
+   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], par_space_u);
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], par_space_u);
    const bool is_traction_load = neumann->is_traction_load();
    auto local_assembly = std::make_unique<LocalAssembly_Mixed>(set_material_model());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
-      space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
+      par_space_u, par_space_p, std::move(local_assembly), std::move(dirichlet),
+      std::move(neumann));
 
    // sol = [u; p], the input of the residual.
    mfem::BlockVector sol(global_assembly->get_offsets());
@@ -87,9 +104,9 @@ int main(int argc, char *argv[])
 
    // 4. Collect the faces and directions of the csv_writer section.
    const int load_steps = config["loading"]["load_steps"].as<int>();
-   const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    const std::filesystem::path output_dir = config["output"]["csv"].as<std::string>();
-   std::filesystem::create_directories(output_dir);
+   if (is_root)
+      std::filesystem::create_directories(output_dir);
 
    const std::array<std::string, 3> component_names = {"x", "y", "z"};
    const std::map<std::string, int> dir_map = {{"x", 0}, {"y", 1}, {"z", 2}};
@@ -136,7 +153,7 @@ int main(int argc, char *argv[])
          face.name = input_face;
          face.face_marker = mesh.bdr_attribute_sets.GetAttributeSetMarker(input_face);
          for (int axis = 0; axis < 3; axis++)
-            space_u.GetEssentialTrueDofs(face.face_marker, face.component_dofs[axis], axis);
+            par_space_u.GetEssentialTrueDofs(face.face_marker, face.component_dofs[axis], axis);
          face.area = get_area(face.face_marker);
          faces.push_back(std::move(face));
          found = faces.end() - 1;
@@ -186,16 +203,17 @@ int main(int argc, char *argv[])
 
    // CSV header: step, load factor, then u and F in the reported
    // directions, followed by reference face area and face-mean pressure p.
-   for (reported_face &face : faces)
-   {
-      face.csv.open(output_dir / (face.name + ".csv"));
-      face.csv << "step,load_factor";
-      const std::array<std::string, 2> quantities = {"u", "F"};
-      for (int qq = 0; qq < 2; qq++)
-         for (int dir : face.dirs)
-            face.csv << ',' << quantities[qq] << '_' << component_names[dir];
-      face.csv << ",area,p\n" << std::scientific << std::setprecision(10);
-   }
+   if (is_root)
+      for (reported_face &face : faces)
+      {
+         face.csv.open(output_dir / (face.name + ".csv"));
+         face.csv << "step,load_factor";
+         const std::array<std::string, 2> quantities = {"u", "F"};
+         for (int qq = 0; qq < 2; qq++)
+            for (int dir : face.dirs)
+               face.csv << ',' << quantities[qq] << '_' << component_names[dir];
+         face.csv << ",area,p\n" << std::scientific << std::setprecision(10);
+      }
 
    // Reads <results>/<prefix>_XXXX.gf of a step into target, whose size must
    // match that of the file.
@@ -213,6 +231,13 @@ int main(int argc, char *argv[])
       target = file_gf;
    };
 
+   // The true dofs of this rank of a field read on the serial mesh.
+   auto get_true_dofs = [&](const mfem::GridFunction &field, mfem::Vector &field_true)
+   {
+      mfem::ParGridFunction par_field(&pmesh, &field, partitioning.get());
+      par_field.GetTrueDofs(field_true);
+   };
+
    // 5. Read the displacement and the pressure of each step, saved by the
    //    driver, and write, for each face,
    //       u_mean_k = (1 / A_0) int u_k dA        mean displacement
@@ -227,8 +252,8 @@ int main(int argc, char *argv[])
    {
       read_gf("disp", step, disp);
       read_gf("pres", step, pres);
-      sol.GetBlock(0) = disp;
-      sol.GetBlock(1) = pres;
+      get_true_dofs(disp, sol.GetBlock(0));
+      get_true_dofs(pres, sol.GetBlock(1));
 
       const double factor = static_cast<double>(step) / load_steps;
       if (is_traction_load)
@@ -250,13 +275,17 @@ int main(int argc, char *argv[])
          for (int kk = 0; kk < 3; kk++)
             for (int dof : face.component_dofs[kk])
                force[kk] += residual(dof);
+         MPI_Allreduce(MPI_IN_PLACE, force.data(), 3, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-         face.csv << step << ',' << factor;
-         for (int dir : face.dirs)
-            face.csv << ',' << mean_fields[dir];
-         for (int dir : face.dirs)
-            face.csv << ',' << force[dir];
-         face.csv << ',' << face.area << ',' << mean_fields[3] << '\n';
+         if (is_root)
+         {
+            face.csv << step << ',' << factor;
+            for (int dir : face.dirs)
+               face.csv << ',' << mean_fields[dir];
+            for (int dir : face.dirs)
+               face.csv << ',' << force[dir];
+            face.csv << ',' << face.area << ',' << mean_fields[3] << '\n';
+         }
 
          for (int dir : face.dirs)
             mfem::out << std::left << std::setw(10) << (dir == face.dirs[0] ? face.name : "")

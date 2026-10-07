@@ -36,14 +36,14 @@ int main(int argc, char *argv[])
                  : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
-   // 2. Read the mesh file.
-   const std::string mesh_file = config["mesh"]["output"].as<std::string>();
+   // 2. Read the mesh the driver saved with its results, on which they live.
+   const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
+   const std::string mesh_file = (results_dir / "mesh.mesh").string();
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
 
    // 3. Read the results of each step and write them.
    const int load_steps = config["loading"]["load_steps"].as<int>();
-   const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
 
    // Reads <results>/<prefix>_XXXX.gf of a step, with its own space.
    auto read_gf = [&](const std::string &prefix, int step)

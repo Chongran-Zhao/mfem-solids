@@ -6,6 +6,7 @@
 // runs Newton's method from it. It owns the global assembly and the solvers;
 // the loop over the load steps is left to its caller. It is also the
 // mfem::Operator that its NewtonSolver solves, through Mult and GetGradient.
+// The displacement is the vector of the true dofs of this rank.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -22,18 +23,21 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Disp.hpp"
+#include "LinearSolver.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 
 class NonlinearSolver_Static_Disp : public mfem::Operator
 {
 public:
-   // Takes the ownership of the global assembly; the Newton settings come
-   // from the solver section of config.yaml.
+   // Takes the ownership of the global assembly; the Newton and the linear
+   // solver settings come from the solver section of config.yaml.
    NonlinearSolver_Static_Disp(std::unique_ptr<GlobalAssembly_Disp> input_global_assembly,
                                const YAML::Node &solver)
       : mfem::Operator(input_global_assembly->get_num_dofs()),
-        global_assembly(std::move(input_global_assembly))
+        global_assembly(std::move(input_global_assembly)),
+        linear_solver(solver["linear_solver"], global_assembly->get_comm()),
+        newton_solver(global_assembly->get_comm())
    {
       newton_solver.SetOperator(*this);
       newton_solver.SetSolver(linear_solver);
@@ -47,7 +51,7 @@ public:
 
    // Solves the load at time tt from the converged disp of the previous
    // step, and returns the number of Newton iterations.
-   int solve(double tt, mfem::GridFunction &disp)
+   int solve(double tt, mfem::Vector &disp)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       const NeumannBoundary &neumann = global_assembly->get_neumann();
@@ -84,7 +88,7 @@ public:
    // K(d), the identity on the constrained dofs.
    mfem::Operator &GetGradient(const mfem::Vector &disp) const override
    {
-      tangent = std::make_unique<mfem::SparseMatrix>(global_assembly->assemble_tangent(disp));
+      tangent = global_assembly->assemble_tangent(disp);
       global_assembly->set_essential_bdr(*tangent);
       return *tangent;
    }
@@ -96,13 +100,13 @@ private:
    // the boundary nodes moving,
    //    K_ff du_f = -R_f(d) - K_fe g,
    // with K_fe g moved to the right-hand side by set_essential_bdr.
-   void initial_guess(double tt, mfem::GridFunction &disp)
+   void initial_guess(double tt, mfem::Vector &disp)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
 
       // Zero on the fixed faces, the prescribed values at time tt on the
       // displacement-driven ones; g is their difference from disp.
-      mfem::GridFunction disp_target(disp);
+      mfem::Vector disp_target(disp);
       dirichlet.apply_fixed_bc(disp_target);
       if (dirichlet.is_disp_load())
          dirichlet.apply_disp_load_bc(tt, disp_target);
@@ -112,7 +116,7 @@ private:
       mfem::Vector rhs(global_assembly->get_num_dofs());
       global_assembly->assemble_residual(disp, rhs);
       rhs.Neg();
-      tangent = std::make_unique<mfem::SparseMatrix>(global_assembly->assemble_tangent(disp));
+      tangent = global_assembly->assemble_tangent(disp);
       global_assembly->set_essential_bdr(*tangent, prescribed_increment, rhs);
 
       mfem::Vector predicted_increment(global_assembly->get_num_dofs());
@@ -129,9 +133,9 @@ private:
    // newton_solver points to this operator, the linear solver and the
    // monitor, so it is declared last and goes first.
    const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R and K
-   mfem::UMFPackSolver linear_solver;                            // direct solver of the tangent
+   LinearSolver linear_solver;                                   // solver of the tangent
    SystemTools::NewtonMonitor newton_monitor;                    // prints the residual norms
-   mutable std::unique_ptr<mfem::SparseMatrix> tangent;          // tangent of the predictor and of Newton's method
+   mutable std::unique_ptr<mfem::HypreParMatrix> tangent;        // tangent of the predictor and of Newton's method
    mfem::NewtonSolver newton_solver;
 };
 

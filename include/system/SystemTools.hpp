@@ -36,7 +36,8 @@ public:
       return format_now("%Y-%m-%d");
    }
 
-   // Mesh file, number of elements and boundary elements, and the face names.
+   // Mesh file, number of elements and boundary elements, and the face names
+   // of the serial mesh; with MPI, also the number of ranks it is split into.
    static void print_mesh(const std::string &mesh_file, mfem::Mesh &mesh)
    {
       mfem::out << "\nMesh\n" << std::string(74, '-') << '\n' << std::left
@@ -46,21 +47,28 @@ public:
                 << std::setw(20) << "faces";
       for (const std::string &name : mesh.bdr_attribute_sets.GetAttributeSetNames())
          mfem::out << name << ' ';
-      mfem::out << '\n' << std::string(74, '-') << '\n';
+      mfem::out << '\n';
+      if (mfem::Mpi::IsInitialized())
+         mfem::out << std::setw(20) << "MPI ranks" << mfem::Mpi::WorldSize() << '\n';
+      mfem::out << std::string(74, '-') << '\n';
    }
 
    // Finite element space. The element is named by its polynomial space,
    // e.g. Q2 hexahedron, since the name of an MFEM collection, e.g.
    // H1_3D_P2, gives the order only. The ordering is left out for a scalar
-   // field, where byNODES and byVDIM are the same.
+   // field, where byNODES and byVDIM are the same. The unknowns of a
+   // parallel space are those of all ranks; it is then collective.
    static void print_space(const mfem::FiniteElementSpace &fespace)
    {
       const bool by_vdim = (fespace.GetOrdering() == mfem::Ordering::byVDIM);
+      const auto *par_fespace = dynamic_cast<const mfem::ParFiniteElementSpace *>(&fespace);
+      const long long num_unknowns = par_fespace ? par_fespace->GlobalTrueVSize()
+                                                 : fespace.GetTrueVSize();
       mfem::out << "\nFinite Element Space\n" << std::string(74, '-') << '\n' << std::left
                 << std::setw(20) << "element" << get_element_name(fespace) << '\n'
                 << std::setw(20) << "components" << fespace.GetVDim() << '\n'
                 << std::setw(20) << "nodes per element" << fespace.GetFE(0)->GetDof() << '\n'
-                << std::setw(20) << "unknowns" << fespace.GetTrueVSize() << '\n';
+                << std::setw(20) << "unknowns" << num_unknowns << '\n';
       if (fespace.GetVDim() > 1)
          mfem::out << std::setw(20) << "ordering" << (by_vdim ? "byVDIM" : "byNODES") << '\n';
       mfem::out << std::string(74, '-') << '\n';
@@ -127,11 +135,14 @@ public:
    // As NewtonMonitor, for a residual of two blocks, the displacement R_u
    // and the pressure R_p, whose scales differ by orders of magnitude: the
    // norm of each block, absolute and relative to the first iteration of the
-   // load step. A relative norm is left out when its first norm is zero.
+   // load step. A relative norm is left out when its first norm is zero. The
+   // residual is that of this rank, on the offsets of its blocks; the norms
+   // are over all ranks of comm.
    class BlockNewtonMonitor : public mfem::IterativeSolverMonitor
    {
    public:
-      BlockNewtonMonitor(const mfem::Array<int> &input_offsets) : offsets(input_offsets) {}
+      BlockNewtonMonitor(const mfem::Array<int> &input_offsets, MPI_Comm input_comm)
+         : offsets(input_offsets), comm(input_comm) {}
 
       // Required by MFEM: overrides mfem::IterativeSolverMonitor::
       // MonitorResidual, which NewtonSolver calls at every iteration.
@@ -144,11 +155,11 @@ public:
          // ||R_u|| and ||R_p||, the norms of r over the two blocks.
          std::array<double, 2> norm = {0.0, 0.0};
          for (int bb = 0; bb < 2; bb++)
-         {
             for (int ii = offsets[bb]; ii < offsets[bb + 1]; ii++)
                norm[bb] += r(ii) * r(ii);
+         MPI_Allreduce(MPI_IN_PLACE, norm.data(), 2, MPI_DOUBLE, MPI_SUM, comm);
+         for (int bb = 0; bb < 2; bb++)
             norm[bb] = std::sqrt(norm[bb]);
-         }
          if (it == 0)
             initial_norm = norm;
 
@@ -167,28 +178,53 @@ public:
       }
 
    private:
-      const mfem::Array<int> offsets;             // [0, n_u, n_u + n_p]
+      const mfem::Array<int> offsets;             // [0, n_u, n_u + n_p] of this rank
+      const MPI_Comm comm;                        // the ranks of the residual
       std::array<double, 2> initial_norm = {1.0, 1.0};
    };
 
-   // Creates an empty folder; an existing one is emptied first, so that no
-   // files of an earlier run are left.
+   // Creates an empty folder on rank 0; an existing one is emptied first, so
+   // that no files of an earlier run are left. Collective: the other ranks
+   // wait until it exists.
    static void make_empty_dir(const std::filesystem::path &dir)
    {
-      std::filesystem::remove_all(dir);
-      std::filesystem::create_directories(dir);
+      if (mfem::Mpi::Root())
+      {
+         std::filesystem::remove_all(dir);
+         std::filesystem::create_directories(dir);
+      }
+      MPI_Barrier(MPI_COMM_WORLD);
    }
 
-   // Saves a grid function of load step n as <dir>/<name>_XXXX.gf, with 16
-   // significant digits, e.g. results_gf/disp_0025.gf.
-   static void save_gf(const std::filesystem::path &dir, const std::string &name,
-                       int step, const mfem::GridFunction &gf)
+   // Saves serial_mesh, the mesh of all ranks that ParMesh::GetSerialMesh(0)
+   // gathers on rank 0, as <dir>/mesh.mesh, with the named faces of pmesh;
+   // the saved grid functions live on it, in its element order, which is
+   // that of the ranks and not the one of the mesh file read by the driver.
+   static void save_serial_mesh(const std::filesystem::path &dir, const mfem::ParMesh &pmesh,
+                                mfem::Mesh &serial_mesh)
    {
+      if (!mfem::Mpi::Root())
+         return;
+      pmesh.bdr_attribute_sets.Copy(serial_mesh.bdr_attribute_sets);
+      std::ofstream mesh_file(dir / "mesh.mesh");
+      mesh_file.precision(16);
+      serial_mesh.Print(mesh_file);
+   }
+
+   // Gathers a grid function of load step n onto serial_mesh and saves it on
+   // rank 0 as <dir>/<name>_XXXX.gf, with 16 significant digits, e.g.
+   // results_gf/disp_0025.gf. Collective.
+   static void save_gf(const std::filesystem::path &dir, const std::string &name,
+                       int step, const mfem::ParGridFunction &gf, mfem::Mesh &serial_mesh)
+   {
+      const mfem::GridFunction serial_gf = gf.GetSerialGridFunction(0, serial_mesh);
+      if (!mfem::Mpi::Root())
+         return;
       std::ostringstream file_name;
       file_name << name << '_' << std::setw(4) << std::setfill('0') << step << ".gf";
       std::ofstream gf_file(dir / file_name.str());
       gf_file.precision(16);
-      gf.Save(gf_file);
+      serial_gf.Save(gf_file);
    }
 
    // Present local time in a strftime format.

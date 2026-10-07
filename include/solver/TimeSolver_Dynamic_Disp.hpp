@@ -7,7 +7,9 @@
 // the last one shortened to end there. The displacement, the velocity and
 // the acceleration of every step are saved as <results>/disp_XXXX.gf,
 // velo_XXXX.gf and acce_XXXX.gf, and the time of each step in
-// <results>/time.csv. It owns the nonlinear solver.
+// <results>/time.csv. Rank 0 gathers the fields from the ranks onto the
+// serial mesh of ParMesh::GetSerialMesh, saved as <results>/mesh.mesh, on
+// which the postprocessors read them. It owns the nonlinear solver.
 //
 // Author: Chongran Zhao
 // Date: Oct. 3, 2026
@@ -35,36 +37,50 @@ class TimeSolver_Dynamic_Disp
 {
 public:
    // Takes the ownership of the nonlinear solver; the results go to
-   // results_dir, which is emptied first.
+   // results_dir, which is emptied first, with the serial mesh of pmesh.
    TimeSolver_Dynamic_Disp(std::unique_ptr<NonlinearSolver_Dynamic_Disp> input_nonlinear_solver,
                            double input_nominal_dt, double input_final_time,
-                           const std::filesystem::path &input_results_dir)
+                           const std::filesystem::path &input_results_dir,
+                           mfem::ParMesh &pmesh)
       : nonlinear_solver(std::move(input_nonlinear_solver)),
         nominal_dt(input_nominal_dt),
         final_time(input_final_time),
-        results_dir(input_results_dir)
+        results_dir(input_results_dir),
+        serial_mesh(pmesh.GetSerialMesh(0))
    {
       SystemTools::make_empty_dir(results_dir);
+      SystemTools::save_serial_mesh(results_dir, pmesh, serial_mesh);
    }
 
    // Completes disp, velo and acce, the initial state at t = 0, solves the
    // time steps, and saves the state at every step, step 0 included.
-   void run(mfem::GridFunction &disp, mfem::GridFunction &velo, mfem::GridFunction &acce)
+   void run(mfem::ParGridFunction &disp, mfem::ParGridFunction &velo,
+            mfem::ParGridFunction &acce)
    {
-      nonlinear_solver->initialize(0.0, disp, velo, acce);
-      SystemTools::save_gf(results_dir, "disp", 0, disp);
-      SystemTools::save_gf(results_dir, "velo", 0, velo);
-      SystemTools::save_gf(results_dir, "acce", 0, acce);
+      // The unknowns of the nonlinear solver, the true dofs of this rank:
+      // the state at t_{n+1} and at t_n, from which the step to t_{n+1} is
+      // solved.
+      const int num_dofs_u = disp.ParFESpace()->GetTrueVSize();
+      mfem::Vector disp_true(num_dofs_u), velo_true(num_dofs_u), acce_true(num_dofs_u);
+      disp.GetTrueDofs(disp_true);
+      velo.GetTrueDofs(velo_true);
+      acce.GetTrueDofs(acce_true);
 
-      std::ofstream time_file(results_dir / "time.csv");
-      time_file << "step,time,dt,iterations\n" << std::scientific << std::setprecision(16)
-                << 0 << ',' << 0.0 << ',' << 0.0 << ',' << 0 << '\n';
+      nonlinear_solver->initialize(0.0, disp_true, velo_true, acce_true);
+      save_step(0, disp_true, velo_true, acce_true, disp, velo, acce);
+
+      std::ofstream time_file;
+      if (mfem::Mpi::Root())
+      {
+         time_file.open(results_dir / "time.csv");
+         time_file << "step,time,dt,iterations\n" << std::scientific << std::setprecision(16)
+                   << 0 << ',' << 0.0 << ',' << 0.0 << ',' << 0 << '\n';
+      }
 
       // N steps; a last step shorter than 1e-12 dt is left out.
       const int num_steps = static_cast<int>(std::ceil(final_time / nominal_dt - 1.0e-12));
 
-      // The state at t_n, from which the step to t_{n+1} is solved.
-      mfem::GridFunction disp_n(disp), velo_n(velo), acce_n(acce);
+      mfem::Vector disp_n(disp_true), velo_n(velo_true), acce_n(acce_true);
 
       mfem::StopWatch step_timer;
       double time_n = 0.0;
@@ -82,30 +98,44 @@ public:
                    << ", dt = " << dt << '\n';
 
          const int iterations = nonlinear_solver->solve(time_n, dt, disp_n, velo_n, acce_n,
-                                                        disp, velo, acce);
+                                                        disp_true, velo_true, acce_true);
 
          mfem::out << "converged in " << iterations
                    << " iterations. Time taken: " << std::fixed << std::setprecision(2)
                    << step_timer.RealTime() << " sec. " << SystemTools::get_time()
                    << std::defaultfloat << std::setprecision(6) << '\n';
 
-         SystemTools::save_gf(results_dir, "disp", step, disp);
-         SystemTools::save_gf(results_dir, "velo", step, velo);
-         SystemTools::save_gf(results_dir, "acce", step, acce);
-         time_file << step << ',' << time << ',' << dt << ',' << iterations << '\n';
+         save_step(step, disp_true, velo_true, acce_true, disp, velo, acce);
+         if (mfem::Mpi::Root())
+            time_file << step << ',' << time << ',' << dt << ',' << iterations << '\n';
 
-         disp_n = disp;
-         velo_n = velo;
-         acce_n = acce;
+         disp_n = disp_true;
+         velo_n = velo_true;
+         acce_n = acce_true;
          time_n = time;
       }
    }
 
 private:
+   // Sets the grid functions of a step from its true dofs, and saves them;
+   // collective.
+   void save_step(int step, const mfem::Vector &disp_true, const mfem::Vector &velo_true,
+                  const mfem::Vector &acce_true, mfem::ParGridFunction &disp,
+                  mfem::ParGridFunction &velo, mfem::ParGridFunction &acce)
+   {
+      disp.SetFromTrueDofs(disp_true);
+      velo.SetFromTrueDofs(velo_true);
+      acce.SetFromTrueDofs(acce_true);
+      SystemTools::save_gf(results_dir, "disp", step, disp, serial_mesh);
+      SystemTools::save_gf(results_dir, "velo", step, velo, serial_mesh);
+      SystemTools::save_gf(results_dir, "acce", step, acce, serial_mesh);
+   }
+
    const std::unique_ptr<NonlinearSolver_Dynamic_Disp> nonlinear_solver;  // one time step
    const double nominal_dt;                                               // dt of config.yaml
    const double final_time;                                               // end of the time steps
    const std::filesystem::path results_dir;                               // folder of the results
+   mfem::Mesh serial_mesh;                                                // all elements on rank 0, empty elsewhere
 };
 
 #endif

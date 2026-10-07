@@ -6,6 +6,9 @@
 # velocity is LoadData::initial_velo, and the initial displacement zero.
 # The default case is the beam fixed on its left face, set swinging along z
 # by the initial velocity, without load.
+# driver and csv_writer run on MPI ranks, e.g. mpirun -np 4 ./driver; the
+# driver saves its results with the mesh they live on, output.gf/mesh.mesh,
+# which vtu_writer and csv_writer read.
 
 mesh:
   # Mesh file in MFEM format.
@@ -52,11 +55,20 @@ Neumann:
   faces: []
 
 # Newton's method settings.
-# The linear solver is UMFPACK.
 solver:
   newton_rel_tol: 1.0e-8
   newton_abs_tol: 1.0e-10
   newton_max_iter: 20
+  # Linear solver of the tangents and of the mass: mumps, the parallel
+  # direct solver, or iterative, CG preconditioned by BoomerAMG. The
+  # tolerances, the iteration limit and print, which prints the iterations
+  # of every solve, are those of CG.
+  linear_solver:
+    type: mumps
+    rel_tol: 1.0e-10
+    abs_tol: 0.0
+    max_iter: 2000
+    print: false
 
 # Faces and directions reported by csv_writer, one entry per face and
 # direction; csv_writer also writes the energies of the whole body.

@@ -4,6 +4,9 @@
 // Hyperelastostatics in the displacement form, the displacement being the
 // only unknown. Boundary conditions are read from config.yaml and refer to
 // faces by name; the material is given by MaterialModelData.
+// It runs in parallel, e.g. mpirun -np 4 ./driver: the mesh is split among
+// the MPI ranks, and the linear solver, MUMPS or MINRES with BoomerAMG, is
+// chosen in config.yaml.
 //
 // Author: Chongran Zhao
 // Date: Sep. 28, 2026
@@ -31,6 +34,12 @@
 
 int main(int argc, char *argv[])
 {
+   // Start MPI and hypre; only rank 0 prints.
+   mfem::Mpi::Init(argc, argv);
+   mfem::Hypre::Init();
+   if (!mfem::Mpi::Root())
+      mfem::out.Disable();
+
    // Wall-clock time of the whole run.
    mfem::StopWatch total_timer;
    total_timer.Start();
@@ -43,17 +52,19 @@ int main(int argc, char *argv[])
                  : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
-   // 2. Read the mesh file.
+   // 2. Read the mesh file on every rank and split it among the ranks.
    const std::string mesh_file = config["mesh"]["output"].as<std::string>();
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
+   mfem::ParMesh pmesh(MPI_COMM_WORLD, mesh);
+   mesh.Clear();
 
    // 3. Set up the finite element space of the displacement.
-   const int dim = mesh.Dimension();
+   const int dim = pmesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    mfem::H1_FECollection fec_u(order, dim);
-   mfem::FiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
-   mfem::GridFunction disp(&space_u);
+   mfem::ParFiniteElementSpace space_u(&pmesh, &fec_u, dim, mfem::Ordering::byVDIM);
+   mfem::ParGridFunction disp(&space_u);
    disp = 0.0;
    SystemTools::print_space(space_u);
 
@@ -101,7 +112,7 @@ int main(int argc, char *argv[])
    const int num_load_steps = config["loading"]["load_steps"].as<int>();
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver_Static_Disp>(
-      std::move(nonlinear_solver), num_load_steps, results_dir);
+      std::move(nonlinear_solver), num_load_steps, results_dir, pmesh);
 
    // 8. Solve the load steps.
    time_solver->run(disp);

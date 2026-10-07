@@ -4,7 +4,7 @@
 # Settings shared by the folders of this project; each folder's
 # CMakeLists.txt includes it after its own project() call:
 #    project_dir     the root of mfem-solids
-#    mfem_libraries  MFEM, with MPI when MFEM uses it, and yaml-cpp
+#    mfem_libraries  MFEM, built with MPI and MUMPS, MPI, and yaml-cpp
 #    include_dirs    the header folders under include/
 # ============================================================================
 
@@ -25,17 +25,16 @@ set(lib_dir "${project_dir}/../../lib")
 find_package(MFEM REQUIRED HINTS "${lib_dir}/mfem/build")
 message(STATUS "MFEM ${MFEM_VERSION} at ${MFEM_DIR}")
 
-if(MFEM_USE_MPI)
-  find_package(MPI REQUIRED COMPONENTS CXX)
+# The drivers run in parallel and solve with MUMPS or hypre.
+if(NOT MFEM_USE_MPI OR NOT MFEM_USE_MUMPS)
+  message(FATAL_ERROR "mfem-solids needs MFEM built with MPI and MUMPS.")
 endif()
+find_package(MPI REQUIRED COMPONENTS CXX)
 
 find_package(yaml-cpp REQUIRED CONFIG HINTS "${lib_dir}/yaml-cpp/lib/cmake/yaml-cpp")
 message(STATUS "yaml-cpp at ${yaml-cpp_DIR}")
 
-set(mfem_libraries ${MFEM_LIBRARIES} yaml-cpp::yaml-cpp)
-if(MFEM_USE_MPI)
-  list(APPEND mfem_libraries MPI::MPI_CXX)
-endif()
+set(mfem_libraries ${MFEM_LIBRARIES} yaml-cpp::yaml-cpp MPI::MPI_CXX)
 
 # Headers of this project, one folder per kind.
 set(include_dirs
