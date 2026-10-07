@@ -63,37 +63,36 @@ int main(int argc, char *argv[])
                  : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
-   // 2. Read the mesh the driver saved with its results, on which they live.
+   // 2. Read the mesh the driver saved with its results, on which they live,
+   //    on every rank and split it among the ranks; partitioning, the rank of
+   //    each element, splits the saved fields in the same way.
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    const std::string mesh_file = (results_dir / "mesh.mesh").string();
-   mfem::Mesh mesh(mesh_file);
-   SystemTools::print_mesh(mesh_file, mesh);
+   mfem::Mesh serial_mesh(mesh_file);
+   SystemTools::print_mesh(mesh_file, serial_mesh);
+   const std::unique_ptr<int[]> partitioning(
+      serial_mesh.GeneratePartitioning(mfem::Mpi::WorldSize()));
+   mfem::ParMesh mesh(MPI_COMM_WORLD, serial_mesh, partitioning.get());
 
    // 3. Set up the displacement space of the driver.
    const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    mfem::H1_FECollection fec(order, dim);
-   mfem::FiniteElementSpace fespace(&mesh, &fec, dim, mfem::Ordering::byVDIM);
-   mfem::GridFunction disp(&fespace);
+   mfem::ParFiniteElementSpace fespace(&mesh, &fec, dim, mfem::Ordering::byVDIM);
+   mfem::ParGridFunction disp(&fespace);
    SystemTools::print_space(fespace);
 
-   // The mesh split among the ranks, for the global assembly of the driver;
-   // partitioning, the rank of each element, splits the saved fields in the
-   // same way.
-   const std::unique_ptr<int[]> partitioning(mesh.GeneratePartitioning(mfem::Mpi::WorldSize()));
-   mfem::ParMesh pmesh(MPI_COMM_WORLD, mesh, partitioning.get());
-   mfem::ParFiniteElementSpace par_fespace(&pmesh, &fec, dim, mfem::Ordering::byVDIM);
 
    // The global assembly of the driver, for the residual R(d): the material
    // and the boundary conditions are created anew from MaterialModelData and
    // config.yaml.
-   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], par_fespace);
-   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], par_fespace);
+   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], fespace);
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], fespace);
    const bool is_traction_load = neumann->is_traction_load();
    auto local_assembly = std::make_unique<LocalAssembly_Disp>(set_material_model());
    auto global_assembly = std::make_unique<GlobalAssembly_Disp>(
-      par_fespace, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
-   mfem::Vector residual(par_fespace.GetTrueVSize());
+      fespace, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
+   mfem::Vector residual(fespace.GetTrueVSize());
    const std::unique_ptr<const MaterialModel> material = set_material_model();
 
    // 4. Collect the faces and directions of the csv_writer section.
@@ -125,6 +124,7 @@ int main(int argc, char *argv[])
             area += quad_pt.weight * face_map.Weight();
          }
       }
+      MPI_Allreduce(MPI_IN_PLACE, &area, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
       return area;
    };
 
@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
          face.name = input_face;
          face.face_marker = mesh.bdr_attribute_sets.GetAttributeSetMarker(input_face);
          for (int axis = 0; axis < 3; axis++)
-            par_fespace.GetEssentialTrueDofs(face.face_marker, face.component_dofs[axis], axis);
+            fespace.GetEssentialTrueDofs(face.face_marker, face.component_dofs[axis], axis);
          face.area = get_area(face.face_marker);
          faces.push_back(std::move(face));
          found = faces.end() - 1;
@@ -199,6 +199,7 @@ int main(int argc, char *argv[])
             out[3] += material->get_p(F.det()) * dA;
          }
       }
+      MPI_Allreduce(MPI_IN_PLACE, out.data(), 4, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
       for (double &value : out)
          value /= face.area;
       return out;
@@ -218,9 +219,10 @@ int main(int argc, char *argv[])
          face.csv << ",area,p\n" << std::scientific << std::setprecision(10);
       }
 
-   // Reads <results>/<prefix>_XXXX.gf of a step into target, whose size must
-   // match that of the file.
-   auto read_gf = [&](const std::string &prefix, int step, mfem::Vector &target)
+   // Reads <results>/<prefix>_XXXX.gf of a step, on serial_mesh, and takes
+   // the part of this rank into target, whose space must match that of the
+   // file.
+   auto read_gf = [&](const std::string &prefix, int step, mfem::ParGridFunction &target)
    {
       std::ostringstream name;
       name << prefix << '_' << std::setw(4) << std::setfill('0') << step << ".gf";
@@ -228,18 +230,13 @@ int main(int argc, char *argv[])
       MFEM_VERIFY(gf_file, "Cannot open " << (results_dir / name.str()).string()
                   << "; run the driver first.");
 
-      mfem::GridFunction file_gf(&mesh, gf_file);
-      MFEM_VERIFY(file_gf.Size() == target.Size(),
+      const mfem::GridFunction file_gf(&serial_mesh, gf_file);
+      const mfem::ParGridFunction rank_gf(&mesh, &file_gf, partitioning.get());
+      MFEM_VERIFY(rank_gf.Size() == target.Size(),
                   "The space in " << name.str() << " differs from that of config.yaml.");
-      target = file_gf;
+      target = rank_gf;
    };
 
-   // The true dofs of this rank of a field read on the serial mesh.
-   auto get_true_dofs = [&](const mfem::GridFunction &field, mfem::Vector &field_true)
-   {
-      mfem::ParGridFunction par_field(&pmesh, &field, partitioning.get());
-      par_field.GetTrueDofs(field_true);
-   };
 
    // 5. Read the displacement of each step, saved by the driver, and write,
    //    for each face,
@@ -259,7 +256,7 @@ int main(int argc, char *argv[])
       if (is_traction_load)
          global_assembly->set_traction_load(factor);
       mfem::Vector disp_true;
-      get_true_dofs(disp, disp_true);
+      disp.GetTrueDofs(disp_true);
       global_assembly->assemble_residual(disp_true, residual);
 
       mfem::out << std::string(74, '=') << '\n'

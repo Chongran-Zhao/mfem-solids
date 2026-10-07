@@ -56,19 +56,19 @@ int main(int argc, char *argv[])
 
    // 2. Read the mesh file on every rank and split it among the ranks.
    const std::string mesh_file = config["mesh"]["output"].as<std::string>();
-   mfem::Mesh mesh(mesh_file);
-   SystemTools::print_mesh(mesh_file, mesh);
-   mfem::ParMesh pmesh(MPI_COMM_WORLD, mesh);
-   mesh.Clear();
+   mfem::Mesh serial_mesh(mesh_file);
+   SystemTools::print_mesh(mesh_file, serial_mesh);
+   mfem::ParMesh mesh(MPI_COMM_WORLD, serial_mesh);
+   serial_mesh.Clear();
 
    // 3. Set up the finite element spaces, Taylor-Hood: the pressure one
    //    order below the displacement.
-   const int dim = pmesh.Dimension();
+   const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    MFEM_VERIFY(order >= 2, "The mixed driver needs space.order >= 2 for Taylor-Hood elements.");
    mfem::H1_FECollection fec_u(order, dim), fec_p(order - 1, dim);
-   mfem::ParFiniteElementSpace space_u(&pmesh, &fec_u, dim, mfem::Ordering::byVDIM);
-   mfem::ParFiniteElementSpace space_p(&pmesh, &fec_p);
+   mfem::ParFiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
+   mfem::ParFiniteElementSpace space_p(&mesh, &fec_p);
    SystemTools::print_space(space_u);
    SystemTools::print_space(space_p);
 
@@ -120,7 +120,7 @@ int main(int argc, char *argv[])
       std::move(global_assembly), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver_Static_Mixed>(
-      std::move(nonlinear_solver), num_load_steps, results_dir, pmesh);
+      std::move(nonlinear_solver), num_load_steps, results_dir, mesh);
 
    // 8. Solve the load steps.
    time_solver->run(disp, pres);

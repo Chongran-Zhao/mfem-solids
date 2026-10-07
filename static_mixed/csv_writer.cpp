@@ -61,41 +61,39 @@ int main(int argc, char *argv[])
                  : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
-   // 2. Read the mesh the driver saved with its results, on which they live.
+   // 2. Read the mesh the driver saved with its results, on which they live,
+   //    on every rank and split it among the ranks; partitioning, the rank of
+   //    each element, splits the saved fields in the same way.
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    const std::string mesh_file = (results_dir / "mesh.mesh").string();
-   mfem::Mesh mesh(mesh_file);
-   SystemTools::print_mesh(mesh_file, mesh);
+   mfem::Mesh serial_mesh(mesh_file);
+   SystemTools::print_mesh(mesh_file, serial_mesh);
+   const std::unique_ptr<int[]> partitioning(
+      serial_mesh.GeneratePartitioning(mfem::Mpi::WorldSize()));
+   mfem::ParMesh mesh(MPI_COMM_WORLD, serial_mesh, partitioning.get());
 
    // 3. Set up the displacement and pressure spaces of the mixed driver.
    const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    MFEM_VERIFY(order >= 2, "The mixed csv_writer needs space.order >= 2.");
    mfem::H1_FECollection fec_u(order, dim), fec_p(order - 1, dim);
-   mfem::FiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
-   mfem::FiniteElementSpace space_p(&mesh, &fec_p);
+   mfem::ParFiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
+   mfem::ParFiniteElementSpace space_p(&mesh, &fec_p);
    SystemTools::print_space(space_u);
    SystemTools::print_space(space_p);
 
-   mfem::GridFunction disp(&space_u), pres(&space_p);
+   mfem::ParGridFunction disp(&space_u), pres(&space_p);
 
-   // The mesh split among the ranks, for the global assembly of the driver;
-   // partitioning, the rank of each element, splits the saved fields in the
-   // same way.
-   const std::unique_ptr<int[]> partitioning(mesh.GeneratePartitioning(mfem::Mpi::WorldSize()));
-   mfem::ParMesh pmesh(MPI_COMM_WORLD, mesh, partitioning.get());
-   mfem::ParFiniteElementSpace par_space_u(&pmesh, &fec_u, dim, mfem::Ordering::byVDIM);
-   mfem::ParFiniteElementSpace par_space_p(&pmesh, &fec_p);
 
    // The global assembly of the driver, for the residual R(u,p): the material
    // and the boundary conditions are created anew from MaterialModelData and
    // config.yaml.
-   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], par_space_u);
-   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], par_space_u);
+   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
    const bool is_traction_load = neumann->is_traction_load();
    auto local_assembly = std::make_unique<LocalAssembly_Mixed>(set_material_model());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
-      par_space_u, par_space_p, std::move(local_assembly), std::move(dirichlet),
+      space_u, space_p, std::move(local_assembly), std::move(dirichlet),
       std::move(neumann));
 
    // sol = [u; p], the input of the residual.
@@ -131,6 +129,7 @@ int main(int argc, char *argv[])
             area += quad_pt.weight * face_map.Weight();
          }
       }
+      MPI_Allreduce(MPI_IN_PLACE, &area, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
       return area;
    };
 
@@ -153,7 +152,7 @@ int main(int argc, char *argv[])
          face.name = input_face;
          face.face_marker = mesh.bdr_attribute_sets.GetAttributeSetMarker(input_face);
          for (int axis = 0; axis < 3; axis++)
-            par_space_u.GetEssentialTrueDofs(face.face_marker, face.component_dofs[axis], axis);
+            space_u.GetEssentialTrueDofs(face.face_marker, face.component_dofs[axis], axis);
          face.area = get_area(face.face_marker);
          faces.push_back(std::move(face));
          found = faces.end() - 1;
@@ -196,6 +195,7 @@ int main(int argc, char *argv[])
             out[3] += pres.GetValue(face_map, quad_pt) * dA;
          }
       }
+      MPI_Allreduce(MPI_IN_PLACE, out.data(), 4, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
       for (double &value : out)
          value /= face.area;
       return out;
@@ -215,9 +215,10 @@ int main(int argc, char *argv[])
          face.csv << ",area,p\n" << std::scientific << std::setprecision(10);
       }
 
-   // Reads <results>/<prefix>_XXXX.gf of a step into target, whose size must
-   // match that of the file.
-   auto read_gf = [&](const std::string &prefix, int step, mfem::Vector &target)
+   // Reads <results>/<prefix>_XXXX.gf of a step, on serial_mesh, and takes
+   // the part of this rank into target, whose space must match that of the
+   // file.
+   auto read_gf = [&](const std::string &prefix, int step, mfem::ParGridFunction &target)
    {
       std::ostringstream name;
       name << prefix << '_' << std::setw(4) << std::setfill('0') << step << ".gf";
@@ -225,18 +226,13 @@ int main(int argc, char *argv[])
       MFEM_VERIFY(gf_file, "Cannot open " << (results_dir / name.str()).string()
                   << "; run the driver first.");
 
-      mfem::GridFunction file_gf(&mesh, gf_file);
-      MFEM_VERIFY(file_gf.Size() == target.Size(),
+      const mfem::GridFunction file_gf(&serial_mesh, gf_file);
+      const mfem::ParGridFunction rank_gf(&mesh, &file_gf, partitioning.get());
+      MFEM_VERIFY(rank_gf.Size() == target.Size(),
                   "The space in " << name.str() << " differs from that of config.yaml.");
-      target = file_gf;
+      target = rank_gf;
    };
 
-   // The true dofs of this rank of a field read on the serial mesh.
-   auto get_true_dofs = [&](const mfem::GridFunction &field, mfem::Vector &field_true)
-   {
-      mfem::ParGridFunction par_field(&pmesh, &field, partitioning.get());
-      par_field.GetTrueDofs(field_true);
-   };
 
    // 5. Read the displacement and the pressure of each step, saved by the
    //    driver, and write, for each face,
@@ -252,8 +248,8 @@ int main(int argc, char *argv[])
    {
       read_gf("disp", step, disp);
       read_gf("pres", step, pres);
-      get_true_dofs(disp, sol.GetBlock(0));
-      get_true_dofs(pres, sol.GetBlock(1));
+      disp.GetTrueDofs(sol.GetBlock(0));
+      pres.GetTrueDofs(sol.GetBlock(1));
 
       const double factor = static_cast<double>(step) / load_steps;
       if (is_traction_load)

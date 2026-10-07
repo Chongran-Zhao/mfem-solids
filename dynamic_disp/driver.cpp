@@ -59,17 +59,17 @@ int main(int argc, char *argv[])
 
    // 2. Read the mesh file on every rank and split it among the ranks.
    const std::string mesh_file = config["mesh"]["output"].as<std::string>();
-   mfem::Mesh mesh(mesh_file);
-   SystemTools::print_mesh(mesh_file, mesh);
-   mfem::ParMesh pmesh(MPI_COMM_WORLD, mesh);
-   mesh.Clear();
+   mfem::Mesh serial_mesh(mesh_file);
+   SystemTools::print_mesh(mesh_file, serial_mesh);
+   mfem::ParMesh mesh(MPI_COMM_WORLD, serial_mesh);
+   serial_mesh.Clear();
 
    // 3. Set up the finite element space of the displacement, also that of
    //    the velocity and the acceleration.
-   const int dim = pmesh.Dimension();
+   const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    mfem::H1_FECollection fec_u(order, dim);
-   mfem::ParFiniteElementSpace space_u(&pmesh, &fec_u, dim, mfem::Ordering::byVDIM);
+   mfem::ParFiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
    SystemTools::print_space(space_u);
 
    // 4. Set the initial state: zero displacement, and the velocity
@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver_Dynamic_Disp>(
       std::move(nonlinear_solver), config["time"]["dt"].as<double>(),
-      config["time"]["final_time"].as<double>(), results_dir, pmesh);
+      config["time"]["final_time"].as<double>(), results_dir, mesh);
 
    // 9. Solve the time steps.
    time_solver->run(disp, velo, acce);
