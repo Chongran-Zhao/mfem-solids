@@ -41,7 +41,7 @@ public:
         dirichlet(std::move(input_dirichlet)),
         neumann(std::move(input_neumann)),
         global_assembly(&space),
-        traction_form(&space),
+        local_traction(&space),
         external_force(space.GetTrueVSize()),
         ess_tdof_list(dirichlet->get_ess_tdof_list())
    {
@@ -50,15 +50,15 @@ public:
 
       external_force = 0.0;
       if (neumann->is_traction_load())
-         neumann->add_traction_integrators(traction_form);
+         neumann->add_traction_integrators(local_traction);
    }
 
    // Set the tractions to time tt and assemble F_ext on the true dofs.
    void set_traction_load(double tt)
    {
       neumann->set_time(tt);
-      traction_form.Assemble();
-      traction_form.ParallelAssemble(external_force);
+      local_traction.Assemble();
+      local_traction.ParallelAssemble(external_force);
    }
 
    // Number of unknowns of this rank.
@@ -135,7 +135,7 @@ private:
    const std::unique_ptr<DirichletBoundary> dirichlet;    // constrained dofs and their values
    const std::unique_ptr<NeumannBoundary> neumann;        // tractions
    mfem::ParNonlinearForm global_assembly;                // R + F_ext and K, without constraints
-   mfem::ParLinearForm traction_form;                     // F_ext on the local dofs
+   mfem::ParLinearForm local_traction;                    // F_ext on the local dofs
    mfem::Vector external_force;                           // F_ext on the true dofs
    const mfem::Array<int> ess_tdof_list;                  // constrained true dofs
 };
