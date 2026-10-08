@@ -2,7 +2,9 @@
 // DirichletBoundary.hpp
 //
 // Reads the Dirichlet boundary conditions from config.yaml and applies them
-// to the displacement at each load step.
+// to the displacement at each load step. The dofs are those this rank owns,
+// numbered on this rank, and the displacement and the velocity are vectors
+// on them; the prints are collective, over all ranks.
 //
 // Author: Chongran Zhao
 // Date: Sep. 27, 2026
@@ -28,7 +30,8 @@ class DirichletBoundary
 {
 public:
    // Reads the Dirichlet section of config.yaml.
-   DirichletBoundary(const YAML::Node &paras, mfem::FiniteElementSpace &fespace)
+   DirichletBoundary(const YAML::Node &paras, mfem::ParFiniteElementSpace &input_fespace)
+      : fespace(input_fespace)
    {
       mfem::Mesh &mesh = *fespace.GetMesh();
 
@@ -77,11 +80,11 @@ public:
    // Whether disp_bc has any entry.
    bool is_disp_load() const { return !disp_load_list.empty(); }
 
-   // All constrained dofs, for NonlinearForm::SetEssentialTrueDofs.
+   // All constrained dofs this rank owns.
    mfem::Array<int> get_ess_tdof_list() const { return ess_tdof_list; }
 
    // Set the displacement to zero on the fixed faces.
-   void apply_fixed_bc(mfem::GridFunction &disp) const
+   void apply_fixed_bc(mfem::Vector &disp) const
    {
       for (const disp_fixed &fixed : disp_fixed_list)
          for (int dof : fixed.dofs)
@@ -89,7 +92,7 @@ public:
    }
 
    // Apply the disp loading given by LoadData::disp_loading(pt, tt).
-   void apply_disp_load_bc(double tt, mfem::GridFunction &disp) const
+   void apply_disp_load_bc(double tt, mfem::Vector &disp) const
    {
       apply_load_bc(disp, [tt](const mfem::Vector &pt, const std::string &face, int dir)
       { return LoadData::disp_loading(pt, tt, face)(dir); });
@@ -97,7 +100,7 @@ public:
 
    // Apply the velocity of the disp loading, LoadData::velo_loading(pt, tt),
    // for the initial state of the dynamics.
-   void apply_velo_load_bc(double tt, mfem::GridFunction &velo) const
+   void apply_velo_load_bc(double tt, mfem::Vector &velo) const
    {
       apply_load_bc(velo, [tt](const mfem::Vector &pt, const std::string &face, int dir)
       { return LoadData::velo_loading(pt, tt, face)(dir); });
@@ -115,11 +118,11 @@ public:
       for (const disp_fixed &fixed : disp_fixed_list)
          mfem::out << std::setw(10) << fixed.face
                    << std::setw(12) << "xyz"[fixed.dir]
-                   << fixed.dofs.Size() << '\n';
+                   << get_global_size(fixed.dofs) << '\n';
 
       mfem::out << std::string(74, '-') << '\n'
                 << std::setw(34) << "constrained unknowns"
-                << ess_tdof_list.Size() << "\n\n";
+                << get_global_size(ess_tdof_list) << "\n\n";
    }
 
    // Print the displacement-driven faces.
@@ -134,14 +137,15 @@ public:
       for (const disp_load &load : disp_load_list)
          mfem::out << std::setw(10) << load.face
                    << std::setw(12) << "xyz"[load.dir]
-                   << load.dofs.Size() << '\n';
+                   << get_global_size(load.dofs) << '\n';
 
       mfem::out << std::string(74, '-') << "\n\n";
    }
 
 
-   // Print the prescribed displacement of each driven face.
-   void print_disp_load_by_step(const mfem::GridFunction &disp) const
+   // Print the prescribed displacement of each driven face, its range over
+   // all ranks.
+   void print_disp_load_by_step(const mfem::Vector &disp) const
    {
       for (const disp_load &load : disp_load_list)
       {
@@ -152,6 +156,8 @@ public:
             min_disp = std::min(min_disp, disp(dof));
             max_disp = std::max(max_disp, disp(dof));
          }
+         MPI_Allreduce(MPI_IN_PLACE, &min_disp, 1, MPI_DOUBLE, MPI_MIN, fespace.GetComm());
+         MPI_Allreduce(MPI_IN_PLACE, &max_disp, 1, MPI_DOUBLE, MPI_MAX, fespace.GetComm());
 
          mfem::out << "  " << std::left
                    << std::setw(8) << load.face
@@ -165,10 +171,14 @@ public:
 
 private:
    // Project value(pt, face, dir), the prescribed displacement or one of its
-   // time derivatives, onto the dofs of every entry of disp_bc.
+   // time derivatives, onto the dofs of every entry of disp_bc. The
+   // projection is made on a grid function, over the dofs of the elements of
+   // this rank, and its values on the dofs this rank owns are copied.
    template <typename Value>
-   void apply_load_bc(mfem::GridFunction &field, const Value &value) const
+   void apply_load_bc(mfem::Vector &field, const Value &value) const
    {
+      mfem::ParGridFunction projected(&fespace);
+      mfem::Vector projected_owned(fespace.GetTrueVSize());
       for (const disp_load &load : disp_load_list)
       {
          mfem::FunctionCoefficient load_value([&](const mfem::Vector &pt)
@@ -176,8 +186,20 @@ private:
 
          mfem::Coefficient *coeff[3] = {nullptr, nullptr, nullptr};
          coeff[load.dir] = &load_value;
-         field.ProjectBdrCoefficient(coeff, face_attribute_map.at(load.face));
+         projected = 0.0;
+         projected.ProjectBdrCoefficient(coeff, face_attribute_map.at(load.face));
+         projected.GetTrueDofs(projected_owned);
+         for (int dof : load.dofs)
+            field(dof) = projected_owned(dof);
       }
+   }
+
+   // Number of the dofs over all ranks; each dof is owned by one rank.
+   int get_global_size(const mfem::Array<int> &dofs) const
+   {
+      int size = dofs.Size();
+      MPI_Allreduce(MPI_IN_PLACE, &size, 1, MPI_INT, MPI_SUM, fespace.GetComm());
+      return size;
    }
 
    // One direction on a fixed face.
@@ -185,7 +207,7 @@ private:
    {
       std::string face;          // face name
       int dir;                   // 0, 1, 2 for x, y, z
-      mfem::Array<int> dofs;     // dofs of this direction on the face
+      mfem::Array<int> dofs;     // dofs this rank owns of this direction on the face
    };
 
    // One direction on a displacement-driven face.
@@ -193,8 +215,10 @@ private:
    {
       std::string face;          // face name
       int dir;                   // 0, 1, 2 for x, y, z
-      mfem::Array<int> dofs;     // dofs of this direction on the face
+      mfem::Array<int> dofs;     // dofs this rank owns of this direction on the face
    };
+
+   mfem::ParFiniteElementSpace &fespace;    // space of the displacement
 
    // "x", "y", "z" -> 0, 1, 2
    inline static const std::map<std::string, int> dir_map = {{"x", 0}, {"y", 1}, {"z", 2}};
@@ -208,7 +232,7 @@ private:
    //  "top":    [0, 0, 0, 0, 0, 1]}
    std::map<std::string, mfem::Array<int>> face_attribute_map;
 
-   mfem::Array<int> ess_tdof_list;           // union of all constrained dofs
+   mfem::Array<int> ess_tdof_list;           // union of all constrained dofs this rank owns
    std::vector<disp_fixed> disp_fixed_list;  // one per entry of fixed_bc
    std::vector<disp_load> disp_load_list;    // one per entry of disp_bc
 };
