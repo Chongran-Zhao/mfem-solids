@@ -13,8 +13,8 @@ and traction conditions on named faces, load stepping and Newton's method.
 | `driver` (`static_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | displacement `disp_XXXX.gf` and nodal pressure `pres_XXXX.gf` at each load step |
 | `driver` (`dynamic_disp/`) | `beam.mesh`, the time steps, the boundary conditions and solver settings | displacement, velocity and acceleration of each time step, `disp_XXXX.gf`, `velo_XXXX.gf`, `acce_XXXX.gf`, and the time and Newton iterations of each step, `time.csv` |
 | `driver` (`dynamic_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | the files of `dynamic_disp/` and nodal pressure `pres_XXXX.gf` at each time step |
-| `vtu_writer` | `results_gf/` and the material | `results_vtu/`: the deformed mesh with displacement, pressure and element-center first and second Piola-Kirchhoff stresses; pressure is p(J) in the displacement form and the saved nodal field in the mixed form; in `dynamic_disp/` and `dynamic_mixed/` also velocity and acceleration, at the physical times of `time.csv`; open `results_vtu.pvd` in ParaView |
-| `csv_writer` | `results_gf/` and the material | `results_csv/<face>.csv`: mean displacement, reaction force F, reference face area and face-mean pressure p on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the formulation's residual on the constrained dofs of the face |
+| `vtu_writer` | `results_gf/` with its `mesh.mesh`, and the material | `results_vtu/`: the deformed mesh with displacement, pressure and element-center first and second Piola-Kirchhoff stresses; pressure is p(J) in the displacement form and the saved nodal field in the mixed form; in `dynamic_disp/` and `dynamic_mixed/` also velocity and acceleration, at the physical times of `time.csv`; open `results_vtu.pvd` in ParaView |
+| `csv_writer` | `results_gf/` with its `mesh.mesh`, and the material | `results_csv/<face>.csv`: mean displacement, reaction force F, reference face area and face-mean pressure p on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the formulation's residual on the constrained dofs of the face |
 
 `scripts/plot_csv.m` (MATLAB) plots the CSV files of `csv_writer` against the load factor,
 overlaying the result folders listed at its top.
@@ -53,7 +53,16 @@ face, independently of the reported directions.
 Both drivers follow the same structure: global assembly, a nonlinear solver for
 one load step, and a time solver for load stepping and output. In the mixed form,
 the nonlinear solver packs the displacement and the pressure into one block vector
-for Newton's method, and the block tangent is copied into one sparse matrix for UMFPACK.
+for Newton's method, and the block tangent is copied into one matrix for MUMPS.
+
+## Parallel runs
+
+The drivers and `csv_writer` run on MPI ranks, e.g. `mpirun -np 2 ./driver`; without
+`mpirun` they run on one rank. Each rank holds part of the mesh, and Newton's method works
+on the dofs each rank owns; MUMPS, the parallel direct solver, solves the tangents and
+analyzes their sparsity once. Rank 0 gathers the results onto the mesh of all ranks and
+saves it as `results_gf/mesh.mesh`; its element order is that of the ranks, so
+`vtu_writer`, which is serial, and `csv_writer` read this mesh instead of `beam.mesh`.
 
 ## Setting up a problem
 
@@ -87,8 +96,8 @@ for Newton's method, and the block tangent is copied into one sparse matrix for 
 
 ## Building and running
 
-Requires CMake 3.20 or newer, MFEM built with CMake and SuiteSparse (developed against
-4.10.1; the linear systems are solved with UMFPACK) and yaml-cpp. The build looks for
+Requires CMake 3.20 or newer, MPI, MFEM built with CMake, MPI (hypre and METIS) and
+MUMPS (developed against 4.10.1), and yaml-cpp. The build looks for
 them in `../../lib`; change the paths in `cmake/mfem-solids.cmake` if yours are elsewhere.
 
 The programs of each formulation are in their own folder, `static_disp/`,
@@ -100,7 +109,7 @@ cd static_disp && cmake -B build && cmake --build build
 ```
 
 ```bash
-cd build && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
+cd build && ./read_mesh && mpirun -np 2 ./driver && ./vtu_writer && mpirun -np 2 ./csv_writer
 ```
 
 `static_mixed/` builds and runs the same four programs, using its own configuration
@@ -110,7 +119,7 @@ postprocessors read both fields to compute stresses and reactions.
 `dynamic_disp/` and `dynamic_mixed/` build and run the same four programs:
 
 ```bash
-cd build && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
+cd build && ./read_mesh && mpirun -np 2 ./driver && ./vtu_writer && mpirun -np 2 ./csv_writer
 ```
 
 Each folder has its own `config.yaml`, which CMake copies into its `build/`,

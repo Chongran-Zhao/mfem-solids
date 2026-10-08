@@ -99,11 +99,9 @@ public:
       residual_blocks.GetBlock(0) -= external_force;
    }
 
-   // K(u,p) on the dofs this rank owns. The blocks, owned by global_assembly,
-   // are copied into one new HypreParMatrix, which the caller owns; its rows
-   // on each rank are those of the displacement, then of the pressure, as
-   // in get_offsets, so the constrained dofs keep their numbers.
-   std::unique_ptr<mfem::HypreParMatrix> assemble_tangent(const mfem::Vector &sol) const
+   // The blocks [K_uu K_up; K_pu K_pp] of K(u,p) on the dofs this rank owns.
+   // global_assembly owns them and builds them anew at every call.
+   mfem::Array2D<const mfem::HypreParMatrix *> assemble_tangent_blocks(const mfem::Vector &sol) const
    {
       const mfem::BlockOperator &block_op = global_assembly.GetGradient(sol);
 
@@ -112,6 +110,16 @@ public:
          for (int jj = 0; jj < 2; jj++)
             blocks(ii, jj) = block_op.IsZeroBlock(ii, jj) ? nullptr :
                &dynamic_cast<const mfem::HypreParMatrix &>(block_op.GetBlock(ii, jj));
+      return blocks;
+   }
+
+   // K(u,p) on the dofs this rank owns, its blocks copied into one new
+   // HypreParMatrix, which the caller owns; its rows on each rank are those
+   // of the displacement, then of the pressure, as in get_offsets, so the
+   // constrained dofs keep their numbers.
+   std::unique_ptr<mfem::HypreParMatrix> assemble_tangent(const mfem::Vector &sol) const
+   {
+      mfem::Array2D<const mfem::HypreParMatrix *> blocks = assemble_tangent_blocks(sol);
       return std::unique_ptr<mfem::HypreParMatrix>(mfem::HypreParMatrixFromBlocks(blocks));
    }
 

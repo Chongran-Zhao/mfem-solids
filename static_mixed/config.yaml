@@ -45,7 +45,7 @@ Neumann:
 # faces: [right, top]
 
 # Newton's method settings.
-# The linear solver is UMFPACK.
+# The linear solver is MUMPS.
 solver:
   newton_rel_tol: 1.0e-8
   newton_abs_tol: 0.0

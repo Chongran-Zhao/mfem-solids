@@ -12,7 +12,10 @@
 //    int Psi_vol(J(p)) + Psi_ich(F) dV, and their sum, which stays constant
 //    without loads and prescribed motion.
 // Everything is computed with the material of MaterialModelData, which must
-// be the one the driver ran with.
+// be the one the driver ran with. It runs on MPI ranks like the driver: the
+// saved fields are split among the ranks, each rank integrates over its
+// elements, and the sums are taken over all ranks; rank 0 prints and writes
+// the CSV files.
 //
 // Author: Chongran Zhao
 // Date: Oct. 3, 2026
@@ -50,32 +53,45 @@ struct reported_face
    std::string name;                                // face name
    mfem::Array<int> face_marker;                    // marker of its boundary attributes
    std::vector<int> dirs;                           // reported directions, 0, 1, 2 for x, y, z
-   std::array<mfem::Array<int>, 3> component_dofs;  // dofs of x, y, z on the face
+   std::array<mfem::Array<int>, 3> component_dofs;  // dofs this rank owns of x, y, z on the face
    double area;                                     // reference area A_0
    std::ofstream csv;                               // CSV file of the face
 };
 
 int main(int argc, char *argv[])
 {
+   // Start MPI and hypre; only rank 0 prints and writes.
+   mfem::Mpi::Init(argc, argv);
+   mfem::Hypre::Init();
+   const bool is_root = mfem::Mpi::Root();
+   if (!is_root)
+      mfem::out.Disable();
+
    // 1. Read config.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
                  : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
-   // 2. Read the mesh file.
-   const std::string mesh_file = config["mesh"]["output"].as<std::string>();
-   mfem::Mesh mesh(mesh_file);
-   SystemTools::print_mesh(mesh_file, mesh);
+   // 2. Read the mesh the driver saved with its results, on which they live,
+   //    on every rank and split it among the ranks; partitioning, the rank of
+   //    each element, splits the saved fields in the same way.
+   const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
+   const std::string mesh_file = (results_dir / "mesh.mesh").string();
+   mfem::Mesh serial_mesh(mesh_file);
+   SystemTools::print_mesh(mesh_file, serial_mesh);
+   const std::unique_ptr<int[]> partitioning(
+      serial_mesh.GeneratePartitioning(mfem::Mpi::WorldSize()));
+   mfem::ParMesh mesh(MPI_COMM_WORLD, serial_mesh, partitioning.get());
 
    // 3. Set up the displacement and pressure spaces of the mixed driver.
    const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    MFEM_VERIFY(order >= 2, "The mixed csv_writer needs space.order >= 2.");
    mfem::H1_FECollection fec_u(order, dim), fec_p(order - 1, dim);
-   mfem::FiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
-   mfem::FiniteElementSpace space_p(&mesh, &fec_p);
-   mfem::GridFunction disp(&space_u), velo(&space_u), acce(&space_u), pres(&space_p);
+   mfem::ParFiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
+   mfem::ParFiniteElementSpace space_p(&mesh, &fec_p);
+   mfem::ParGridFunction disp(&space_u), velo(&space_u), acce(&space_u), pres(&space_p);
    SystemTools::print_space(space_u);
    SystemTools::print_space(space_p);
 
@@ -88,19 +104,19 @@ int main(int argc, char *argv[])
    auto local_assembly = std::make_unique<LocalAssembly_Mixed>(set_material_model());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
-   const std::unique_ptr<mfem::SparseMatrix> mass = global_assembly->assemble_mass();
+   const std::unique_ptr<mfem::HypreParMatrix> mass = global_assembly->assemble_mass();
    const std::unique_ptr<const MaterialModel> material = set_material_model();
 
    // sol = [u; p], the input of the residual, and residual its blocks; the
    // reaction is the displacement block.
    mfem::BlockVector sol(global_assembly->get_offsets());
    mfem::BlockVector residual(global_assembly->get_offsets());
-   mfem::Vector momentum(space_u.GetTrueVSize());
+   const int num_dofs_u = space_u.GetTrueVSize();
+   mfem::Vector velo_owned(num_dofs_u), acce_owned(num_dofs_u), momentum(num_dofs_u);
 
    // 4. Read the steps and their physical times from time.csv, whose
    //    columns are step,time,dt,iterations, and collect the faces and
    //    directions of the csv_writer section.
-   const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    std::ifstream time_file(results_dir / "time.csv");
    MFEM_VERIFY(time_file, "Cannot open " << (results_dir / "time.csv").string()
                << "; run the driver first.");
@@ -117,7 +133,8 @@ int main(int argc, char *argv[])
    }
 
    const std::filesystem::path output_dir = config["output"]["csv"].as<std::string>();
-   std::filesystem::create_directories(output_dir);
+   if (is_root)
+      std::filesystem::create_directories(output_dir);
 
    const std::array<std::string, 3> component_names = {"x", "y", "z"};
    const std::map<std::string, int> dir_map = {{"x", 0}, {"y", 1}, {"z", 2}};
@@ -142,6 +159,7 @@ int main(int argc, char *argv[])
             area += quad_pt.weight * face_map.Weight();
          }
       }
+      MPI_Allreduce(MPI_IN_PLACE, &area, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
       return area;
    };
 
@@ -207,6 +225,7 @@ int main(int argc, char *argv[])
             out[3] += pres.GetValue(face_map, quad_pt) * dA;
          }
       }
+      MPI_Allreduce(MPI_IN_PLACE, out.data(), 4, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
       for (double &value : out)
          value /= face.area;
       return out;
@@ -243,25 +262,28 @@ int main(int argc, char *argv[])
             energy += quad_pt.weight * elem_map.Weight() * material->get_strain_energy(F, p);
          }
       }
+      MPI_Allreduce(MPI_IN_PLACE, &energy, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
       return energy;
    };
 
    // CSV header of a face: step, time, then u and F in the reported
    // directions, followed by reference face area and face-mean pressure p.
-   for (reported_face &face : faces)
-   {
-      face.csv.open(output_dir / (face.name + ".csv"));
-      face.csv << "step,time";
-      const std::array<std::string, 2> quantities = {"u", "F"};
-      for (int qq = 0; qq < 2; qq++)
-         for (int dir : face.dirs)
-            face.csv << ',' << quantities[qq] << '_' << component_names[dir];
-      face.csv << ",area,p\n" << std::scientific << std::setprecision(10);
-   }
+   if (is_root)
+      for (reported_face &face : faces)
+      {
+         face.csv.open(output_dir / (face.name + ".csv"));
+         face.csv << "step,time";
+         const std::array<std::string, 2> quantities = {"u", "F"};
+         for (int qq = 0; qq < 2; qq++)
+            for (int dir : face.dirs)
+               face.csv << ',' << quantities[qq] << '_' << component_names[dir];
+         face.csv << ",area,p\n" << std::scientific << std::setprecision(10);
+      }
 
-   // Reads <results>/<prefix>_XXXX.gf of a step into target, whose size must
-   // match that of the file.
-   auto read_gf = [&](const std::string &prefix, int step, mfem::Vector &target)
+   // Reads <results>/<prefix>_XXXX.gf of a step, on serial_mesh, and takes
+   // the part of this rank into target, whose space must match that of the
+   // file.
+   auto read_gf = [&](const std::string &prefix, int step, mfem::ParGridFunction &target)
    {
       std::ostringstream name;
       name << prefix << '_' << std::setw(4) << std::setfill('0') << step << ".gf";
@@ -269,15 +291,21 @@ int main(int argc, char *argv[])
       MFEM_VERIFY(gf_file, "Cannot open " << (results_dir / name.str()).string()
                   << "; run the driver first.");
 
-      mfem::GridFunction file_gf(&mesh, gf_file);
-      MFEM_VERIFY(file_gf.Size() == target.Size(),
+      const mfem::GridFunction file_gf(&serial_mesh, gf_file);
+      const mfem::ParGridFunction rank_gf(&mesh, &file_gf, partitioning.get());
+      MFEM_VERIFY(rank_gf.Size() == target.Size(),
                   "The space in " << name.str() << " differs from that of config.yaml.");
-      target = file_gf;
+      target = rank_gf;
    };
 
    // CSV header of the body.
-   std::ofstream energy_csv(output_dir / "energy.csv");
-   energy_csv << "step,time,kinetic,strain,total\n" << std::scientific << std::setprecision(10);
+   std::ofstream energy_csv;
+   if (is_root)
+   {
+      energy_csv.open(output_dir / "energy.csv");
+      energy_csv << "step,time,kinetic,strain,total\n" << std::scientific
+                 << std::setprecision(10);
+   }
 
    // 5. Read the displacement, the velocity, the acceleration and the
    //    pressure of each saved step and write, for each face,
@@ -300,19 +328,23 @@ int main(int argc, char *argv[])
       read_gf("velo", step, velo);
       read_gf("acce", step, acce);
       read_gf("pres", step, pres);
-      sol.GetBlock(0) = disp;
-      sol.GetBlock(1) = pres;
+      disp.GetTrueDofs(sol.GetBlock(0));
+      pres.GetTrueDofs(sol.GetBlock(1));
+      velo.GetTrueDofs(velo_owned);
+      acce.GetTrueDofs(acce_owned);
 
       if (is_traction_load)
          global_assembly->set_traction_load(time);
       global_assembly->assemble_residual(sol, residual);
-      mass->AddMult(acce, residual.GetBlock(0));
+      mass->AddMult(acce_owned, residual.GetBlock(0));
 
-      mass->Mult(velo, momentum);
-      const double kinetic_energy = 0.5 * (velo * momentum);
+      mass->Mult(velo_owned, momentum);
+      const double kinetic_energy =
+         0.5 * mfem::InnerProduct(MPI_COMM_WORLD, velo_owned, momentum);
       const double strain_energy = get_strain_energy();
-      energy_csv << step << ',' << time << ',' << kinetic_energy << ',' << strain_energy
-                 << ',' << kinetic_energy + strain_energy << '\n';
+      if (is_root)
+         energy_csv << step << ',' << time << ',' << kinetic_energy << ',' << strain_energy
+                    << ',' << kinetic_energy + strain_energy << '\n';
 
       mfem::out << std::string(74, '=') << '\n'
                 << "Time step " << step << ", t = " << time << "\n\n"
@@ -329,13 +361,17 @@ int main(int argc, char *argv[])
          for (int kk = 0; kk < 3; kk++)
             for (int dof : face.component_dofs[kk])
                force[kk] += residual(dof);
+         MPI_Allreduce(MPI_IN_PLACE, force.data(), 3, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-         face.csv << step << ',' << time;
-         for (int dir : face.dirs)
-            face.csv << ',' << mean_fields[dir];
-         for (int dir : face.dirs)
-            face.csv << ',' << force[dir];
-         face.csv << ',' << face.area << ',' << mean_fields[3] << '\n';
+         if (is_root)
+         {
+            face.csv << step << ',' << time;
+            for (int dir : face.dirs)
+               face.csv << ',' << mean_fields[dir];
+            for (int dir : face.dirs)
+               face.csv << ',' << force[dir];
+            face.csv << ',' << face.area << ',' << mean_fields[3] << '\n';
+         }
 
          for (int dir : face.dirs)
             mfem::out << std::left << std::setw(10) << (dir == face.dirs[0] ? face.name : "")
