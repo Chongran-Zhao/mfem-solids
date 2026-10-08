@@ -90,12 +90,11 @@ public:
       residual -= external_force;
    }
 
-   // K(d) on the dofs this rank owns, copied from global_assembly, which
-   // owns its gradient, into a new HypreParMatrix, which the caller owns.
-   std::unique_ptr<mfem::HypreParMatrix> assemble_tangent(const mfem::Vector &disp) const
+   // K(d) on the dofs this rank owns. global_assembly owns it and builds it
+   // anew at every call, so the caller may change it until the next one.
+   mfem::HypreParMatrix &assemble_tangent(const mfem::Vector &disp) const
    {
-      return std::make_unique<mfem::HypreParMatrix>(
-         dynamic_cast<const mfem::HypreParMatrix &>(global_assembly.GetGradient(disp)));
+      return dynamic_cast<mfem::HypreParMatrix &>(global_assembly.GetGradient(disp));
    }
 
    // R zero on the constrained dofs, which carry no equation.

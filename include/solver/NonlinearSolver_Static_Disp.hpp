@@ -100,9 +100,9 @@ public:
    // K(d), the identity on the constrained dofs.
    mfem::Operator &GetGradient(const mfem::Vector &disp) const override
    {
-      tangent = global_assembly->assemble_tangent(disp);
-      global_assembly->set_essential_bdr(*tangent);
-      return *tangent;
+      mfem::HypreParMatrix &tangent = global_assembly->assemble_tangent(disp);
+      global_assembly->set_essential_bdr(tangent);
+      return tangent;
    }
 
 private:
@@ -125,35 +125,34 @@ private:
       dirichlet.apply_fixed_bc(disp_target);
       if (dirichlet.is_disp_load())
          dirichlet.apply_disp_load_bc(tt, disp_target);
-      mfem::Vector prescribed_increment(disp_owned.Size());
-      disp_target.GetTrueDofs(prescribed_increment);
+      mfem::Vector target_owned(disp_owned.Size());
+      disp_target.GetTrueDofs(target_owned);
+      mfem::Vector prescribed_increment(target_owned);
       prescribed_increment -= disp_owned;
 
       mfem::Vector rhs(global_assembly->get_num_dofs());
       global_assembly->assemble_residual(disp_owned, rhs);
       rhs.Neg();
-      tangent = global_assembly->assemble_tangent(disp_owned);
-      global_assembly->set_essential_bdr(*tangent, prescribed_increment, rhs);
+      mfem::HypreParMatrix &tangent = global_assembly->assemble_tangent(disp_owned);
+      global_assembly->set_essential_bdr(tangent, prescribed_increment, rhs);
 
       mfem::Vector predicted_increment(global_assembly->get_num_dofs());
-      linear_solver.SetOperator(*tangent);
+      linear_solver.SetOperator(tangent);
       linear_solver.Mult(rhs, predicted_increment);
       disp_owned += predicted_increment;
 
       // Set the prescribed values exactly, free of round-off.
+      for (int dof : dirichlet.get_ess_tdof_list())
+         disp_owned(dof) = target_owned(dof);
       disp.SetFromTrueDofs(disp_owned);
-      dirichlet.apply_fixed_bc(disp);
-      if (dirichlet.is_disp_load())
-         dirichlet.apply_disp_load_bc(tt, disp);
-      disp.GetTrueDofs(disp_owned);
    }
 
    // newton_solver points to this operator, the linear solver and the
-   // monitor, so it is declared last and goes first.
+   // monitor, so it is declared last and goes first. The tangent is owned by
+   // global_assembly.
    const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R and K
    mfem::MUMPSSolver linear_solver;                              // parallel direct solver of the tangent
    SystemTools::NewtonMonitor newton_monitor;                    // prints the residual norms
-   mutable std::unique_ptr<mfem::HypreParMatrix> tangent;        // tangent of the predictor and of Newton's method
    mfem::NewtonSolver newton_solver;
 };
 
