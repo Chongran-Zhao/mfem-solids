@@ -31,8 +31,8 @@ class DirichletBoundary
 {
 public:
    // Reads the Dirichlet section of config.yaml.
-   DirichletBoundary(const YAML::Node &paras, mfem::ParFiniteElementSpace &input_fespace)
-      : fespace(input_fespace)
+   DirichletBoundary(const YAML::Node &paras, mfem::ParFiniteElementSpace &fespace)
+      : comm(fespace.GetComm())
    {
       mfem::Mesh &mesh = *fespace.GetMesh();
 
@@ -153,7 +153,7 @@ public:
    void print_disp_load_by_step(const mfem::ParGridFunction &disp) const
    {
       // The values on the dofs this rank owns, which load.dofs number.
-      mfem::Vector disp_owned(fespace.GetTrueVSize());
+      mfem::Vector disp_owned(disp.ParFESpace()->GetTrueVSize());
       disp.GetTrueDofs(disp_owned);
       for (const disp_load &load : disp_load_list)
       {
@@ -164,8 +164,8 @@ public:
             min_disp = std::min(min_disp, disp_owned(dof));
             max_disp = std::max(max_disp, disp_owned(dof));
          }
-         MPI_Allreduce(MPI_IN_PLACE, &min_disp, 1, MPI_DOUBLE, MPI_MIN, fespace.GetComm());
-         MPI_Allreduce(MPI_IN_PLACE, &max_disp, 1, MPI_DOUBLE, MPI_MAX, fespace.GetComm());
+         MPI_Allreduce(MPI_IN_PLACE, &min_disp, 1, MPI_DOUBLE, MPI_MIN, comm);
+         MPI_Allreduce(MPI_IN_PLACE, &max_disp, 1, MPI_DOUBLE, MPI_MAX, comm);
 
          mfem::out << "  " << std::left
                    << std::setw(8) << load.face
@@ -198,7 +198,7 @@ private:
    int get_global_size(const mfem::Array<int> &dofs) const
    {
       int size = dofs.Size();
-      MPI_Allreduce(MPI_IN_PLACE, &size, 1, MPI_INT, MPI_SUM, fespace.GetComm());
+      MPI_Allreduce(MPI_IN_PLACE, &size, 1, MPI_INT, MPI_SUM, comm);
       return size;
    }
 
@@ -218,7 +218,7 @@ private:
       mfem::Array<int> dofs;     // dofs this rank owns of this direction on the face
    };
 
-   mfem::ParFiniteElementSpace &fespace;    // space of the displacement
+   const MPI_Comm comm;                     // the ranks of the displacement space
 
    // "x", "y", "z" -> 0, 1, 2
    inline static const std::map<std::string, int> dir_map = {{"x", 0}, {"y", 1}, {"z", 2}};
