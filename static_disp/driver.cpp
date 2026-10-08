@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
    const int num_load_steps = config["loading"]["load_steps"].as<int>();
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver_Static_Disp>(
-      std::move(nonlinear_solver), num_load_steps, results_dir);
+      std::move(nonlinear_solver), num_load_steps, results_dir, mesh);
 
    // 8. Solve the load steps.
    time_solver->run(disp);
