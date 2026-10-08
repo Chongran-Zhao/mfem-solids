@@ -6,6 +6,10 @@
 // Newton's method from it. It owns the global assembly and the solvers; the
 // loop over the load steps is left to its caller. It is also the
 // mfem::Operator that its NewtonSolver solves, through Mult and GetGradient.
+// The displacement and the pressure are ParGridFunctions, the boundary values
+// set on the displacement; Newton's method works on the vector of their dofs
+// this rank owns, with the norms over all ranks, and MUMPS solves the
+// tangent, analyzing its sparsity once.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -34,8 +38,14 @@ public:
                                 const YAML::Node &solver)
       : mfem::Operator(input_global_assembly->get_num_dofs()),
         global_assembly(std::move(input_global_assembly)),
-        newton_monitor(global_assembly->get_offsets())
+        linear_solver(global_assembly->get_comm()),
+        newton_monitor(global_assembly->get_offsets(), global_assembly->get_comm()),
+        newton_solver(global_assembly->get_comm())
    {
+      linear_solver.SetPrintLevel(0);
+      // The tangents keep the sparsity of the first one, so MUMPS orders and
+      // analyzes it once and only factorizes the later ones.
+      linear_solver.SetReorderingReuse(true);
       newton_solver.SetOperator(*this);
       newton_solver.SetSolver(linear_solver);
       newton_solver.SetRelTol(solver["newton_rel_tol"].as<double>());
@@ -48,30 +58,25 @@ public:
 
    // Solves the load at time tt from the converged disp and pres of the
    // previous step, and returns the number of Newton iterations.
-   int solve(double tt, mfem::GridFunction &disp, mfem::GridFunction &pres)
+   int solve(double tt, mfem::ParGridFunction &disp, mfem::ParGridFunction &pres)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       const NeumannBoundary &neumann = global_assembly->get_neumann();
 
-      // Newton's method works on one vector of both fields, sol = [u; p];
-      // disp_view is its displacement block, for the boundary values.
-      mfem::BlockVector sol(global_assembly->get_offsets());
-      MFEM_VERIFY(disp.Size() == sol.GetBlock(0).Size() &&
-                  pres.Size() == sol.GetBlock(1).Size(),
-                  "The displacement or pressure size differs from the solver space.");
-      sol.GetBlock(0) = disp;
-      sol.GetBlock(1) = pres;
-      mfem::GridFunction disp_view;
-      disp_view.MakeRef(disp.FESpace(), sol.GetBlock(0), 0);
-
       if (neumann.is_traction_load())
          global_assembly->set_traction_load(tt);
 
-      initial_guess(tt, sol, disp_view);
+      // Newton's method works on one vector of both fields, sol = [u; p],
+      // their values on the dofs this rank owns.
+      mfem::BlockVector sol(global_assembly->get_offsets());
+      disp.GetTrueDofs(sol.GetBlock(0));
+      pres.GetTrueDofs(sol.GetBlock(1));
+
+      initial_guess(tt, disp, sol);
 
       // The load value: the prescribed displacement, or the traction faces.
       if (dirichlet.is_disp_load())
-         dirichlet.print_disp_load_by_step(disp_view);
+         dirichlet.print_disp_load_by_step(disp);
       else
          neumann.print_traction_load_by_step();
       SystemTools::print_block_newton_header();
@@ -80,8 +85,8 @@ public:
       newton_solver.Mult(mfem::Vector(), sol);
       MFEM_VERIFY(newton_solver.GetConverged(), "Newton did not converge at t = " << tt << ".");
 
-      disp = sol.GetBlock(0);
-      pres = sol.GetBlock(1);
+      disp.SetFromTrueDofs(sol.GetBlock(0));
+      pres.SetFromTrueDofs(sol.GetBlock(1));
       return newton_solver.GetNumIterations();
    }
 
@@ -110,23 +115,27 @@ private:
    // the interior follows the prescribed boundary increment g instead of
    // only the boundary nodes moving,
    //    K_ff d(u,p)_f = -R_f(u,p) - K_fe g,
-   // with K_fe g moved to the right-hand side by set_essential_bdr. disp is
-   // the displacement block of sol.
-   void initial_guess(double tt, mfem::BlockVector &sol, mfem::GridFunction &disp)
+   // with K_fe g moved to the right-hand side by set_essential_bdr. disp
+   // and sol, the values of both fields on the dofs this rank owns, are both
+   // updated.
+   void initial_guess(double tt, mfem::ParGridFunction &disp, mfem::BlockVector &sol)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
 
       // Zero on the fixed faces, the prescribed values at time tt on the
       // displacement-driven ones; g is their difference from disp, and zero
       // for the pressure.
-      mfem::GridFunction disp_target(disp);
+      mfem::ParGridFunction disp_target(disp.ParFESpace());
+      disp_target = disp;
       dirichlet.apply_fixed_bc(disp_target);
       if (dirichlet.is_disp_load())
          dirichlet.apply_disp_load_bc(tt, disp_target);
+      mfem::Vector target_owned(sol.GetBlock(0).Size());
+      disp_target.GetTrueDofs(target_owned);
       mfem::BlockVector prescribed_increment(global_assembly->get_offsets());
       prescribed_increment = 0.0;
-      prescribed_increment.GetBlock(0) = disp_target;
-      prescribed_increment.GetBlock(0) -= disp;
+      prescribed_increment.GetBlock(0) = target_owned;
+      prescribed_increment.GetBlock(0) -= sol.GetBlock(0);
 
       mfem::Vector rhs(global_assembly->get_num_dofs());
       global_assembly->assemble_residual(sol, rhs);
@@ -139,18 +148,19 @@ private:
       linear_solver.Mult(rhs, predicted_increment);
       sol += predicted_increment;
 
-      // Set the prescribed values exactly, free of round-off.
-      dirichlet.apply_fixed_bc(disp);
-      if (dirichlet.is_disp_load())
-         dirichlet.apply_disp_load_bc(tt, disp);
+      // Set the prescribed values exactly, free of round-off; the
+      // constrained dofs are in the displacement block, the first.
+      for (int dof : dirichlet.get_ess_tdof_list())
+         sol(dof) = target_owned(dof);
+      disp.SetFromTrueDofs(sol.GetBlock(0));
    }
 
    // newton_solver points to this operator, the linear solver and the
    // monitor, so it is declared last and goes first.
    const std::unique_ptr<GlobalAssembly_Mixed> global_assembly;   // R and K
-   mfem::UMFPackSolver linear_solver;                             // direct solver of the tangent
+   mfem::MUMPSSolver linear_solver;                               // parallel direct solver of the tangent
    SystemTools::BlockNewtonMonitor newton_monitor;                // prints the residual norms of u and p
-   mutable std::unique_ptr<mfem::SparseMatrix> tangent;           // tangent of the predictor and of Newton's method
+   mutable std::unique_ptr<mfem::HypreParMatrix> tangent;         // tangent of the predictor and of Newton's method
    mfem::NewtonSolver newton_solver;
 };
 
