@@ -8,7 +8,8 @@
 // mfem::Operator that its NewtonSolver solves, through Mult and GetGradient.
 // The displacement is a ParGridFunction, on which the boundary values are
 // set; Newton's method works on the vector of the dofs this rank owns, with
-// the norms over all ranks, and MUMPS solves the tangent.
+// the norms over all ranks, and MUMPS solves the tangent, analyzing its
+// sparsity once.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -41,6 +42,9 @@ public:
         newton_solver(global_assembly->get_comm())
    {
       linear_solver.SetPrintLevel(0);
+      // The tangents keep the sparsity of the first one, so MUMPS orders and
+      // analyzes it once and only factorizes the later ones.
+      linear_solver.SetReorderingReuse(true);
       newton_solver.SetOperator(*this);
       newton_solver.SetSolver(linear_solver);
       newton_solver.SetRelTol(solver["newton_rel_tol"].as<double>());
