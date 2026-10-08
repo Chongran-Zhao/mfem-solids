@@ -6,7 +6,8 @@
 // ParaView, at the physical times of time.csv. The steps and the fields are
 // those the driver saved; the pressure p(J) and the stress are computed at
 // the element centers with the material of MaterialModelData, which must be
-// the one the driver ran with.
+// the one the driver ran with. It is serial and reads the results on
+// results/mesh.mesh, the mesh the driver gathered them onto.
 //
 // Author: Chongran Zhao
 // Date: Oct. 3, 2026
@@ -38,14 +39,14 @@ int main(int argc, char *argv[])
                  : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
-   // 2. Read the mesh file.
-   const std::string mesh_file = config["mesh"]["output"].as<std::string>();
+   // 2. Read the mesh the driver saved with its results, on which they live.
+   const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
+   const std::string mesh_file = (results_dir / "mesh.mesh").string();
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
 
    // 3. Read the steps and their physical times from time.csv, whose
    //    columns are step,time,dt,iterations.
-   const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    std::ifstream time_file(results_dir / "time.csv");
    MFEM_VERIFY(time_file, "Cannot open " << (results_dir / "time.csv").string()
                << "; run the driver first.");
