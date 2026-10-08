@@ -9,7 +9,10 @@
 // computes the initial acceleration. It owns the global assembly, the mass
 // matrix, the time method and the solvers; the loop over the time steps is
 // left to its caller. It is also the mfem::Operator that its NewtonSolver
-// solves, through Mult and GetGradient.
+// solves, through Mult and GetGradient. The fields are ParGridFunctions, the
+// boundary values set on them; Newton's method works on the vector of the
+// dofs this rank owns, with the norms over all ranks, and MUMPS solves the
+// tangent, analyzing its sparsity once.
 //
 // Author: Chongran Zhao
 // Date: Oct. 3, 2026
@@ -42,8 +45,14 @@ public:
       : mfem::Operator(input_global_assembly->get_num_dofs()),
         global_assembly(std::move(input_global_assembly)),
         time_method(std::move(input_time_method)),
-        mass(global_assembly->assemble_mass())
+        mass(global_assembly->assemble_mass()),
+        linear_solver(global_assembly->get_comm()),
+        newton_solver(global_assembly->get_comm())
    {
+      linear_solver.SetPrintLevel(0);
+      // The tangents keep the sparsity of the first one, so MUMPS orders and
+      // analyzes it once and only factorizes the later ones.
+      linear_solver.SetReorderingReuse(true);
       newton_solver.SetOperator(*this);
       newton_solver.SetSolver(linear_solver);
       newton_solver.SetRelTol(solver["newton_rel_tol"].as<double>());
@@ -60,8 +69,8 @@ public:
    // on the free dofs; on the constrained ones a_0 = 0, as in MixPERIGEE. A
    // wrong a_0 there only makes their acceleration alternate about its
    // value, whereas a wrong v_0 would disturb the whole solution.
-   void initialize(double tt, mfem::GridFunction &disp, mfem::GridFunction &velo,
-                   mfem::GridFunction &acce)
+   void initialize(double tt, mfem::ParGridFunction &disp, mfem::ParGridFunction &velo,
+                   mfem::ParGridFunction &acce)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       const NeumannBoundary &neumann = global_assembly->get_neumann();
@@ -78,55 +87,71 @@ public:
 
       // rhs = -R(u_0), and M the identity on the constrained dofs, where rhs
       // is zero.
-      mfem::Vector rhs(global_assembly->get_num_dofs());
-      global_assembly->assemble_residual(disp, rhs);
+      const int num_dofs = global_assembly->get_num_dofs();
+      mfem::Vector disp_owned(num_dofs), rhs(num_dofs), acce_owned(num_dofs);
+      disp.GetTrueDofs(disp_owned);
+      global_assembly->assemble_residual(disp_owned, rhs);
       rhs.Neg();
       global_assembly->set_essential_bdr(rhs);
-      mfem::SparseMatrix constrained_mass(*mass);
+      mfem::HypreParMatrix constrained_mass(*mass);
       global_assembly->set_essential_bdr(constrained_mass);
 
-      linear_solver.SetOperator(constrained_mass);
-      linear_solver.Mult(rhs, acce);
+      // M has another sparsity than the tangents, whose analysis
+      // linear_solver keeps, so it has a solver of its own.
+      mfem::MUMPSSolver mass_solver(global_assembly->get_comm());
+      mass_solver.SetPrintLevel(0);
+      mass_solver.SetOperator(constrained_mass);
+      mass_solver.Mult(rhs, acce_owned);
+      acce.SetFromTrueDofs(acce_owned);
    }
 
-   // Solves the step from time_n to time_n + input_dt, from the state of
-   // time_n into disp, velo and acce of time_n + input_dt, and returns the
+   // Solves the step from time_n to time_n + input_dt: disp, velo and acce,
+   // the state of time_n, become that of time_n + input_dt. Returns the
    // number of Newton iterations.
-   int solve(double time_n, double input_dt, const mfem::GridFunction &input_disp_n,
-             const mfem::GridFunction &input_velo_n, const mfem::GridFunction &input_acce_n,
-             mfem::GridFunction &disp, mfem::GridFunction &velo, mfem::GridFunction &acce)
+   int solve(double time_n, double input_dt, mfem::ParGridFunction &disp,
+             mfem::ParGridFunction &velo, mfem::ParGridFunction &acce)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       const double gamma = time_method->get_gamma();
       const double beta = time_method->get_beta();
 
-      set_step(time_n, input_dt, input_disp_n, input_velo_n, input_acce_n);
+      // The values on the dofs this rank owns, those of time_n first.
+      const int num_dofs = global_assembly->get_num_dofs();
+      mfem::Vector disp_owned(num_dofs), velo_owned(num_dofs), acce_owned(num_dofs);
+      disp.GetTrueDofs(disp_owned);
+      velo.GetTrueDofs(velo_owned);
+      acce.GetTrueDofs(acce_owned);
+      set_step(time_n, input_dt, disp_owned, velo_owned, acce_owned);
 
       // Newton's method starts from u_pred, the displacement with
       // a_{n+1} = 0, with the prescribed values of time time_n + dt on the
       // constrained dofs, as in MixPERIGEE; the Newton increments are zero
       // there.
-      disp = disp_predict;
+      disp.SetFromTrueDofs(disp_predict);
       dirichlet.apply_fixed_bc(disp);
       if (dirichlet.is_disp_load())
          dirichlet.apply_disp_load_bc(time_n + dt, disp);
+      disp.GetTrueDofs(disp_owned);
 
       SystemTools::print_newton_header();
 
       // Newton iterations for R_dyn(u_{n+1}) = 0; the empty right-hand side
       // means zero.
-      newton_solver.Mult(mfem::Vector(), disp);
+      newton_solver.Mult(mfem::Vector(), disp_owned);
       MFEM_VERIFY(newton_solver.GetConverged(),
                   "Newton did not converge at t = " << time_n + dt << ".");
 
       // a_{n+1} = (u_{n+1} - u_pred) / (beta dt^2),
       // v_{n+1} = v_n + dt ( (1 - gamma) a_n + gamma a_{n+1} ).
-      acce = disp;
-      acce -= disp_predict;
-      acce /= beta * dt * dt;
-      velo = input_velo_n;
-      velo.Add(dt * (1.0 - gamma), acce_n);
-      velo.Add(dt * gamma, acce);
+      acce_owned = disp_owned;
+      acce_owned -= disp_predict;
+      acce_owned /= beta * dt * dt;
+      velo_owned.Add(dt * (1.0 - gamma), acce_n);
+      velo_owned.Add(dt * gamma, acce_owned);
+
+      disp.SetFromTrueDofs(disp_owned);
+      velo.SetFromTrueDofs(velo_owned);
+      acce.SetFromTrueDofs(acce_owned);
       return newton_solver.GetNumIterations();
    }
 
@@ -171,7 +196,8 @@ private:
          global_assembly->set_traction_load(time_n + time_method->get_alpha_f() * dt);
    }
 
-   // R_dyn(u_{n+1}) = R(u_alpha, t_alpha) + M a_alpha at every dof, with
+   // R_dyn(u_{n+1}) = R(u_alpha, t_alpha) + M a_alpha at every dof this rank
+   // owns, with
    //    u_alpha = (1 - alpha_f) u_n + alpha_f u_{n+1},
    //    a_alpha = (1 - alpha_m) a_n + alpha_m (u_{n+1} - u_pred) / (beta dt^2).
    void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
@@ -194,8 +220,9 @@ private:
    }
 
    // K_eff(u_{n+1}) = dR_dyn/du_{n+1} = alpha_m / (beta dt^2) M + alpha_f K(u_alpha)
-   // at every dof, in a new SparseMatrix, which the caller owns.
-   std::unique_ptr<mfem::SparseMatrix> assemble_tangent(const mfem::Vector &disp) const
+   // on the dofs this rank owns, in a new HypreParMatrix, which the caller
+   // owns.
+   std::unique_ptr<mfem::HypreParMatrix> assemble_tangent(const mfem::Vector &disp) const
    {
       const double alpha_m = time_method->get_alpha_m();
       const double alpha_f = time_method->get_alpha_f();
@@ -205,7 +232,7 @@ private:
       disp_alpha *= 1.0 - alpha_f;
       disp_alpha.Add(alpha_f, disp);
 
-      return std::unique_ptr<mfem::SparseMatrix>(
+      return std::unique_ptr<mfem::HypreParMatrix>(
          mfem::Add(alpha_m / (beta * dt * dt), *mass,
                    alpha_f, global_assembly->assemble_tangent(disp_alpha)));
    }
@@ -214,16 +241,16 @@ private:
    // monitor, so it is declared last and goes first.
    const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R, K and M
    const std::unique_ptr<TimeMethod_GenAlpha> time_method;       // alpha_m, alpha_f, gamma, beta
-   const std::unique_ptr<mfem::SparseMatrix> mass;               // M, assembled once
-   mfem::UMFPackSolver linear_solver;                            // direct solver of the tangent
+   const std::unique_ptr<mfem::HypreParMatrix> mass;             // M, assembled once
+   mfem::MUMPSSolver linear_solver;                              // parallel direct solver of the tangent
    SystemTools::NewtonMonitor newton_monitor;                    // prints the residual norms
-   mutable std::unique_ptr<mfem::SparseMatrix> tangent;          // tangent of Newton's method
+   mutable std::unique_ptr<mfem::HypreParMatrix> tangent;        // tangent of Newton's method
 
    // The step being solved, set by set_step.
    double dt = 0.0;                                              // time step
-   mfem::Vector disp_n;                                          // u_n
-   mfem::Vector acce_n;                                          // a_n
-   mfem::Vector disp_predict;                                    // u_pred
+   mfem::Vector disp_n;                                          // u_n on the dofs this rank owns
+   mfem::Vector acce_n;                                          // a_n on the dofs this rank owns
+   mfem::Vector disp_predict;                                    // u_pred on the dofs this rank owns
 
    mfem::NewtonSolver newton_solver;
 };
