@@ -5,7 +5,8 @@
 // Piola-Kirchhoff stresses of each load step for ParaView, from the
 // displacement and nodal pressure saved by the mixed driver. Stresses are
 // computed at the element centers with the material of MaterialModelData,
-// which must be the one the driver ran with.
+// which must be the one the driver ran with. It is serial and reads the
+// results on results/mesh.mesh, the mesh the driver gathered them onto.
 //
 // Author: Chongran Zhao
 // Date: Sep. 26, 2026
@@ -36,14 +37,14 @@ int main(int argc, char *argv[])
                  : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
-   // 2. Read the mesh file.
-   const std::string mesh_file = config["mesh"]["output"].as<std::string>();
+   // 2. Read the mesh the driver saved with its results, on which they live.
+   const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
+   const std::string mesh_file = (results_dir / "mesh.mesh").string();
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
 
    // 3. Read the results of each step and write them.
    const int load_steps = config["loading"]["load_steps"].as<int>();
-   const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
 
    // Reads <results>/<prefix>_XXXX.gf of a step, with its own space.
    auto read_gf = [&](const std::string &prefix, int step)

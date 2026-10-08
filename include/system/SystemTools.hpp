@@ -132,10 +132,13 @@ public:
    // and the pressure R_p, whose scales differ by orders of magnitude: the
    // norm of each block, absolute and relative to the first iteration of the
    // load step. A relative norm is left out when its first norm is zero.
+   // The residual is that of the dofs this rank owns, on the offsets of its
+   // blocks; the norms are over all ranks of comm.
    class BlockNewtonMonitor : public mfem::IterativeSolverMonitor
    {
    public:
-      BlockNewtonMonitor(const mfem::Array<int> &input_offsets) : offsets(input_offsets) {}
+      BlockNewtonMonitor(const mfem::Array<int> &input_offsets, MPI_Comm input_comm)
+         : offsets(input_offsets), comm(input_comm) {}
 
       // Required by MFEM: overrides mfem::IterativeSolverMonitor::
       // MonitorResidual, which NewtonSolver calls at every iteration.
@@ -148,11 +151,11 @@ public:
          // ||R_u|| and ||R_p||, the norms of r over the two blocks.
          std::array<double, 2> norm = {0.0, 0.0};
          for (int bb = 0; bb < 2; bb++)
-         {
             for (int ii = offsets[bb]; ii < offsets[bb + 1]; ii++)
                norm[bb] += r(ii) * r(ii);
+         MPI_Allreduce(MPI_IN_PLACE, norm.data(), 2, MPI_DOUBLE, MPI_SUM, comm);
+         for (int bb = 0; bb < 2; bb++)
             norm[bb] = std::sqrt(norm[bb]);
-         }
          if (it == 0)
             initial_norm = norm;
 
@@ -171,7 +174,8 @@ public:
       }
 
    private:
-      const mfem::Array<int> offsets;             // [0, n_u, n_u + n_p]
+      const mfem::Array<int> offsets;             // [0, n_u, n_u + n_p] of this rank
+      const MPI_Comm comm;                        // the ranks of the residual
       std::array<double, 2> initial_norm = {1.0, 1.0};
    };
 
