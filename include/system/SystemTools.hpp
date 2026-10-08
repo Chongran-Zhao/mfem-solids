@@ -52,15 +52,19 @@ public:
    // Finite element space. The element is named by its polynomial space,
    // e.g. Q2 hexahedron, since the name of an MFEM collection, e.g.
    // H1_3D_P2, gives the order only. The ordering is left out for a scalar
-   // field, where byNODES and byVDIM are the same.
+   // field, where byNODES and byVDIM are the same. The unknowns of a
+   // parallel space are those of all ranks; it is then collective.
    static void print_space(const mfem::FiniteElementSpace &fespace)
    {
       const bool by_vdim = (fespace.GetOrdering() == mfem::Ordering::byVDIM);
+      const auto *par_fespace = dynamic_cast<const mfem::ParFiniteElementSpace *>(&fespace);
+      const long long num_unknowns = par_fespace ? par_fespace->GlobalTrueVSize()
+                                                 : fespace.GetTrueVSize();
       mfem::out << "\nFinite Element Space\n" << std::string(74, '-') << '\n' << std::left
                 << std::setw(20) << "element" << get_element_name(fespace) << '\n'
                 << std::setw(20) << "components" << fespace.GetVDim() << '\n'
                 << std::setw(20) << "nodes per element" << fespace.GetFE(0)->GetDof() << '\n'
-                << std::setw(20) << "unknowns" << fespace.GetTrueVSize() << '\n';
+                << std::setw(20) << "unknowns" << num_unknowns << '\n';
       if (fespace.GetVDim() > 1)
          mfem::out << std::setw(20) << "ordering" << (by_vdim ? "byVDIM" : "byNODES") << '\n';
       mfem::out << std::string(74, '-') << '\n';

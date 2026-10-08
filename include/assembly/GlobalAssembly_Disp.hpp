@@ -1,12 +1,14 @@
 // ============================================================================
 // GlobalAssembly_Disp.hpp
 //
-// Global assembly of the displacement form, with the Dirichlet and the
-// Neumann boundary conditions:
+// Parallel global assembly of the displacement form, with the Dirichlet and
+// the Neumann boundary conditions, on the dofs each rank owns:
 //    external force  F_ext, from the tractions;
-//    residual        R(d) = int N_a,J P_kJ dV - F_ext, from one NonlinearForm
-//                    over LocalAssembly_Disp;
-//    tangent         K(d) = dR/dd, assembled from the element tangents.
+//    residual        R(d) = int N_a,J P_kJ dV - F_ext, from one
+//                    ParNonlinearForm over LocalAssembly_Disp;
+//    tangent         K(d) = dR/dd, a HypreParMatrix assembled from the
+//                    element tangents, whose rows on each rank are the dofs
+//                    it owns.
 // set_essential_bdr sets R to zero and K to the identity on the constrained
 // dofs, and, with an increment of the prescribed displacement, also moves
 // the constrained columns of K to the right-hand side.
@@ -32,7 +34,7 @@ class GlobalAssembly_Disp
 public:
    // Takes the ownership of the local assembly and of the boundary
    // conditions; the global_assembly only borrows the local assembly.
-   GlobalAssembly_Disp(mfem::FiniteElementSpace &space,
+   GlobalAssembly_Disp(mfem::ParFiniteElementSpace &space,
                        std::unique_ptr<LocalAssembly_Disp> input_local_assembly,
                        std::unique_ptr<DirichletBoundary> input_dirichlet,
                        std::unique_ptr<NeumannBoundary> input_neumann)
@@ -40,7 +42,8 @@ public:
         dirichlet(std::move(input_dirichlet)),
         neumann(std::move(input_neumann)),
         global_assembly(&space),
-        external_force(&space),
+        local_traction(&space),
+        external_force(space.GetTrueVSize()),
         ess_tdof_list(dirichlet->get_ess_tdof_list())
    {
       global_assembly.UseExternalIntegrators();
@@ -48,43 +51,50 @@ public:
 
       external_force = 0.0;
       if (neumann->is_traction_load())
-         neumann->add_traction_integrators(external_force);
+         neumann->add_traction_integrators(local_traction);
    }
 
-   // Set the tractions to time tt and assemble F_ext.
+   // Set the tractions to time tt and assemble F_ext: each rank integrates
+   // over its boundary elements, and ParallelAssemble sums the parts of the
+   // shared dofs onto the rank that owns them.
    void set_traction_load(double tt)
    {
       neumann->set_time(tt);
-      external_force.Assemble();
+      local_traction.Assemble();
+      local_traction.ParallelAssemble(external_force);
    }
 
-   // Number of unknowns.
+   // Number of unknowns this rank owns.
    int get_num_dofs() const { return global_assembly.Height(); }
+
+   // The ranks of the space.
+   MPI_Comm get_comm() const { return global_assembly.ParFESpace()->GetComm(); }
 
    // Consistent mass M_ab = int rho_0 N_a N_b dV, without constraints, with
    // rho_0 of the material. It is assembled once, for the dynamics, and the
    // caller owns it.
-   std::unique_ptr<mfem::SparseMatrix> assemble_mass()
+   std::unique_ptr<mfem::HypreParMatrix> assemble_mass()
    {
       mfem::ConstantCoefficient rho(local_assembly->get_rho_0());
-      mfem::BilinearForm mass(global_assembly.FESpace());
+      mfem::ParBilinearForm mass(global_assembly.ParFESpace());
       mass.AddDomainIntegrator(new mfem::VectorMassIntegrator(rho));
       mass.Assemble();
       mass.Finalize();
-      return std::unique_ptr<mfem::SparseMatrix>(mass.LoseMat());
+      return std::unique_ptr<mfem::HypreParMatrix>(mass.ParallelAssemble());
    }
 
-   // R(d) at every dof.
+   // R(d) at every dof this rank owns.
    void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
    {
       global_assembly.Mult(disp, residual);
       residual -= external_force;
    }
 
-   // K(d) at every dof.
-   const mfem::SparseMatrix &assemble_tangent(const mfem::Vector &disp) const
+   // K(d) on the dofs this rank owns. global_assembly owns it and builds it
+   // anew at every call, so the caller may change it until the next one.
+   mfem::HypreParMatrix &assemble_tangent(const mfem::Vector &disp) const
    {
-      return dynamic_cast<const mfem::SparseMatrix &>(global_assembly.GetGradient(disp));
+      return dynamic_cast<mfem::HypreParMatrix &>(global_assembly.GetGradient(disp));
    }
 
    // R zero on the constrained dofs, which carry no equation.
@@ -95,21 +105,23 @@ public:
    }
 
    // K the identity on the constrained dofs.
-   void set_essential_bdr(mfem::SparseMatrix &tangent) const
+   void set_essential_bdr(mfem::HypreParMatrix &tangent) const
    {
-      for (int dof : ess_tdof_list)
-         tangent.EliminateRowCol(dof, mfem::Operator::DIAG_ONE);
+      tangent.EliminateBC(ess_tdof_list, mfem::Operator::DIAG_ONE);
    }
 
    // K the identity on the constrained dofs, with the increment g of the
    // prescribed displacement on them moved to the right-hand side:
    //    rhs -= K g on the free dofs,   rhs = g on the constrained dofs.
-   void set_essential_bdr(mfem::SparseMatrix &tangent,
+   // EliminateRowsCols takes the constrained rows and columns out of K into
+   // K_e, and EliminateBC moves K_e g to the right-hand side.
+   void set_essential_bdr(mfem::HypreParMatrix &tangent,
                           const mfem::Vector &prescribed_increment,
                           mfem::Vector &rhs) const
    {
-      for (int dof : ess_tdof_list)
-         tangent.EliminateRowCol(dof, prescribed_increment(dof), rhs);
+      const std::unique_ptr<mfem::HypreParMatrix> eliminated(
+         tangent.EliminateRowsCols(ess_tdof_list));
+      tangent.EliminateBC(*eliminated, ess_tdof_list, prescribed_increment, rhs);
    }
 
    // The Dirichlet boundary conditions, whose values the nonlinear solver sets.
@@ -124,9 +136,10 @@ private:
    const std::unique_ptr<LocalAssembly_Disp> local_assembly;
    const std::unique_ptr<DirichletBoundary> dirichlet;    // constrained dofs and their values
    const std::unique_ptr<NeumannBoundary> neumann;        // tractions
-   mfem::NonlinearForm global_assembly;                   // R + F_ext and K, without constraints
-   mfem::LinearForm external_force;                       // F_ext
-   const mfem::Array<int> ess_tdof_list;                  // constrained dofs
+   mfem::ParNonlinearForm global_assembly;                // R + F_ext and K, without constraints
+   mfem::ParLinearForm local_traction;                    // F_ext on the elements of this rank
+   mfem::Vector external_force;                           // F_ext on the dofs this rank owns
+   const mfem::Array<int> ess_tdof_list;                  // constrained dofs this rank owns
 };
 
 #endif

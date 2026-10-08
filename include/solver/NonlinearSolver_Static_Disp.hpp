@@ -6,6 +6,10 @@
 // runs Newton's method from it. It owns the global assembly and the solvers;
 // the loop over the load steps is left to its caller. It is also the
 // mfem::Operator that its NewtonSolver solves, through Mult and GetGradient.
+// The displacement is a ParGridFunction, on which the boundary values are
+// set; Newton's method works on the vector of the dofs this rank owns, with
+// the norms over all ranks, and MUMPS solves the tangent, analyzing its
+// sparsity once.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -33,8 +37,14 @@ public:
    NonlinearSolver_Static_Disp(std::unique_ptr<GlobalAssembly_Disp> input_global_assembly,
                                const YAML::Node &solver)
       : mfem::Operator(input_global_assembly->get_num_dofs()),
-        global_assembly(std::move(input_global_assembly))
+        global_assembly(std::move(input_global_assembly)),
+        linear_solver(global_assembly->get_comm()),
+        newton_solver(global_assembly->get_comm())
    {
+      linear_solver.SetPrintLevel(0);
+      // The tangents keep the sparsity of the first one, so MUMPS orders and
+      // analyzes it once and only factorizes the later ones.
+      linear_solver.SetReorderingReuse(true);
       newton_solver.SetOperator(*this);
       newton_solver.SetSolver(linear_solver);
       newton_solver.SetRelTol(solver["newton_rel_tol"].as<double>());
@@ -47,7 +57,7 @@ public:
 
    // Solves the load at time tt from the converged disp of the previous
    // step, and returns the number of Newton iterations.
-   int solve(double tt, mfem::GridFunction &disp)
+   int solve(double tt, mfem::ParGridFunction &disp)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       const NeumannBoundary &neumann = global_assembly->get_neumann();
@@ -55,7 +65,12 @@ public:
       if (neumann.is_traction_load())
          global_assembly->set_traction_load(tt);
 
-      initial_guess(tt, disp);
+      // The unknowns of Newton's method, the values of disp on the dofs this
+      // rank owns.
+      mfem::Vector disp_owned(global_assembly->get_num_dofs());
+      disp.GetTrueDofs(disp_owned);
+
+      initial_guess(tt, disp, disp_owned);
 
       // The load value: the prescribed displacement, or the traction faces.
       if (dirichlet.is_disp_load())
@@ -65,8 +80,9 @@ public:
       SystemTools::print_newton_header();
 
       // Newton iterations for R(d) = 0; the empty right-hand side means zero.
-      newton_solver.Mult(mfem::Vector(), disp);
+      newton_solver.Mult(mfem::Vector(), disp_owned);
       MFEM_VERIFY(newton_solver.GetConverged(), "Newton did not converge at t = " << tt << ".");
+      disp.SetFromTrueDofs(disp_owned);
       return newton_solver.GetNumIterations();
    }
 
@@ -84,9 +100,9 @@ public:
    // K(d), the identity on the constrained dofs.
    mfem::Operator &GetGradient(const mfem::Vector &disp) const override
    {
-      tangent = std::make_unique<mfem::SparseMatrix>(global_assembly->assemble_tangent(disp));
-      global_assembly->set_essential_bdr(*tangent);
-      return *tangent;
+      mfem::HypreParMatrix &tangent = global_assembly->assemble_tangent(disp);
+      global_assembly->set_essential_bdr(tangent);
+      return tangent;
    }
 
 private:
@@ -95,43 +111,48 @@ private:
    // interior follows the prescribed boundary increment g instead of only
    // the boundary nodes moving,
    //    K_ff du_f = -R_f(d) - K_fe g,
-   // with K_fe g moved to the right-hand side by set_essential_bdr.
-   void initial_guess(double tt, mfem::GridFunction &disp)
+   // with K_fe g moved to the right-hand side by set_essential_bdr. disp
+   // and disp_owned, its values on the dofs this rank owns, are both
+   // updated.
+   void initial_guess(double tt, mfem::ParGridFunction &disp, mfem::Vector &disp_owned)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
 
       // Zero on the fixed faces, the prescribed values at time tt on the
       // displacement-driven ones; g is their difference from disp.
-      mfem::GridFunction disp_target(disp);
+      mfem::ParGridFunction disp_target(disp.ParFESpace());
+      disp_target = disp;
       dirichlet.apply_fixed_bc(disp_target);
       if (dirichlet.is_disp_load())
          dirichlet.apply_disp_load_bc(tt, disp_target);
-      mfem::Vector prescribed_increment(disp_target);
-      prescribed_increment -= disp;
+      mfem::Vector target_owned(disp_owned.Size());
+      disp_target.GetTrueDofs(target_owned);
+      mfem::Vector prescribed_increment(target_owned);
+      prescribed_increment -= disp_owned;
 
       mfem::Vector rhs(global_assembly->get_num_dofs());
-      global_assembly->assemble_residual(disp, rhs);
+      global_assembly->assemble_residual(disp_owned, rhs);
       rhs.Neg();
-      tangent = std::make_unique<mfem::SparseMatrix>(global_assembly->assemble_tangent(disp));
-      global_assembly->set_essential_bdr(*tangent, prescribed_increment, rhs);
+      mfem::HypreParMatrix &tangent = global_assembly->assemble_tangent(disp_owned);
+      global_assembly->set_essential_bdr(tangent, prescribed_increment, rhs);
 
       mfem::Vector predicted_increment(global_assembly->get_num_dofs());
-      linear_solver.SetOperator(*tangent);
+      linear_solver.SetOperator(tangent);
       linear_solver.Mult(rhs, predicted_increment);
-      disp += predicted_increment;
+      disp_owned += predicted_increment;
 
       // Set the prescribed values exactly, free of round-off.
-      dirichlet.apply_fixed_bc(disp);
-      if (dirichlet.is_disp_load())
-         dirichlet.apply_disp_load_bc(tt, disp);
+      for (int dof : dirichlet.get_ess_tdof_list())
+         disp_owned(dof) = target_owned(dof);
+      disp.SetFromTrueDofs(disp_owned);
    }
 
    // newton_solver points to this operator, the linear solver and the
-   // monitor, so it is declared last and goes first.
+   // monitor, so it is declared last and goes first. The tangent is owned by
+   // global_assembly.
    const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R and K
-   mfem::UMFPackSolver linear_solver;                            // direct solver of the tangent
+   mfem::MUMPSSolver linear_solver;                              // parallel direct solver of the tangent
    SystemTools::NewtonMonitor newton_monitor;                    // prints the residual norms
-   mutable std::unique_ptr<mfem::SparseMatrix> tangent;          // tangent of the predictor and of Newton's method
    mfem::NewtonSolver newton_solver;
 };
 
