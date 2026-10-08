@@ -2,9 +2,10 @@
 // DirichletBoundary.hpp
 //
 // Reads the Dirichlet boundary conditions from config.yaml and applies them
-// to the displacement at each load step. The dofs are those this rank owns,
-// numbered on this rank, and the displacement and the velocity are vectors
-// on them; the prints are collective, over all ranks.
+// to the displacement at each load step, on grid functions of the
+// ParFiniteElementSpace; the constrained dofs are those this rank owns,
+// numbered on this rank. Applying and printing are collective, over all
+// ranks.
 //
 // Author: Chongran Zhao
 // Date: Sep. 27, 2026
@@ -84,15 +85,19 @@ public:
    mfem::Array<int> get_ess_tdof_list() const { return ess_tdof_list; }
 
    // Set the displacement to zero on the fixed faces.
-   void apply_fixed_bc(mfem::Vector &disp) const
+   void apply_fixed_bc(mfem::ParGridFunction &disp) const
    {
+      mfem::ConstantCoefficient zero(0.0);
       for (const disp_fixed &fixed : disp_fixed_list)
-         for (int dof : fixed.dofs)
-            disp(dof) = 0.0;
+      {
+         mfem::Coefficient *coeff[3] = {nullptr, nullptr, nullptr};
+         coeff[fixed.dir] = &zero;
+         disp.ProjectBdrCoefficient(coeff, face_attribute_map.at(fixed.face));
+      }
    }
 
    // Apply the disp loading given by LoadData::disp_loading(pt, tt).
-   void apply_disp_load_bc(double tt, mfem::Vector &disp) const
+   void apply_disp_load_bc(double tt, mfem::ParGridFunction &disp) const
    {
       apply_load_bc(disp, [tt](const mfem::Vector &pt, const std::string &face, int dir)
       { return LoadData::disp_loading(pt, tt, face)(dir); });
@@ -100,7 +105,7 @@ public:
 
    // Apply the velocity of the disp loading, LoadData::velo_loading(pt, tt),
    // for the initial state of the dynamics.
-   void apply_velo_load_bc(double tt, mfem::Vector &velo) const
+   void apply_velo_load_bc(double tt, mfem::ParGridFunction &velo) const
    {
       apply_load_bc(velo, [tt](const mfem::Vector &pt, const std::string &face, int dir)
       { return LoadData::velo_loading(pt, tt, face)(dir); });
@@ -145,16 +150,19 @@ public:
 
    // Print the prescribed displacement of each driven face, its range over
    // all ranks.
-   void print_disp_load_by_step(const mfem::Vector &disp) const
+   void print_disp_load_by_step(const mfem::ParGridFunction &disp) const
    {
+      // The values on the dofs this rank owns, which load.dofs number.
+      mfem::Vector disp_owned(fespace.GetTrueVSize());
+      disp.GetTrueDofs(disp_owned);
       for (const disp_load &load : disp_load_list)
       {
          double min_disp = std::numeric_limits<double>::max();
          double max_disp = std::numeric_limits<double>::lowest();
          for (int dof : load.dofs)
          {
-            min_disp = std::min(min_disp, disp(dof));
-            max_disp = std::max(max_disp, disp(dof));
+            min_disp = std::min(min_disp, disp_owned(dof));
+            max_disp = std::max(max_disp, disp_owned(dof));
          }
          MPI_Allreduce(MPI_IN_PLACE, &min_disp, 1, MPI_DOUBLE, MPI_MIN, fespace.GetComm());
          MPI_Allreduce(MPI_IN_PLACE, &max_disp, 1, MPI_DOUBLE, MPI_MAX, fespace.GetComm());
@@ -171,14 +179,10 @@ public:
 
 private:
    // Project value(pt, face, dir), the prescribed displacement or one of its
-   // time derivatives, onto the dofs of every entry of disp_bc. The
-   // projection is made on a grid function, over the dofs of the elements of
-   // this rank, and its values on the dofs this rank owns are copied.
+   // time derivatives, onto the dofs of every entry of disp_bc.
    template <typename Value>
-   void apply_load_bc(mfem::Vector &field, const Value &value) const
+   void apply_load_bc(mfem::ParGridFunction &field, const Value &value) const
    {
-      mfem::ParGridFunction projected(&fespace);
-      mfem::Vector projected_owned(fespace.GetTrueVSize());
       for (const disp_load &load : disp_load_list)
       {
          mfem::FunctionCoefficient load_value([&](const mfem::Vector &pt)
@@ -186,11 +190,7 @@ private:
 
          mfem::Coefficient *coeff[3] = {nullptr, nullptr, nullptr};
          coeff[load.dir] = &load_value;
-         projected = 0.0;
-         projected.ProjectBdrCoefficient(coeff, face_attribute_map.at(load.face));
-         projected.GetTrueDofs(projected_owned);
-         for (int dof : load.dofs)
-            field(dof) = projected_owned(dof);
+         field.ProjectBdrCoefficient(coeff, face_attribute_map.at(load.face));
       }
    }
 
