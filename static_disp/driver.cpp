@@ -31,6 +31,12 @@
 
 int main(int argc, char *argv[])
 {
+   // Start MPI and hypre; only rank 0 prints.
+   mfem::Mpi::Init(argc, argv);
+   mfem::Hypre::Init();
+   if (!mfem::Mpi::Root())
+      mfem::out.Disable();
+
    // Wall-clock time of the whole run.
    mfem::StopWatch total_timer;
    total_timer.Start();
@@ -43,17 +49,20 @@ int main(int argc, char *argv[])
                  : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
-   // 2. Read the mesh file.
+   // 2. Read the mesh file on every rank and split it among the ranks; the
+   //    serial mesh is only needed for the split.
    const std::string mesh_file = config["mesh"]["output"].as<std::string>();
-   mfem::Mesh mesh(mesh_file);
-   SystemTools::print_mesh(mesh_file, mesh);
+   mfem::Mesh serial_mesh(mesh_file);
+   SystemTools::print_mesh(mesh_file, serial_mesh);
+   mfem::ParMesh mesh(MPI_COMM_WORLD, serial_mesh);
+   serial_mesh.Clear();
 
    // 3. Set up the finite element space of the displacement.
    const int dim = mesh.Dimension();
    const int order = config["space"]["order"].as<int>();
    mfem::H1_FECollection fec_u(order, dim);
-   mfem::FiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
-   mfem::GridFunction disp(&space_u);
+   mfem::ParFiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
+   mfem::ParGridFunction disp(&space_u);
    disp = 0.0;
    SystemTools::print_space(space_u);
 
