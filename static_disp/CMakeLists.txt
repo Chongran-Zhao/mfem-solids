@@ -3,7 +3,7 @@
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
-#    cd build && ./read_mesh && ./driver && ./vtu_writer && ./csv_writer
+#    cd build && ./read_mesh && mpirun -np 2 ./driver && ./vtu_writer && mpirun -np 2 ./csv_writer
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(static_disp LANGUAGES CXX)
