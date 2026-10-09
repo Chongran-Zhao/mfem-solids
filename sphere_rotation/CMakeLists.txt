@@ -4,7 +4,7 @@
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
-#    cd build && ./read_mesh
+#    cd build && ./read_mesh && mpirun -np 2 ./driver
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(sphere_rotation LANGUAGES CXX)
@@ -18,3 +18,7 @@ configure_file(config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
 add_executable(read_mesh read_mesh.cpp)
 target_include_directories(read_mesh PRIVATE ${MFEM_INCLUDE_DIRS})
 target_link_libraries(read_mesh PRIVATE ${mfem_libraries})
+
+add_executable(driver driver.cpp)
+target_include_directories(driver PRIVATE ${include_dirs})
+target_link_libraries(driver PRIVATE ${mfem_libraries})

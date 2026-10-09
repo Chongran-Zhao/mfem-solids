@@ -1,6 +1,8 @@
-# Input of read_mesh of sphere_rotation. CMake copies it into
+# Input of read_mesh and driver of sphere_rotation. CMake copies it into
 # sphere_rotation/build/, and the programs read the copy of the directory they
-# run in, or the file given as first argument. Lengths are in meters.
+# run in, or the file given as first argument. Units are SI: meters, seconds.
+# The surface of the ball turns about z as given by LoadData; the body starts
+# at rest.
 
 mesh:
   # Radius of the sphere.
@@ -26,3 +28,40 @@ space:
   # and of the curved geometry; the pressure is one order lower
   # (Taylor-Hood).
   order: 2
+
+# Time integration method, read into TimeMethod_GenAlpha.
+time_method:
+  # Spectral radius at infinite frequency of generalized-alpha, in [0, 1].
+  rho_inf: 0.5
+
+# Time steps, read into TimeSolver_Dynamic_Mixed.
+time:
+  # Time step; the last step is shortened to end at final_time.
+  dt: 1.0e-4
+  final_time: 0.027
+
+# Displacement boundary conditions: the whole surface follows the rotation of
+# LoadData::disp_loading.
+Dirichlet:
+  fixed_bc: []
+  disp_bc:
+    - { face: outer, dir: x }
+    - { face: outer, dir: y }
+    - { face: outer, dir: z }
+
+# No traction.
+Neumann:
+  faces: []
+
+# Newton's method settings.
+# The linear solver is MUMPS.
+solver:
+  newton_rel_tol: 1.0e-8
+  newton_abs_tol: 1.0e-10
+  newton_max_iter: 20
+
+# Output folders, in the directory the programs run in.
+output:
+  vtu: results_vtu
+  gf: results_gf
+  csv: results_csv
