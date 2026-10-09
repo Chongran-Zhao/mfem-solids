@@ -36,7 +36,9 @@ message(STATUS "yaml-cpp at ${yaml-cpp_DIR}")
 
 set(mfem_libraries ${MFEM_LIBRARIES} yaml-cpp::yaml-cpp MPI::MPI_CXX)
 
-# Headers of this project, one folder per kind.
+# Headers of this project, one folder per kind. include/data, the loading
+# and the material, comes last, so that a folder that puts its own
+# LoadData.hpp or MaterialModelData.hpp before include_dirs uses them.
 set(include_dirs
   ${project_dir}/include/assembly
   ${project_dir}/include/boundary
@@ -44,4 +46,5 @@ set(include_dirs
   ${project_dir}/include/solver
   ${project_dir}/include/system
   ${project_dir}/include/visualization
+  ${project_dir}/include/data
   ${MFEM_INCLUDE_DIRS})

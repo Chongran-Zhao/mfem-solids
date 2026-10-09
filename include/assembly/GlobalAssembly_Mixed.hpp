@@ -9,8 +9,12 @@
 //    tangent         K(u,p) = dR/d(u,p), one HypreParMatrix of both fields,
 //                    assembled from the element tangents.
 // set_essential_bdr sets R to zero and K to the identity on the constrained
-// displacement dofs, and, with an increment of the prescribed displacement,
-// also moves the constrained columns of K to the right-hand side.
+// dofs, and, with an increment of the prescribed displacement, also moves
+// the constrained columns of K to the right-hand side. The constrained dofs
+// are the displacement ones of the Dirichlet boundary conditions and, when
+// the pressure is fixed, the pressure at the vertex nearest to the origin:
+// an incompressible body whose displacement is prescribed on its whole
+// boundary has its pressure only up to a constant.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -19,6 +23,8 @@
 #ifndef GLOBAL_ASSEMBLY_MIXED_HPP
 #define GLOBAL_ASSEMBLY_MIXED_HPP
 
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -34,11 +40,14 @@ class GlobalAssembly_Mixed
 public:
    // Takes the ownership of the local assembly and of the boundary
    // conditions; the global_assembly only borrows the local assembly.
+   // is_pressure_fixed fixes the pressure at the vertex nearest to the
+   // origin.
    GlobalAssembly_Mixed(mfem::ParFiniteElementSpace &space_u,
                         mfem::ParFiniteElementSpace &space_p,
                         std::unique_ptr<LocalAssembly_Mixed> input_local_assembly,
                         std::unique_ptr<DirichletBoundary> input_dirichlet,
-                        std::unique_ptr<NeumannBoundary> input_neumann)
+                        std::unique_ptr<NeumannBoundary> input_neumann,
+                        bool is_pressure_fixed)
       : local_assembly(std::move(input_local_assembly)),
         dirichlet(std::move(input_dirichlet)),
         neumann(std::move(input_neumann)),
@@ -53,6 +62,36 @@ public:
       external_force = 0.0;
       if (neumann->is_traction_load())
          neumann->add_traction_integrators(local_traction);
+
+      // The pressure vertex nearest to the origin: each rank finds the
+      // nearest of the vertices whose dof it owns, MPI_MINLOC picks the
+      // nearest of all, and its rank constrains that dof, numbered after the
+      // displacement block. In H1, the dof of vertex vv is the vv-th one.
+      if (is_pressure_fixed)
+      {
+         const mfem::ParMesh &mesh = *space_p.GetParMesh();
+         struct { double distance; int rank; } nearest, global_nearest;
+         nearest = {std::numeric_limits<double>::max(), space_p.GetMyRank()};
+         int nearest_dof = -1;
+         for (int vv = 0; vv < mesh.GetNV(); vv++)
+         {
+            const int dof = space_p.GetLocalTDofNumber(vv);
+            if (dof < 0)
+               continue;
+            const double *coord = mesh.GetVertex(vv);
+            const double distance = std::sqrt(coord[0] * coord[0] + coord[1] * coord[1]
+                                              + coord[2] * coord[2]);
+            if (distance < nearest.distance)
+            {
+               nearest.distance = distance;
+               nearest_dof = dof;
+            }
+         }
+         MPI_Allreduce(&nearest, &global_nearest, 1, MPI_DOUBLE_INT, MPI_MINLOC,
+                       space_p.GetComm());
+         if (global_nearest.rank == space_p.GetMyRank())
+            ess_tdof_list.Append(space_u.GetTrueVSize() + nearest_dof);
+      }
    }
 
    // Set the tractions to time tt and assemble F_ext: each rank integrates
@@ -130,8 +169,7 @@ public:
          residual(dof) = 0.0;
    }
 
-   // K the identity on the constrained dofs; also for a matrix of the
-   // displacement only, e.g. the mass.
+   // K the identity on the constrained dofs.
    void set_essential_bdr(mfem::HypreParMatrix &tangent) const
    {
       tangent.EliminateBC(ess_tdof_list, mfem::Operator::DIAG_ONE);
@@ -166,7 +204,7 @@ private:
    ParBlockNonlinearForm_External global_assembly;        // R + F_ext and K, without constraints
    mfem::ParLinearForm local_traction;                    // F_ext on the elements of this rank
    mfem::Vector external_force;                           // F_ext on the displacement dofs this rank owns
-   const mfem::Array<int> ess_tdof_list;                  // constrained displacement dofs this rank owns
+   mfem::Array<int> ess_tdof_list;                        // constrained dofs this rank owns, of [u; p]
 };
 
 #endif

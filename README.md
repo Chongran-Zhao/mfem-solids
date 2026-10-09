@@ -40,8 +40,9 @@ writes the columns of the one of `dynamic_disp/`, with the strain energy of the 
 int Psi_vol(J(p)) + Psi_ich(F) dV. Its default `rho_inf` is 0.5: with 1, the pressure
 keeps the oscillations of the high frequencies of Q2 that dt does not resolve.
 
-Each formulation has its own `config.yaml`; the material, the density included, is in `include/material/MaterialModelData.hpp`,
-and the prescribed displacements and tractions are in `include/boundary/LoadData.hpp`.
+Each formulation has its own `config.yaml`; the material, the density included, is in `include/data/MaterialModelData.hpp`,
+and the prescribed displacements and tractions are in `include/data/LoadData.hpp`; a folder
+may replace either with its own copy.
 
 The CSV column `area` is the undeformed reference area of the reported face.
 The CSV column `p` is the reference-area average of pressure on each reported
