@@ -103,8 +103,7 @@ int main(int argc, char *argv[])
    const bool is_traction_load = neumann->is_traction_load();
    auto local_assembly = std::make_unique<LocalAssembly_Mixed>(set_material_model());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
-      space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann),
-      config["Dirichlet"]["fix_pressure"].as<bool>(false));
+      space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
    const std::unique_ptr<mfem::HypreParMatrix> mass = global_assembly->assemble_mass();
    const std::unique_ptr<const MaterialModel> material = set_material_model();
 

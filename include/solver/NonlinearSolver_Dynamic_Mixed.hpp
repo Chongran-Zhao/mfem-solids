@@ -88,17 +88,17 @@ public:
          global_assembly->set_traction_load(tt);
 
       // rhs = -R_u(u_0,p_0), the displacement block of the residual, and M
-      // the identity on the constrained displacement dofs, where rhs is zero.
+      // the identity on the constrained dofs, where rhs is zero.
       mfem::BlockVector sol(global_assembly->get_offsets());
       disp.GetTrueDofs(sol.GetBlock(0));
       pres.GetTrueDofs(sol.GetBlock(1));
       mfem::BlockVector residual(global_assembly->get_offsets());
       global_assembly->assemble_residual(sol, residual);
-      global_assembly->set_essential_bdr(residual);
       mfem::Vector rhs(residual.GetBlock(0));
       rhs.Neg();
+      global_assembly->set_essential_bdr(rhs);
       mfem::HypreParMatrix constrained_mass(*mass);
-      constrained_mass.EliminateBC(dirichlet.get_ess_tdof_list(), mfem::Operator::DIAG_ONE);
+      global_assembly->set_essential_bdr(constrained_mass);
 
       // M has another sparsity than the tangents, whose analysis
       // linear_solver keeps, so it has a solver of its own.

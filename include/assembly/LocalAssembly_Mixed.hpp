@@ -61,9 +61,7 @@ public:
       residual_p.SetSize(num_nodes_p);
       residual_p = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = (quad_order > 0)
-         ? mfem::IntRules.Get(elem_u.GetGeomType(), quad_order)
-         : LocalAssemblyTools::get_quad_rule(elem_u, elem_map);
+      const mfem::IntegrationRule &quad_rule = LocalAssemblyTools::get_quad_rule(elem_u, elem_map);
 
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
@@ -151,9 +149,7 @@ public:
       K_pp.SetSize(num_nodes_p, num_nodes_p);
       K_pp = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = (quad_order > 0)
-         ? mfem::IntRules.Get(elem_u.GetGeomType(), quad_order)
-         : LocalAssemblyTools::get_quad_rule(elem_u, elem_map);
+      const mfem::IntegrationRule &quad_rule = LocalAssemblyTools::get_quad_rule(elem_u, elem_map);
 
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
@@ -241,14 +237,8 @@ public:
    // Reference density rho_0 of the material, for the mass matrix.
    double get_rho_0() const { return material->get_rho_0(); }
 
-   // Order of the quadrature rule, exact for polynomials of that degree; 0,
-   // the default, takes 2 OrderGrad of the element map, which on curved
-   // elements is far more points than Q2 needs.
-   void set_quad_order(int input_quad_order) { quad_order = input_quad_order; }
-
 private:
    const std::unique_ptr<const MaterialModel> material;
-   int quad_order = 0;                                   // 0: from the element map
 };
 
 #endif

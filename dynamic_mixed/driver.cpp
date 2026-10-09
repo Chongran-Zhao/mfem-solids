@@ -109,8 +109,7 @@ int main(int argc, char *argv[])
    //    owns them.
    auto local_assembly = std::make_unique<LocalAssembly_Mixed>(std::move(material));
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
-      space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann),
-      config["Dirichlet"]["fix_pressure"].as<bool>(false));
+      space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
    // 8. Set up the nonlinear solver, which owns the global assembly and the
    //    time method, and the time solver, which owns the nonlinear solver.

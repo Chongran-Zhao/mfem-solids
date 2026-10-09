@@ -49,10 +49,6 @@ Dirichlet:
     - { face: left, dir: z }
   # Prescribed displacement, given by LoadData::disp_loading.
   disp_bc: []
-  # Fix the pressure at the vertex nearest to the origin; needed for a fully
-  # incompressible material whose displacement is prescribed on its whole
-  # boundary, whose pressure is otherwise only defined up to a constant.
-  fix_pressure: false
 
 # Traction faces; the traction is given by LoadData::surface_traction.
 Neumann:
