@@ -29,6 +29,11 @@ space:
   # (Taylor-Hood).
   order: 2
 
+  # Quadrature order of the elements: 5 is the 3 x 3 x 3 Gauss rule, exact
+  # for Q2 on straight elements; the default of the other cases would give
+  # the curved Q2 elements 6 x 6 x 6 points.
+  quad_order: 5
+
 # Time integration method, read into TimeMethod_GenAlpha.
 time_method:
   # Spectral radius at infinite frequency of generalized-alpha, in [0, 1].
