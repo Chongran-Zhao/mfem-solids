@@ -1,0 +1,79 @@
+# Input of read_mesh, driver, vtu_writer and csv_writer of sphere_rotation.
+# CMake copies it into sphere_rotation/build/, and the programs read the copy
+# of the directory they run in, or the file given as first argument. Units
+# are SI: meters, seconds. The surface of the ball turns about z as given by
+# LoadData; the body starts at rest.
+
+mesh:
+  # Radius of the sphere.
+  radius: 0.06525
+
+  # Half-size of the inner cube, as a fraction of the radius, in (0, 1).
+  inner_size: 0.4
+
+  # Elements of the inner cube per direction, even, so that the center of
+  # the sphere is a vertex.
+  inner_elements: 8
+
+  # Element layers of the shell between the cube and the sphere surface, and
+  # the thickness of the outermost layer over that of the innermost one.
+  radial_elements: 10
+  radial_ratio: 0.5
+
+  # Name of the mesh file written by read_mesh.
+  output: sphere.mesh
+
+space:
+  # Order of the continuous shape functions of the displacement, at least 2,
+  # and of the curved geometry; the pressure is one order lower
+  # (Taylor-Hood).
+  order: 2
+
+  # Quadrature order of the elements: 5 is the 3 x 3 x 3 Gauss rule, exact
+  # for Q2 on straight elements; the default of the other cases would give
+  # the curved Q2 elements 6 x 6 x 6 points.
+  quad_order: 5
+
+# Time integration method, read into TimeMethod_GenAlpha.
+time_method:
+  # Spectral radius at infinite frequency of generalized-alpha, in [0, 1].
+  rho_inf: 0.5
+
+# Time steps, read into TimeSolver_Dynamic_Mixed.
+time:
+  # Time step; the last step is shortened to end at final_time.
+  dt: 1.0e-4
+  final_time: 0.027
+
+# Displacement boundary conditions: the whole surface follows the rotation of
+# LoadData::disp_loading.
+Dirichlet:
+  fixed_bc: []
+  disp_bc:
+    - { face: outer, dir: x }
+    - { face: outer, dir: y }
+    - { face: outer, dir: z }
+
+# No traction.
+Neumann:
+  faces: []
+
+# Newton's method settings.
+# The linear solver is MUMPS.
+solver:
+  newton_rel_tol: 1.0e-8
+  newton_abs_tol: 1.0e-10
+  newton_max_iter: 20
+
+# Faces and directions reported by csv_writer; csv_writer also writes the
+# energies of the whole body.
+csv_writer:
+  - { face: outer, dir: x }
+  - { face: outer, dir: y }
+  - { face: outer, dir: z }
+
+# Output folders, in the directory the programs run in.
+output:
+  vtu: results_vtu
+  gf: results_gf
+  csv: results_csv
