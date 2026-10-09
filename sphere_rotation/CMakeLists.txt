@@ -4,7 +4,7 @@
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
-#    cd build && ./read_mesh && mpirun -np 2 ./driver
+#    cd build && ./read_mesh && mpirun -np 2 ./driver && ./vtu_writer && mpirun -np 2 ./csv_writer
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(sphere_rotation LANGUAGES CXX)
@@ -22,3 +22,14 @@ target_link_libraries(read_mesh PRIVATE ${mfem_libraries})
 add_executable(driver driver.cpp)
 target_include_directories(driver PRIVATE ${include_dirs})
 target_link_libraries(driver PRIVATE ${mfem_libraries})
+
+# vtu_writer and csv_writer are those of dynamic_mixed: they need neither the
+# loading nor the fixed pressure, and this folder, first on the include path,
+# gives them the material of the sphere.
+add_executable(vtu_writer ../dynamic_mixed/vtu_writer.cpp)
+target_include_directories(vtu_writer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${include_dirs})
+target_link_libraries(vtu_writer PRIVATE ${mfem_libraries})
+
+add_executable(csv_writer ../dynamic_mixed/csv_writer.cpp)
+target_include_directories(csv_writer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${include_dirs})
+target_link_libraries(csv_writer PRIVATE ${mfem_libraries})
