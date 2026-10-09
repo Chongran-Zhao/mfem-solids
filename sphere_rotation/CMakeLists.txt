@@ -23,13 +23,15 @@ add_executable(driver driver.cpp)
 target_include_directories(driver PRIVATE ${include_dirs})
 target_link_libraries(driver PRIVATE ${mfem_libraries})
 
-# vtu_writer and csv_writer are those of dynamic_mixed: they need neither the
-# loading nor the fixed pressure, and this folder, first on the include path,
-# gives them the material of the sphere.
-add_executable(vtu_writer ../dynamic_mixed/vtu_writer.cpp)
-target_include_directories(vtu_writer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${include_dirs})
+# vtu_writer also writes the Green-Lagrange strain, with the VTK_Tools.hpp of
+# this folder.
+add_executable(vtu_writer vtu_writer.cpp)
+target_include_directories(vtu_writer PRIVATE ${include_dirs})
 target_link_libraries(vtu_writer PRIVATE ${mfem_libraries})
 
+# csv_writer is that of dynamic_mixed: it needs neither the loading nor the
+# fixed pressure, and this folder, first on the include path, gives it the
+# material of the sphere.
 add_executable(csv_writer ../dynamic_mixed/csv_writer.cpp)
 target_include_directories(csv_writer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${include_dirs})
 target_link_libraries(csv_writer PRIVATE ${mfem_libraries})
