@@ -2,11 +2,11 @@
 // driver.cpp of sphere_rotation
 //
 // The driver of dynamic_mixed for the incompressible ball spun up by its
-// surface: the same steps, with the loading and the material of this folder,
-// and the pressure fixed at the center by
-// NonlinearSolver_Dynamic_Mixed_FixedPressure. LoadData.hpp of this folder
-// is included first, so that its include guard keeps
-// include/boundary/LoadData.hpp, which the boundary headers include, out.
+// surface: the same steps, with the loading, the material and the nonlinear
+// solver of this folder, which fixes the pressure at the center and solves
+// the linear systems by GMRES. LoadData.hpp of this folder is included
+// first, so that its include guard keeps include/boundary/LoadData.hpp,
+// which the boundary headers include, out.
 //
 // Author: Chongran Zhao
 // Date: Oct. 9, 2026
@@ -30,7 +30,7 @@
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
-#include "NonlinearSolver_Dynamic_Mixed_FixedPressure.hpp"
+#include "NonlinearSolver_Dynamic_Mixed.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha.hpp"
 #include "TimeSolver_Dynamic_Mixed.hpp"
@@ -113,12 +113,13 @@ int main(int argc, char *argv[])
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
    // 8. Set up the nonlinear solver, which owns the global assembly and the
-   //    time method and fixes the pressure at the center, and the time
+   //    time method, fixes the pressure at the center and assembles the
+   //    pressure operators of its preconditioner on space_p, and the time
    //    solver, which owns the nonlinear solver.
    auto time_method =
       std::make_unique<TimeMethod_GenAlpha>(config["time_method"]["rho_inf"].as<double>());
-   auto nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic_Mixed_FixedPressure>(
-      space_u, space_p, std::move(global_assembly), std::move(time_method), config["solver"]);
+   auto nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic_Mixed>(
+      space_p, std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver_Dynamic_Mixed>(
       std::move(nonlinear_solver), config["time"]["dt"].as<double>(),

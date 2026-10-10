@@ -58,12 +58,14 @@ Dirichlet:
 Neumann:
   faces: []
 
-# Newton's method settings.
-# The linear solver is MUMPS.
+# Newton's method settings, and those of GMRES, the linear solver, with the
+# block preconditioner of NonlinearSolver_Dynamic_Mixed.hpp of this folder.
 solver:
   newton_rel_tol: 1.0e-8
   newton_abs_tol: 1.0e-10
   newton_max_iter: 20
+  linear_rel_tol: 1.0e-8
+  linear_max_iter: 200
 
 # Faces and directions reported by csv_writer; csv_writer also writes the
 # energies of the whole body.
