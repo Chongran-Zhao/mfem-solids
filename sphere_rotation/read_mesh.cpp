@@ -220,7 +220,7 @@ int main(int argc, char *argv[])
              << radius << '\n'
              << std::setw(20) << "inner cube" << inner_elements << "^3, half-size "
              << inner_size << " R_g\n"
-             << std::setw(20) << "gelatin shell" << "6 x " << inner_elements << "^2 x "
+             << std::setw(20) << "gelatin" << "6 x " << inner_elements << "^2 x "
              << radial_elements << ", ratio " << radial_ratio << '\n'
              << std::setw(20) << "skull" << "6 x " << inner_elements << "^2 x "
              << skull_elements << '\n'
