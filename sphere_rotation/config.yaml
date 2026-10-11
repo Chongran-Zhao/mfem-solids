@@ -74,9 +74,12 @@ Neumann:
 
 # Newton's method settings, and those of GMRES, the linear solver, with the
 # block preconditioner of NonlinearSolver_Dynamic_Mixed.hpp of this folder.
+# The residual of the stiff skull cannot drop below about 1e-9 N, its bulk
+# modulus, about 3e9 Pa, times the round-off of J - 1, so newton_abs_tol is
+# above that.
 solver:
   newton_rel_tol: 1.0e-7
-  newton_abs_tol: 1.0e-10
+  newton_abs_tol: 1.0e-8
   newton_max_iter: 20
   linear_rel_tol: 1.0e-8
   linear_max_iter: 200

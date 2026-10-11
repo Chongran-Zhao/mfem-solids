@@ -3,10 +3,10 @@
 //
 // The materials of sphere_rotation, one per region of the mesh, by element
 // attribute: 1 the gelatin, incompressible Neo-Hookean, with shear modulus
-// mu = 5.86 kPa and density rho_0 = 1000 kg/m^3; 2 the skull, linearly
-// elastic at small strains, with E = 2.75 kPa, nu = 0.45 and
-// rho_0 = 1170 kg/m^3, taken as compressible Neo-Hookean, which keeps E and
-// nu at small strains and stays stable at large ones,
+// mu = 5.86 kPa and density rho_0 = 1000 kg/m^3; 2 the skull, of acrylic
+// (PMMA), linearly elastic at small strains, with E = 2.75 GPa, nu = 0.35
+// and rho_0 = 1170 kg/m^3, taken as compressible Neo-Hookean, which keeps E
+// and nu at small strains and stays stable at large ones,
 //    Psi = kappa/2 (J - 1)^2 + Psi_ich^NH(F),
 //    mu = E / (2 (1 + nu)),   kappa = E / (3 (1 - 2 nu)).
 // It replaces include/material/MaterialModelData.hpp for the programs of
@@ -43,9 +43,9 @@ struct region_material
    double density;     // reference density rho_0
 };
 
-// Young's modulus and Poisson's ratio of the skull.
-inline constexpr double skull_young = 2750.0;
-inline constexpr double skull_poisson = 0.45;
+// Young's modulus and Poisson's ratio of the skull, acrylic.
+inline constexpr double skull_young = 2.75e9;
+inline constexpr double skull_poisson = 0.35;
 
 // The regions, element attribute 1 and 2.
 inline const std::array<region_material, 2> region_materials = {{
