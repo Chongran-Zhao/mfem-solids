@@ -5,27 +5,39 @@
 // two changes; driver.cpp includes it before TimeSolver_Dynamic_Mixed.hpp,
 // so that its include guard keeps the other one out.
 //
-// 1. The pressure is fixed at the center of the ball. The material is fully
-//    incompressible and the displacement is prescribed on the whole surface,
-//    so the pressure is defined only up to a constant: a constant pressure
-//    p_0 does no work on any admissible displacement,
-//    int p_0 div du dV = p_0 int du . n dA = 0, and the tangent is singular.
-//    The pressure dof at the vertex nearest to the origin keeps its initial
-//    value 0, as a constrained dof; the pressure elsewhere is relative to the
-//    center, and the motion is not affected.
-// 2. The linear systems are solved iteratively, which, unlike MUMPS, gets
+// 1. The mesh has regions of their own materials, from MaterialModelData,
+//    by element attribute: the mass matrix takes the density of each region,
+//    and the preconditioner below its mu, kappa and rho_0.
+// 2. When every region is fully incompressible, as the gelatin ball without
+//    skull, the pressure is fixed at the center of the ball: the
+//    displacement is prescribed on the whole surface, so the pressure is
+//    defined only up to a constant, since a constant pressure p_0 does no
+//    work on any admissible displacement, int p_0 div du dV =
+//    p_0 int du . n dA = 0, and the tangent is singular. The pressure dof at
+//    the vertex nearest to the origin keeps its initial value 0, as a
+//    constrained dof; the pressure elsewhere is relative to the center, and
+//    the motion is not affected. A compressible region, as the skull, sets
+//    the level of the pressure, and nothing is fixed.
+// 3. The linear systems are solved iteratively, which, unlike MUMPS, gets
 //    faster with more ranks. The tangent
-//       K = [A  B^T; B  0],   A = c M + alpha_f K_uu,   B = alpha_f K_pu,
-//    with c = alpha_m / (beta dt^2), is solved by GMRES, preconditioned by
-//    its block lower triangle,
-//       y_u = A^-1 x_u,   y_p = -S^-1 (x_p - B y_u),   S = B A^-1 B^T,
+//       K = [A  B^T; B  C],   A = c M + alpha_f K_uu,   B = alpha_f K_pu,
+//       C = alpha_f K_pp = -M_p[alpha_f / kappa],
+//    with c = alpha_m / (beta dt^2) and M_p[w] = int w N_c N_d dV, is solved
+//    by GMRES, preconditioned by its block lower triangle,
+//       y_u = A^-1 x_u,   y_p = -S^-1 (x_p - B y_u),   S = B A^-1 B^T - C,
 //    with BoomerAMG for A and, for S, the approximation of Cahouet and
-//    Chabard of the unsteady Stokes problem,
-//       S^-1 ~ alpha_f mu M_p^-1 + c rho_0 L_p^-1,
-//    where M_p and L_p are the mass and the Laplacian of the pressure space,
-//    in the reference configuration; mu and rho_0 come from
-//    MaterialModelData. The initial acceleration solves M a_0 = r by CG,
-//    preconditioned by the diagonal of M.
+//    Chabard of the unsteady Stokes problem, with the compressibility added
+//    to its inertial part,
+//       S^-1 ~ M_p[1 / (alpha_f mu)]^-1
+//            + (L_p[1 / rho_0] / c + M_p[alpha_f / kappa])^-1,
+//    where L_p[w] = int w grad N_c . grad N_d dV; both pressure operators
+//    are of the reference configuration. For waves of number k in a uniform
+//    region it gives alpha_f mu + 1 / (k^2 / (c rho_0) + alpha_f / kappa),
+//    against the exact 1 / (k^2 / (c rho_0 + alpha_f mu k^2) + alpha_f /
+//    kappa): equal without compressibility, and close for the skull. The
+//    first inverse is one Jacobi sweep, the second one V-cycle of
+//    BoomerAMG, set up again when dt changes. The initial acceleration
+//    solves M a_0 = r by CG, preconditioned by the diagonal of M.
 //
 // Solves one time step of the mixed displacement-pressure dynamics,
 //    M a + F_int(u,p) = F_ext(t),   J(u) = J(p) weakly,
@@ -42,7 +54,7 @@
 // ranks.
 //
 // Author: Chongran Zhao
-// Date: Oct. 9, 2026
+// Date: Oct. 11, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #ifndef NONLINEAR_SOLVER_DYNAMIC_MIXED_HPP
@@ -86,22 +98,29 @@ public:
         sol_n(global_assembly->get_offsets()),
         newton_solver(global_assembly->get_comm())
    {
-      set_fixed_pressure(space_p);
+      // The pressure is fixed when no region of the mesh is compressible.
+      bool is_compressible = false;
+      for (int attribute : space_p.GetParMesh()->attributes)
+         is_compressible = is_compressible || !std::isinf(get_region_material(attribute).kappa);
+      if (!is_compressible)
+         set_fixed_pressure(space_p);
 
-      // M_p and L_p, with the fixed pressure dof constrained in L_p, whose
-      // constants would otherwise be its null space.
-      mfem::ParBilinearForm pres_mass_form(&space_p), pres_laplace_form(&space_p);
-      pres_mass_form.AddDomainIntegrator(new mfem::MassIntegrator);
-      pres_laplace_form.AddDomainIntegrator(new mfem::DiffusionIntegrator);
-      pres_mass_form.Assemble();
-      pres_mass_form.Finalize();
-      pres_laplace_form.Assemble();
-      pres_laplace_form.Finalize();
-      pres_mass.reset(pres_mass_form.ParallelAssemble());
-      pres_laplace.reset(pres_laplace_form.ParallelAssemble());
-      pres_laplace->EliminateBC(fixed_pres_dof, mfem::Operator::DIAG_ONE);
-      pres_mass_jacobi = std::make_unique<mfem::HypreDiagScale>(*pres_mass);
-      amg_p.SetOperator(*pres_laplace);
+      // M_p[1 / (alpha_f mu)], L_p[1 / rho_0] and M_p[alpha_f / kappa], by
+      // region; the sum of the last two is formed by set_step.
+      const double alpha_f = time_method->get_alpha_f();
+      const int num_regions = static_cast<int>(region_materials.size());
+      mfem::Vector viscous_weight(num_regions), laplace_weight(num_regions),
+         compress_weight(num_regions);
+      for (int aa = 0; aa < num_regions; aa++)
+      {
+         viscous_weight(aa) = 1.0 / (alpha_f * region_materials[aa].mu);
+         laplace_weight(aa) = 1.0 / region_materials[aa].density;
+         compress_weight(aa) = alpha_f / region_materials[aa].kappa;
+      }
+      pres_viscous = assemble_pres_operator(space_p, viscous_weight, false);
+      pres_laplace = assemble_pres_operator(space_p, laplace_weight, true);
+      pres_compress = assemble_pres_operator(space_p, compress_weight, false);
+      viscous_jacobi = std::make_unique<mfem::HypreDiagScale>(*pres_viscous);
       amg_p.SetPrintLevel(0);
 
       // A is a vector Laplacian-like operator of 3 components per node.
@@ -264,6 +283,21 @@ public:
    }
 
 private:
+   // M_p[w] or, with is_laplace, L_p[w], with w constant by region.
+   static std::unique_ptr<mfem::HypreParMatrix> assemble_pres_operator(
+      mfem::ParFiniteElementSpace &space_p, mfem::Vector &weight, bool is_laplace)
+   {
+      mfem::PWConstCoefficient coeff(weight);
+      mfem::ParBilinearForm form(&space_p);
+      if (is_laplace)
+         form.AddDomainIntegrator(new mfem::DiffusionIntegrator(coeff));
+      else
+         form.AddDomainIntegrator(new mfem::MassIntegrator(coeff));
+      form.Assemble();
+      form.Finalize();
+      return std::unique_ptr<mfem::HypreParMatrix>(form.ParallelAssemble());
+   }
+
    // Consistent mass M_ab = int rho_0 N_a N_b dV of the displacement, without
    // constraints, with the density of the region of each element.
    static std::unique_ptr<mfem::HypreParMatrix> assemble_mass(mfem::ParFiniteElementSpace &space_u)
@@ -279,8 +313,9 @@ private:
       return std::unique_ptr<mfem::HypreParMatrix>(mass_form.ParallelAssemble());
    }
 
-   // -S^-1 ~ -(alpha_f mu M_p^-1 + c rho_0 L_p^-1), with one Jacobi sweep
-   // for M_p and one V-cycle of BoomerAMG for L_p.
+   // -S^-1 ~ -(M_p[1 / (alpha_f mu)]^-1
+   //          + (L_p[1 / rho_0] / c + M_p[alpha_f / kappa])^-1), with one
+   // Jacobi sweep for the first and one V-cycle of BoomerAMG for the second.
    class SchurInverse : public mfem::Solver
    {
    public:
@@ -292,15 +327,10 @@ private:
 
       void Mult(const mfem::Vector &xx, mfem::Vector &yy) const override
       {
-         const double alpha_m = owner.time_method->get_alpha_m();
-         const double alpha_f = owner.time_method->get_alpha_f();
-         const double beta = owner.time_method->get_beta();
-         const double cc = alpha_m / (beta * owner.dt * owner.dt);
-
-         owner.pres_mass_jacobi->Mult(xx, yy);
-         yy *= -alpha_f * mu;
+         owner.viscous_jacobi->Mult(xx, yy);
          owner.amg_p.Mult(xx, work);
-         yy.Add(-cc * density, work);
+         yy += work;
+         yy.Neg();
       }
 
    private:
@@ -357,6 +387,17 @@ private:
 
       if (global_assembly->get_neumann().is_traction_load())
          global_assembly->set_traction_load(time_n + time_method->get_alpha_f() * dt);
+
+      // L_p[1 / rho_0] / c + M_p[alpha_f / kappa], with the fixed pressure
+      // constrained, for the inertial part of S^-1, when dt changes.
+      if (dt != inertia_dt)
+      {
+         const double cc = time_method->get_alpha_m() / (time_method->get_beta() * dt * dt);
+         pres_inertia.reset(mfem::Add(1.0 / cc, *pres_laplace, 1.0, *pres_compress));
+         pres_inertia->EliminateBC(fixed_pres_dof, mfem::Operator::DIAG_ONE);
+         amg_p.SetOperator(*pres_inertia);
+         inertia_dt = dt;
+      }
    }
 
    // R_dyn(u_{n+1},p_{n+1}) = R(u_alpha,p_alpha,t_alpha) + [M a_alpha; 0] at
@@ -422,14 +463,17 @@ private:
    const std::unique_ptr<TimeMethod_GenAlpha> time_method;       // alpha_m, alpha_f, gamma, beta
    const std::unique_ptr<mfem::HypreParMatrix> mass;             // M of the displacement, assembled once
    const int num_dofs_u = mass->Height();                        // displacement dofs this rank owns
-   mfem::Array<int> fixed_pres_dof;                              // the fixed pressure dof, if this rank owns it
-   std::unique_ptr<mfem::HypreParMatrix> pres_mass;              // M_p
-   std::unique_ptr<mfem::HypreParMatrix> pres_laplace;           // L_p, fixed dof constrained
-   std::unique_ptr<mfem::HypreDiagScale> pres_mass_jacobi;       // diagonal of M_p, inverted
+   mfem::Array<int> fixed_pres_dof;                              // the fixed pressure dof, if any and this rank owns it
+   std::unique_ptr<mfem::HypreParMatrix> pres_viscous;           // M_p[1 / (alpha_f mu)]
+   std::unique_ptr<mfem::HypreParMatrix> pres_laplace;           // L_p[1 / rho_0]
+   std::unique_ptr<mfem::HypreParMatrix> pres_compress;          // M_p[alpha_f / kappa]
+   std::unique_ptr<mfem::HypreParMatrix> pres_inertia;           // L_p[1 / rho_0] / c + M_p[alpha_f / kappa]
+   double inertia_dt = 0.0;                                      // the dt of pres_inertia
+   std::unique_ptr<mfem::HypreDiagScale> viscous_jacobi;         // diagonal of M_p[1 / (alpha_f mu)], inverted
    mutable std::unique_ptr<mfem::HypreParMatrix> tangent_uu;     // A, constrained
    mutable std::unique_ptr<mfem::HypreParMatrix> tangent_pu;     // B, constrained columns removed
    mutable mfem::HypreBoomerAMG amg_u;                           // A^-1
-   mfem::HypreBoomerAMG amg_p;                                   // L_p^-1
+   mfem::HypreBoomerAMG amg_p;                                   // pres_inertia^-1
    SchurInverse schur_inverse;                                   // -S^-1
    mutable mfem::BlockLowerTriangularPreconditioner preconditioner;
    mfem::GMRESSolver linear_solver;                              // solver of the tangent

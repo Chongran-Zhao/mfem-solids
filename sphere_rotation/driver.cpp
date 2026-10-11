@@ -1,15 +1,15 @@
 // ============================================================================
 // driver.cpp of sphere_rotation
 //
-// The driver of dynamic_mixed for the incompressible ball spun up by its
-// surface: the same steps, with the loading, the material and the nonlinear
-// solver of this folder, which fixes the pressure at the center and solves
-// the linear systems by GMRES. LoadData.hpp of this folder is included
+// The driver of dynamic_mixed for the gelatin ball in its skull shell, spun
+// up by its surface: the same steps, with the loading, the materials of the
+// regions and the nonlinear solver of this folder, which solves the linear
+// systems by GMRES. LoadData.hpp of this folder is included
 // first, so that its include guard keeps include/boundary/LoadData.hpp,
 // which the boundary headers include, out.
 //
 // Author: Chongran Zhao
-// Date: Oct. 9, 2026
+// Date: Oct. 11, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #include "LoadData.hpp"
