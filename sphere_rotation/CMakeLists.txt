@@ -1,6 +1,6 @@
 # ============================================================================
-# sphere_rotation: an incompressible sphere spun up about z by its surface,
-# in the mixed displacement-pressure form
+# sphere_rotation: a gelatin ball in a skull shell, spun up about z by its
+# surface, in the mixed displacement-pressure form
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
@@ -29,9 +29,7 @@ add_executable(vtu_writer vtu_writer.cpp)
 target_include_directories(vtu_writer PRIVATE ${include_dirs})
 target_link_libraries(vtu_writer PRIVATE ${mfem_libraries})
 
-# csv_writer is that of dynamic_mixed: it needs neither the loading nor the
-# fixed pressure, and this folder, first on the include path, gives it the
-# material of the sphere.
-add_executable(csv_writer ../dynamic_mixed/csv_writer.cpp)
-target_include_directories(csv_writer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${include_dirs})
+# csv_writer takes the materials of the regions.
+add_executable(csv_writer csv_writer.cpp)
+target_include_directories(csv_writer PRIVATE ${include_dirs})
 target_link_libraries(csv_writer PRIVATE ${mfem_libraries})

@@ -4,16 +4,17 @@
 // The vtu_writer of dynamic_mixed, with the Green-Lagrange strain
 // E = 1/2 (F^T F - I) besides the stresses, through the VTK_Tools.hpp of
 // this folder. Writes the displacement, the velocity, the acceleration, the
-// pressure, the first and second Piola-Kirchhoff stresses and E of each
-// saved time step for ParaView, at the physical times of time.csv. The steps
-// and the fields are those the driver saved, the pressure nodal; the
-// stresses and E are computed at the element centers, the stresses with the
-// material of MaterialModelData, which must be the one the driver ran with.
+// pressure, the first and second Piola-Kirchhoff stresses, E and the region
+// of each element of each saved time step for ParaView, at the physical
+// times of time.csv. The steps and the fields are those the driver saved,
+// the pressure nodal; the stresses and E are computed at the element
+// centers, the stresses with the material of the region of the element from
+// MaterialModelData, which must be the one the driver ran with.
 // It is serial and reads the results on results/mesh.mesh, the mesh the
 // driver gathered them onto.
 //
 // Author: Chongran Zhao
-// Date: Oct. 9, 2026
+// Date: Oct. 11, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #include <filesystem>
@@ -76,8 +77,11 @@ int main(int argc, char *argv[])
       return std::make_unique<mfem::GridFunction>(&mesh, gf_file);
    };
 
-   // The material; it holds no state, so this program creates its own.
-   const std::unique_ptr<const MaterialModel> material = set_material_model();
+   // The materials of the regions, by element attribute; they hold no
+   // state, so this program creates its own.
+   std::vector<std::unique_ptr<const MaterialModel>> materials;
+   for (int attribute = 1; attribute <= static_cast<int>(region_materials.size()); attribute++)
+      materials.push_back(set_material_model(attribute));
 
    // First and second Piola-Kirchhoff stresses P and S, and the
    // Green-Lagrange strain E, at the element centers.
@@ -103,7 +107,7 @@ int main(int argc, char *argv[])
          const Tensor2_3D F =
             VTK_Tools::get_center_deformation_gradient(*disp->FESpace(), *disp, ee);
          const double p = pres->GetValue(ee, mfem::Geometries.GetCenter(mesh.GetElementGeometry(ee)));
-         PK1[ee] = material->get_1st_PK_stress_ich(F)
+         PK1[ee] = materials[mesh.GetAttribute(ee) - 1]->get_1st_PK_stress_ich(F)
                     - p * F.det() * F.inverse().transpose();
          PK2[ee] = F.inverse() * PK1[ee];
          E[ee] = 0.5 * (F.transpose() * F - Tensor2_3D::identity());

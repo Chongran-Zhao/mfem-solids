@@ -2,7 +2,8 @@
 // VTK_Tools.hpp
 //
 // include/visualization/VTK_Tools.hpp for sphere_rotation, with the
-// Green-Lagrange strain besides the stresses: writes one VTU file per time
+// Green-Lagrange strain besides the stresses and the region of each element,
+// its attribute: writes one VTU file per time
 // step on the deformed mesh, and a PVD file listing them, for ParaView. Its
 // vtu_writer.cpp, in this folder, includes it instead of the other one.
 //
@@ -127,6 +128,12 @@ private:
       out << "</PointData>\n";
 
       out << "<CellData>\n";
+
+      // Region of each element, its attribute.
+      out << "<DataArray type=\"Int32\" Name=\"region\" format=\"ascii\">\n";
+      for (int ee = 0; ee < mesh.GetNE(); ee++)
+         out << mesh.GetAttribute(ee) << '\n';
+      out << "</DataArray>\n";
 
       // Pressure at the element centers.
       if (!is_nodal_pres)
