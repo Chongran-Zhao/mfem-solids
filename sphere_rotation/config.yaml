@@ -57,7 +57,7 @@ time_method:
 time:
   # Time step; the last step is shortened to end at final_time.
   dt: 1.0e-4
-  final_time: 0.027
+  final_time: 0.03
 
 # Displacement boundary conditions: the whole surface follows the rotation of
 # LoadData::disp_loading.
