@@ -20,6 +20,12 @@ mesh:
   radial_elements: 10
   radial_ratio: 0.5
 
+  # inner_elements and radial_elements set the mesh size: to refine, double
+  # both, which gives 8 times the elements, 8^3 + 6 x 8^2 x 10 = 4352 here.
+  # The mesh is generated anew, so that every node lies on the map to the
+  # ball and the layers keep their smooth grading; there is no separate
+  # uniform refinement.
+
   # Name of the mesh file written by read_mesh.
   output: sphere.mesh
 
