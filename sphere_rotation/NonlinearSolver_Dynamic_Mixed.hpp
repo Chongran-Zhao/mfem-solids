@@ -2,7 +2,7 @@
 // NonlinearSolver_Dynamic_Mixed.hpp
 //
 // include/solver/NonlinearSolver_Dynamic_Mixed.hpp for sphere_rotation, with
-// two changes; driver.cpp includes it before TimeSolver_Dynamic_Mixed.hpp,
+// four changes; driver.cpp includes it before TimeSolver_Dynamic_Mixed.hpp,
 // so that its include guard keeps the other one out.
 //
 // 1. The mesh has regions of their own materials, from MaterialModelData,
@@ -38,6 +38,11 @@
 //    first inverse is one Jacobi sweep, the second one V-cycle of
 //    BoomerAMG, set up again when dt changes. The initial acceleration
 //    solves M a_0 = r by CG, preconditioned by the diagonal of M.
+// 4. Newton's method starts the skull, nearly rigid, from the rigid
+//    rotation of its surface, LoadData::disp_loading of the face "outer",
+//    instead of u_pred: from u_pred, only its surface would move, and the
+//    stiff skull would start with a residual of hundreds of newtons, which
+//    took a second Newton iteration at every step.
 //
 // Solves one time step of the mixed displacement-pressure dynamics,
 //    M a + F_int(u,p) = F_ext(t),   J(u) = J(p) weakly,
@@ -70,10 +75,12 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
+#include "LoadData.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha.hpp"
+#include "Vector_3D.hpp"
 
 class NonlinearSolver_Dynamic_Mixed : public mfem::Operator
 {
@@ -104,6 +111,23 @@ public:
          is_compressible = is_compressible || !std::isinf(get_region_material(attribute).kappa);
       if (!is_compressible)
          set_fixed_pressure(space_p);
+
+      // The displacement dofs of the skull elements, on this rank.
+      const mfem::ParMesh &mesh = *space_u.GetParMesh();
+      if (mesh.attribute_sets.AttributeSetExists("skull"))
+      {
+         const mfem::Array<int> skull_marker =
+            mesh.attribute_sets.GetAttributeSetMarker("skull");
+         mfem::Array<int> elem_vdofs;
+         for (int ee = 0; ee < mesh.GetNE(); ee++)
+            if (skull_marker[mesh.GetAttribute(ee) - 1])
+            {
+               space_u.GetElementVDofs(ee, elem_vdofs);
+               skull_vdofs.Append(elem_vdofs);
+            }
+         skull_vdofs.Sort();
+         skull_vdofs.Unique();
+      }
 
       // M_p[1 / (alpha_f mu)], L_p[1 / rho_0] and M_p[alpha_f / kappa], by
       // region; the sum of the last two is formed by set_step.
@@ -216,11 +240,24 @@ public:
 
       // Newton's method starts from [u_pred; p_n], with the prescribed
       // values of time time_n + dt on the constrained dofs, as in MixPERIGEE;
-      // the Newton increments are zero there.
+      // the Newton increments are zero there. The skull starts from the
+      // rotation of its surface.
       disp.SetFromTrueDofs(disp_predict);
+      mfem::ParGridFunction rotation(disp.ParFESpace());
+      const double time_new = time_n + dt;
+      mfem::VectorFunctionCoefficient rotation_value(3,
+         [time_new](const mfem::Vector &pt, mfem::Vector &value)
+      {
+         const Vector_3D disp_rotation = LoadData::disp_loading(pt, time_new, "outer");
+         for (int comp = 0; comp < 3; comp++)
+            value(comp) = disp_rotation(comp);
+      });
+      rotation.ProjectCoefficient(rotation_value);
+      for (int vdof : skull_vdofs)
+         disp(vdof) = rotation(vdof);
       dirichlet.apply_fixed_bc(disp);
       if (dirichlet.is_disp_load())
-         dirichlet.apply_disp_load_bc(time_n + dt, disp);
+         dirichlet.apply_disp_load_bc(time_new, disp);
       disp.GetTrueDofs(sol.GetBlock(0));
 
       SystemTools::print_block_newton_header();
@@ -464,6 +501,7 @@ private:
    const std::unique_ptr<mfem::HypreParMatrix> mass;             // M of the displacement, assembled once
    const int num_dofs_u = mass->Height();                        // displacement dofs this rank owns
    mfem::Array<int> fixed_pres_dof;                              // the fixed pressure dof, if any and this rank owns it
+   mfem::Array<int> skull_vdofs;                                 // displacement dofs of the skull on this rank
    std::unique_ptr<mfem::HypreParMatrix> pres_viscous;           // M_p[1 / (alpha_f mu)]
    std::unique_ptr<mfem::HypreParMatrix> pres_laplace;           // L_p[1 / rho_0]
    std::unique_ptr<mfem::HypreParMatrix> pres_compress;          // M_p[alpha_f / kappa]
