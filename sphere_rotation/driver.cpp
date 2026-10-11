@@ -20,13 +20,14 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
-#include "LocalAssembly_Mixed.hpp"
+#include "LocalAssembly_Mixed_Regions.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
@@ -101,25 +102,27 @@ int main(int argc, char *argv[])
    if (neumann->is_traction_load())
       neumann->print_traction_load();
 
-   // 6. Set up the material model.
-   std::unique_ptr<MaterialModel> material = set_material_model();
+   // 6. Set up the material of each region, by element attribute.
+   std::vector<std::unique_ptr<const MaterialModel>> materials;
+   for (int attribute = 1; attribute <= static_cast<int>(region_materials.size()); attribute++)
+      materials.push_back(set_material_model(attribute));
 
-   // 7. Set up the assembly: the material goes to the local assembly, and the
+   // 7. Set up the assembly: the materials go to the local assembly, and the
    //    local assembly and the boundary conditions to the global one, which
    //    owns them.
-   auto local_assembly = std::make_unique<LocalAssembly_Mixed>(std::move(material));
+   auto local_assembly = std::make_unique<LocalAssembly_Mixed_Regions>(std::move(materials));
    local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
    // 8. Set up the nonlinear solver, which owns the global assembly and the
-   //    time method, fixes the pressure at the center and assembles the
-   //    pressure operators of its preconditioner on space_p, and the time
-   //    solver, which owns the nonlinear solver.
+   //    time method, assembles the mass matrix with the density of each
+   //    region and the pressure operators of its preconditioner, and the
+   //    time solver, which owns the nonlinear solver.
    auto time_method =
       std::make_unique<TimeMethod_GenAlpha>(config["time_method"]["rho_inf"].as<double>());
    auto nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic_Mixed>(
-      space_p, std::move(global_assembly), std::move(time_method), config["solver"]);
+      space_u, space_p, std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver_Dynamic_Mixed>(
       std::move(nonlinear_solver), config["time"]["dt"].as<double>(),

@@ -67,17 +67,18 @@ class NonlinearSolver_Dynamic_Mixed : public mfem::Operator
 {
 public:
    // Takes the ownership of the global assembly and of the time method, and
-   // assembles the mass matrix and the pressure operators of the
+   // assembles the mass matrix on space_u and the pressure operators of the
    // preconditioner on space_p; the Newton and the GMRES settings come from
    // the solver section of config.yaml.
-   NonlinearSolver_Dynamic_Mixed(mfem::ParFiniteElementSpace &space_p,
+   NonlinearSolver_Dynamic_Mixed(mfem::ParFiniteElementSpace &space_u,
+                                 mfem::ParFiniteElementSpace &space_p,
                                  std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
                                  std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
                                  const YAML::Node &solver)
       : mfem::Operator(input_global_assembly->get_num_dofs()),
         global_assembly(std::move(input_global_assembly)),
         time_method(std::move(input_time_method)),
-        mass(global_assembly->assemble_mass()),
+        mass(assemble_mass(space_u)),
         schur_inverse(*this, space_p.GetTrueVSize()),
         preconditioner(global_assembly->get_offsets()),
         linear_solver(global_assembly->get_comm()),
@@ -263,6 +264,21 @@ public:
    }
 
 private:
+   // Consistent mass M_ab = int rho_0 N_a N_b dV of the displacement, without
+   // constraints, with the density of the region of each element.
+   static std::unique_ptr<mfem::HypreParMatrix> assemble_mass(mfem::ParFiniteElementSpace &space_u)
+   {
+      mfem::Vector densities(static_cast<int>(region_materials.size()));
+      for (int aa = 0; aa < densities.Size(); aa++)
+         densities(aa) = region_materials[aa].density;
+      mfem::PWConstCoefficient rho(densities);
+      mfem::ParBilinearForm mass_form(&space_u);
+      mass_form.AddDomainIntegrator(new mfem::VectorMassIntegrator(rho));
+      mass_form.Assemble();
+      mass_form.Finalize();
+      return std::unique_ptr<mfem::HypreParMatrix>(mass_form.ParallelAssemble());
+   }
+
    // -S^-1 ~ -(alpha_f mu M_p^-1 + c rho_0 L_p^-1), with one Jacobi sweep
    // for M_p and one V-cycle of BoomerAMG for L_p.
    class SchurInverse : public mfem::Solver
