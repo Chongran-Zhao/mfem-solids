@@ -1,15 +1,16 @@
 // ============================================================================
 // vtu_writer.cpp of sphere_rotation
 //
-// The vtu_writer of dynamic_mixed, with the Green-Lagrange strain
-// E = 1/2 (F^T F - I) besides the stresses, through the VTK_Tools.hpp of
-// this folder. Writes the displacement, the velocity, the acceleration, the
-// pressure, the first and second Piola-Kirchhoff stresses, E and the region
-// of each element of each saved time step for ParaView, at the physical
-// times of time.csv. The steps and the fields are those the driver saved,
-// the pressure nodal; the stresses and E are computed at the element
-// centers, the stresses with the material of the region of the element from
-// MaterialModelData, which must be the one the driver ran with.
+// The vtu_writer of dynamic_mixed, sampled within each element by the
+// VTK_Tools.hpp of this folder, with the Green-Lagrange strain
+// E = 1/2 (F^T F - I) besides the stresses. Writes the displacement, the
+// velocity, the acceleration, the pressure, the first and second
+// Piola-Kirchhoff stresses and E at the sampling points, and the region of
+// each element, for every vtu_interval-th saved time step, at the physical
+// times of time.csv, with each element cut into vtu_refine^3 hexahedra. The
+// steps and the fields are those the driver saved; the stresses take the
+// material of the region of the element from MaterialModelData, which must
+// be the one the driver ran with.
 // It is serial and reads the results on results/mesh.mesh, the mesh the
 // driver gathered them onto.
 //
@@ -17,6 +18,7 @@
 // Date: Oct. 11, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -83,15 +85,23 @@ int main(int argc, char *argv[])
    for (int attribute = 1; attribute <= static_cast<int>(region_materials.size()); attribute++)
       materials.push_back(set_material_model(attribute));
 
-   // First and second Piola-Kirchhoff stresses P and S, and the
-   // Green-Lagrange strain E, at the element centers.
-   std::vector<Tensor2_3D> PK1(mesh.GetNE()), PK2(mesh.GetNE()), E(mesh.GetNE());
-
-   VTK_Tools output(config["output"]["vtu"].as<std::string>());
-
-   // 4. Write each saved step.
-   for (const auto &[step, time] : saved_steps)
+   // P = P_ich - p J F^-T of the material of the element attribute.
+   auto first_PK_stress = [&](int attribute, const Tensor2_3D &F, double p)
    {
+      return materials[attribute - 1]->get_1st_PK_stress_ich(F)
+             - p * F.det() * F.inverse().transpose();
+   };
+
+   const int vtu_interval = config["output"]["vtu_interval"].as<int>();
+   VTK_Tools output(config["output"]["vtu"].as<std::string>(),
+                    config["output"]["vtu_refine"].as<int>());
+
+   // 4. Write every vtu_interval-th saved step, and the last one.
+   for (std::size_t ss = 0; ss < saved_steps.size(); ss++)
+   {
+      if (ss % vtu_interval != 0 && ss + 1 != saved_steps.size())
+         continue;
+      const auto &[step, time] = saved_steps[ss];
       const std::unique_ptr<mfem::GridFunction> disp = read_gf("disp", step);
       const std::unique_ptr<mfem::GridFunction> velo = read_gf("velo", step);
       const std::unique_ptr<mfem::GridFunction> acce = read_gf("acce", step);
@@ -102,18 +112,7 @@ int main(int argc, char *argv[])
          SystemTools::print_space(*pres->FESpace());
       }
 
-      for (int ee = 0; ee < mesh.GetNE(); ee++)
-      {
-         const Tensor2_3D F =
-            VTK_Tools::get_center_deformation_gradient(*disp->FESpace(), *disp, ee);
-         const double p = pres->GetValue(ee, mfem::Geometries.GetCenter(mesh.GetElementGeometry(ee)));
-         PK1[ee] = materials[mesh.GetAttribute(ee) - 1]->get_1st_PK_stress_ich(F)
-                    - p * F.det() * F.inverse().transpose();
-         PK2[ee] = F.inverse() * PK1[ee];
-         E[ee] = 0.5 * (F.transpose() * F - Tensor2_3D::identity());
-      }
-
-      output.save(step, time, *disp, *velo, *acce, *pres, PK1, PK2, E);
+      output.save(step, time, *disp, *velo, *acce, *pres, first_PK_stress);
    }
 
    mfem::out << '\n';

@@ -94,8 +94,13 @@ csv_writer:
   - { face: outer, dir: y }
   - { face: outer, dir: z }
 
-# Output folders, in the directory the programs run in.
+# Output folders, in the directory the programs run in, and the VTU output:
+# every vtu_interval-th saved step, and the last, with each element cut into
+# vtu_refine^3 hexahedra at its sampling points; the files grow as
+# (vtu_refine + 1)^3.
 output:
   vtu: results_vtu
+  vtu_interval: 10
+  vtu_refine: 2
   gf: results_gf
   csv: results_csv
