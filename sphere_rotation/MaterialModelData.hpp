@@ -1,46 +1,87 @@
 // ============================================================================
 // MaterialModelData.hpp
 //
-// The material of sphere_rotation: incompressible Neo-Hookean, with shear
-// modulus mu = 0.74 kPa and density rho_0 = 1000 kg/m^3. It replaces
-// include/material/MaterialModelData.hpp for the programs of this folder.
+// The materials of sphere_rotation, one per region of the mesh, by element
+// attribute: 1 the gelatin, incompressible Neo-Hookean, with shear modulus
+// mu = 5.86 kPa and density rho_0 = 1000 kg/m^3; 2 the skull, linearly
+// elastic at small strains, with E = 2.75 kPa, nu = 0.45 and
+// rho_0 = 1170 kg/m^3, taken as compressible Neo-Hookean, which keeps E and
+// nu at small strains and stays stable at large ones,
+//    Psi = kappa/2 (J - 1)^2 + Psi_ich^NH(F),
+//    mu = E / (2 (1 + nu)),   kappa = E / (3 (1 - 2 nu)).
+// It replaces include/material/MaterialModelData.hpp for the programs of
+// this folder.
 //
 // Author: Chongran Zhao
-// Date: Oct. 9, 2026
+// Date: Oct. 11, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #ifndef MATERIAL_MODEL_DATA_HPP
 #define MATERIAL_MODEL_DATA_HPP
 
+#include <array>
+#include <cmath>
+#include <limits>
 #include <memory>
+#include <string>
+
+#include <mfem.hpp>
 
 #include "IMaterialModel_ich.hpp"
 #include "IMaterialModel_vol.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModel_ich_NeoHookean.hpp"
 #include "MaterialModel_vol_Incompressible_Energy.hpp"
+#include "MaterialModel_vol_Quadratic.hpp"
 
-// Shear modulus and reference density.
-inline constexpr double mu = 740.0;
-inline constexpr double density = 1000.0;
-
-// Volumetric model: incompressible, J = 1.
-inline std::unique_ptr<IMaterialModel_vol> set_vol_model()
+// The parameters of a region.
+struct region_material
 {
-   return std::make_unique<MaterialModel_vol_Incompressible_Energy>(density);
+   std::string name;   // name of the region in the mesh
+   double mu;          // shear modulus
+   double kappa;       // bulk modulus, infinite when incompressible
+   double density;     // reference density rho_0
+};
+
+// Young's modulus and Poisson's ratio of the skull.
+inline constexpr double skull_young = 2750.0;
+inline constexpr double skull_poisson = 0.45;
+
+// The regions, element attribute 1 and 2.
+inline const std::array<region_material, 2> region_materials = {{
+   {"gelatin", 5860.0, std::numeric_limits<double>::infinity(), 1000.0},
+   {"skull", skull_young / (2.0 * (1.0 + skull_poisson)),
+    skull_young / (3.0 * (1.0 - 2.0 * skull_poisson)), 1170.0}}};
+
+// The parameters of the region of the given element attribute.
+inline const region_material &get_region_material(int attribute)
+{
+   MFEM_VERIFY(attribute >= 1 && attribute <= static_cast<int>(region_materials.size()),
+               "No material for element attribute " << attribute << ".");
+   return region_materials[attribute - 1];
 }
 
-// Isochoric model: Neo-Hookean.
-inline std::unique_ptr<IMaterialModel_ich> set_ich_model()
+// Volumetric model of a region: incompressible, J = 1, or quadratic.
+inline std::unique_ptr<IMaterialModel_vol> set_vol_model(int attribute)
 {
-   return std::make_unique<MaterialModel_ich_NeoHookean>(mu);
+   const region_material &region = get_region_material(attribute);
+   if (std::isinf(region.kappa))
+      return std::make_unique<MaterialModel_vol_Incompressible_Energy>(region.density);
+   return std::make_unique<MaterialModel_vol_Quadratic>(region.density, region.kappa);
 }
 
-// The material: the volumetric and the isochoric model together. It holds no
-// state, so each owner, e.g. each local assembly, creates its own.
-inline std::unique_ptr<MaterialModel> set_material_model()
+// Isochoric model of a region: Neo-Hookean.
+inline std::unique_ptr<IMaterialModel_ich> set_ich_model(int attribute)
 {
-   return std::make_unique<MaterialModel>(set_vol_model(), set_ich_model());
+   return std::make_unique<MaterialModel_ich_NeoHookean>(get_region_material(attribute).mu);
+}
+
+// The material of a region: the volumetric and the isochoric model
+// together. It holds no state, so each owner, e.g. each local assembly,
+// creates its own.
+inline std::unique_ptr<MaterialModel> set_material_model(int attribute)
+{
+   return std::make_unique<MaterialModel>(set_vol_model(attribute), set_ich_model(attribute));
 }
 
 #endif
