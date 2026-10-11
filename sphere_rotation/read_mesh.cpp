@@ -1,24 +1,30 @@
 // ============================================================================
 // read_mesh.cpp
 //
-// Generates a cubed-sphere hexahedral mesh of a ball: an inner cube and a
-// shell of six blocks between the cube and the sphere surface, whose face is
-// named "outer".
+// Generates a cubed-sphere hexahedral mesh of a ball of gelatin in a shell
+// of skull: an inner cube and a shell of six blocks between the cube and the
+// gelatin surface, of radius R_g, then the skull, from R_g to the outer
+// radius R. The elements of the gelatin have attribute 1, named "gelatin",
+// those of the skull attribute 2, named "skull"; the outer surface is named
+// "outer". Without skull layers, the ball is all gelatin, and R_g = R.
 // Step 1: read the mesh section of config.yaml.
 // Step 2: build the straight mesh in the logical coordinates.
 // Step 3: curve it and map it onto the ball.
-// Step 4: name the surface, report the mesh and save it.
+// Step 4: name the regions and the surface, report the mesh and save it.
 //
 // The logical point L lies in the cube [-1, 1]^3; the inner cube is
-// |L|_inf <= a, with a = inner_size. The map to the ball of radius R is
-//    inner cube   P = R L,
-//    shell        P = R [(1 - w) a d + w d / |d|],   d = L / |L|_inf,
-// with r = (|L|_inf - a) / (1 - a) in [0, 1] across the shell, and the
-// grading w(r) = (q^(m r) - 1) / (q^m - 1), q = ratio^(1/(m-1)), which makes
-// the outermost of the m layers ratio times as thick as the innermost one.
+// |L|_inf <= a, with a = inner_size. The m layers of the gelatin shell and
+// the s layers of the skull divide the rest evenly: t = (|L|_inf - a) /
+// (1 - a) (m + s) in [0, m + s] counts the layers. The map to the ball is
+//    inner cube   P = R_g L,
+//    gelatin      P = R_g [(1 - w) a d + w d / |d|],          t <= m,
+//    skull        P = (R_g + (t - m) / s (R - R_g)) d / |d|,  t > m,
+// with d = L / |L|_inf, and the grading w = (q^t - 1) / (q^m - 1),
+// q = ratio^(1/(m-1)), which makes the outermost of the m gelatin layers
+// ratio times as thick as the innermost one; the skull layers are even.
 //
 // Author: Chongran Zhao
-// Date: Oct. 9, 2026
+// Date: Oct. 11, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #include <algorithm>
@@ -36,7 +42,7 @@
 
 int main(int argc, char *argv[])
 {
-   // 1. The mesh section of config.yaml gives the size and the divisions of
+   // 1. The mesh section of config.yaml gives the radii and the divisions of
    //    the ball and the output file, the space section the order of the
    //    curved geometry. By default the config.yaml of the directory the
    //    program runs in is read, the copy CMake puts in
@@ -48,6 +54,8 @@ int main(int argc, char *argv[])
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
    const YAML::Node paras = config["mesh"];
    const double radius = paras["radius"].as<double>();
+   const double gelatin_radius = paras["gelatin_radius"].as<double>();
+   const int skull_elements = paras["skull_elements"].as<int>();
    const double inner_size = paras["inner_size"].as<double>();
    const int inner_elements = paras["inner_elements"].as<int>();
    const int radial_elements = paras["radial_elements"].as<int>();
@@ -57,12 +65,15 @@ int main(int argc, char *argv[])
 
    MFEM_VERIFY(inner_elements % 2 == 0, "inner_elements must be even.");
    MFEM_VERIFY(inner_size > 0.0 && inner_size < 1.0, "inner_size must be in (0, 1).");
+   MFEM_VERIFY((skull_elements > 0) == (gelatin_radius < radius),
+               "Skull layers need gelatin_radius < radius, and none gelatin_radius = radius.");
+   const int num_layers = radial_elements + skull_elements;
 
    // 2. A vertex is named by its index (ii, jj, kk) on the grid of the inner
    //    cube, with layer 0, or by the index of a point on the cube surface
-   //    and its layer ll = 1, ..., m of the shell. Its logical point is that
-   //    grid point scaled to |L|_inf = a + (1 - a) ll / m.
-   const int num_shell = 6 * inner_elements * inner_elements * radial_elements;
+   //    and its layer ll = 1, ..., m + s of the shells. Its logical point is
+   //    that grid point scaled to |L|_inf = a + (1 - a) ll / (m + s).
+   const int num_shell = 6 * inner_elements * inner_elements * num_layers;
    const int num_elements = inner_elements * inner_elements * inner_elements + num_shell;
    const int num_bdr = 6 * inner_elements * inner_elements;
    mfem::Mesh mesh(3, 0, num_elements, num_bdr);
@@ -74,7 +85,7 @@ int main(int argc, char *argv[])
                                                        mesh.GetNV());
       if (is_new)
       {
-         const double scale = inner_size + (1.0 - inner_size) * ll / radial_elements;
+         const double scale = inner_size + (1.0 - inner_size) * ll / num_layers;
          double coord[3];
          for (int axis = 0; axis < 3; axis++)
             coord[axis] = scale * (2.0 * index[axis] / inner_elements - 1.0);
@@ -84,8 +95,9 @@ int main(int argc, char *argv[])
    };
 
    // Adds the hexahedron of corners 0-3 (one face) and 4-7 (the opposite
-   // face, in the same order), turned to positive volume.
-   auto add_hex = [&](std::array<int, 8> corners)
+   // face, in the same order), turned to positive volume, with the attribute
+   // of its region.
+   auto add_hex = [&](std::array<int, 8> corners, int attribute)
    {
       const double *origin = mesh.GetVertex(corners[0]);
       double edge[3][3];
@@ -100,7 +112,7 @@ int main(int argc, char *argv[])
          std::swap(corners[1], corners[3]);
          std::swap(corners[5], corners[7]);
       }
-      mesh.AddHex(corners.data(), 1);
+      mesh.AddHex(corners.data(), attribute);
    };
 
    // The inner cube.
@@ -114,12 +126,13 @@ int main(int argc, char *argv[])
                const int di = ((cc + 1) / 2) % 2, dj = (cc / 2) % 2, dk = cc / 4;
                corners[cc] = vertex({ii + di, jj + dj, kk + dk}, 0);
             }
-            add_hex(corners);
+            add_hex(corners, 1);
          }
 
-   // The shell: over each face of the cube, side 0 or 1 along axis, the
-   // columns of hexahedra above its quads, from layer ll to ll + 1. The
-   // surface quads of the last layer are the boundary.
+   // The shells: over each face of the cube, side 0 or 1 along axis, the
+   // columns of hexahedra above its quads, from layer ll to ll + 1, gelatin
+   // up to layer m, skull beyond. The surface quads of the last layer are
+   // the boundary.
    for (int axis = 0; axis < 3; axis++)
       for (int side = 0; side < 2; side++)
          for (int pp = 0; pp < inner_elements; pp++)
@@ -132,7 +145,7 @@ int main(int argc, char *argv[])
                   quad[cc][(axis + 1) % 3] = pp + ((cc + 1) / 2) % 2;
                   quad[cc][(axis + 2) % 3] = qq + cc / 2;
                }
-               for (int ll = 0; ll < radial_elements; ll++)
+               for (int ll = 0; ll < num_layers; ll++)
                {
                   std::array<int, 8> corners;
                   for (int cc = 0; cc < 4; cc++)
@@ -140,12 +153,12 @@ int main(int argc, char *argv[])
                      corners[cc] = vertex(quad[cc], ll);
                      corners[cc + 4] = vertex(quad[cc], ll + 1);
                   }
-                  add_hex(corners);
+                  add_hex(corners, (ll < radial_elements) ? 1 : 2);
                }
 
                std::array<int, 4> face;
                for (int cc = 0; cc < 4; cc++)
-                  face[cc] = vertex(quad[cc], radial_elements);
+                  face[cc] = vertex(quad[cc], num_layers);
                mesh.AddBdrQuad(face.data(), 1);
             }
 
@@ -154,12 +167,13 @@ int main(int argc, char *argv[])
    mesh.Finalize(false, true);
 
    // 3. Nodes of the given order hold the geometry; they are first placed
-   //    in the logical coordinates, then mapped onto the ball.
+   //    in the logical coordinates, then mapped onto the ball; tt counts
+   //    the layers.
    const double qq = std::pow(radial_ratio, 1.0 / (radial_elements - 1));
-   auto grading = [&](double rr)
+   auto grading = [&](double tt)
    {
-      return (std::abs(qq - 1.0) < 1.0e-12) ? rr
-         : (std::pow(qq, radial_elements * rr) - 1.0) / (std::pow(qq, radial_elements) - 1.0);
+      return (std::abs(qq - 1.0) < 1.0e-12) ? tt / radial_elements
+         : (std::pow(qq, tt) - 1.0) / (std::pow(qq, radial_elements) - 1.0);
    };
 
    mesh.SetCurvature(order, false, 3, mfem::Ordering::byVDIM);
@@ -168,38 +182,59 @@ int main(int argc, char *argv[])
       const double size = logical.Normlinf();
       if (size <= inner_size)
       {
-         point.Set(radius, logical);
+         point.Set(gelatin_radius, logical);
          return;
       }
       mfem::Vector dir(logical);
       dir /= size;
-      const double ww = grading((size - inner_size) / (1.0 - inner_size));
-      point.Set(radius * (1.0 - ww) * inner_size, dir);
-      point.Add(radius * ww / dir.Norml2(), dir);
+      const double tt = (size - inner_size) / (1.0 - inner_size) * num_layers;
+      if (tt <= radial_elements)
+      {
+         const double ww = grading(tt);
+         point.Set(gelatin_radius * (1.0 - ww) * inner_size, dir);
+         point.Add(gelatin_radius * ww / dir.Norml2(), dir);
+      }
+      else
+         point.Set((gelatin_radius + (tt - radial_elements) / skull_elements
+                    * (radius - gelatin_radius)) / dir.Norml2(), dir);
    });
 
-   // 4. The surface is the boundary attribute 1, named "outer". The volume
-   //    of the curved elements is compared with 4/3 pi R^3.
+   // 4. The regions are the attributes 1 and 2, named "gelatin" and
+   //    "skull", the surface the boundary attribute 1, named "outer". The
+   //    volume of the curved elements of each region is compared with the
+   //    exact one.
+   mesh.attribute_sets.SetAttributeSet("gelatin", mfem::Array<int>({1}));
+   if (skull_elements > 0)
+      mesh.attribute_sets.SetAttributeSet("skull", mfem::Array<int>({2}));
    mesh.bdr_attribute_sets.SetAttributeSet("outer", mfem::Array<int>({1}));
 
-   double volume = 0.0;
+   std::array<double, 2> volume = {0.0, 0.0};
    for (int ee = 0; ee < mesh.GetNE(); ee++)
-      volume += mesh.GetElementVolume(ee);
-   const double exact_volume = 4.0 / 3.0 * M_PI * radius * radius * radius;
+      volume[mesh.GetAttribute(ee) - 1] += mesh.GetElementVolume(ee);
+   const std::array<double, 2> exact_volume = {
+      4.0 / 3.0 * M_PI * std::pow(gelatin_radius, 3),
+      4.0 / 3.0 * M_PI * (std::pow(radius, 3) - std::pow(gelatin_radius, 3))};
 
    mfem::out << "\nMesh\n" << std::string(74, '-') << '\n' << std::left
-             << std::setw(20) << "radius" << radius << '\n'
+             << std::setw(20) << "radii" << "gelatin " << gelatin_radius << ", outer "
+             << radius << '\n'
              << std::setw(20) << "inner cube" << inner_elements << "^3, half-size "
-             << inner_size << " R\n"
-             << std::setw(20) << "shell" << "6 x " << inner_elements << "^2 x "
+             << inner_size << " R_g\n"
+             << std::setw(20) << "gelatin shell" << "6 x " << inner_elements << "^2 x "
              << radial_elements << ", ratio " << radial_ratio << '\n'
+             << std::setw(20) << "skull" << "6 x " << inner_elements << "^2 x "
+             << skull_elements << '\n'
              << std::setw(20) << "geometry order" << order << '\n'
              << std::setw(20) << "elements" << mesh.GetNE() << '\n'
              << std::setw(20) << "vertices" << mesh.GetNV() << '\n'
-             << std::setw(20) << "boundary elements" << mesh.GetNBE() << " (outer)\n"
-             << std::setw(20) << "volume error" << std::scientific << std::setprecision(3)
-             << (volume - exact_volume) / exact_volume << std::defaultfloat << '\n'
-             << std::string(74, '-') << '\n';
+             << std::setw(20) << "boundary elements" << mesh.GetNBE() << " (outer)\n";
+   const std::array<std::string, 2> region_names = {"gelatin", "skull"};
+   for (int region = 0; region < 1 + (skull_elements > 0); region++)
+      mfem::out << std::setw(20) << region_names[region] + " volume" << std::scientific
+                << std::setprecision(4) << volume[region] << ", error " << std::setprecision(3)
+                << (volume[region] - exact_volume[region]) / exact_volume[region]
+                << std::defaultfloat << '\n';
+   mfem::out << std::string(74, '-') << '\n';
 
    mesh.Save(output_mesh);
    mfem::out << std::left << std::setw(20) << "saved"
