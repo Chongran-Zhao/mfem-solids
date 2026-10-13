@@ -18,7 +18,6 @@ if yours are elsewhere.
 | MUMPS | 5.8.1 | sources in `lib/mumps-src`, libraries and headers in `lib/mumps` |
 | yaml-cpp | 0.9.0 | sources in `lib/yaml-cpp/src`, installed into `lib/yaml-cpp` |
 | MFEM | 4.10.1, master `45799eb` | `lib/mfem`, built in `lib/mfem/build` |
-| ADIOS2 | optional | Homebrew `adios2`; MFEM is built with it for other projects, mfem-solids does not use it |
 
 ```
 MFEM/
@@ -39,7 +38,7 @@ in `MFEM/`, the folder that holds `lib/` and `mfem-solids/`.
 **Homebrew packages**
 
 ```bash
-brew install cmake open-mpi gcc openblas scalapack adios2
+brew install cmake open-mpi gcc openblas scalapack
 ```
 
 **Sources**, at the versions above; hypre and MFEM at the commits used here:
@@ -111,16 +110,12 @@ cd lib/mumps-src/MUMPS_5.8.1 && make s d && mkdir -p ../../mumps && cp -R lib in
 cd lib/yaml-cpp && cmake -S src -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD -DYAML_BUILD_SHARED_LIBS=OFF -DYAML_CPP_BUILD_TESTS=OFF -DYAML_CPP_BUILD_TOOLS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && cmake --build build && cmake --install build
 ```
 
-**MFEM**, in `lib/mfem`, with MPI, METIS, hypre, MUMPS and ADIOS2, built in
-`lib/mfem/build`. MUMPS needs the Fortran runtime, ScaLAPACK and OpenBLAS named
-explicitly. MFEM's `FindADIOS2.cmake` looks for the library names of old ADIOS2 releases,
-so the libraries of the current one are given directly, with `ADIOS2_USE_MPI`:
+**MFEM**, in `lib/mfem`, with MPI, METIS, hypre and MUMPS, built in `lib/mfem/build`.
+MUMPS needs the Fortran runtime, ScaLAPACK and OpenBLAS named explicitly:
 
 ```bash
-cd lib/mfem && mkdir -p build && cd build && A=/opt/homebrew/opt/adios2 && cmake .. -DCMAKE_BUILD_TYPE=Release -DMFEM_USE_MPI=ON -DMFEM_USE_METIS_5=ON -DMETIS_DIR=$PWD/../../metis -DHYPRE_DIR=$PWD/../../hypre/src/hypre -DMFEM_USE_MUMPS=ON -DMUMPS_DIR=$PWD/../../mumps "-DMUMPS_REQUIRED_PACKAGES=MPI;MPI_Fortran;METIS" "-DMUMPS_REQUIRED_LIBRARIES=/opt/homebrew/opt/scalapack/lib/libscalapack.dylib;/opt/homebrew/opt/openblas/lib/libopenblas.dylib;/opt/homebrew/opt/gcc/lib/gcc/current/libgfortran.dylib" -DCMAKE_Fortran_COMPILER=/opt/homebrew/bin/gfortran -DMFEM_USE_ADIOS2=ON -DADIOS2_DIR=$A "-DADIOS2_LIBRARY=$A/lib/libadios2_cxx_mpi.dylib;$A/lib/libadios2_cxx.dylib;$A/lib/libadios2_core_mpi.dylib;$A/lib/libadios2_core.dylib" -DCMAKE_CXX_FLAGS=-DADIOS2_USE_MPI && make -j8 mfem
+cd lib/mfem && mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release -DMFEM_USE_MPI=ON -DMFEM_USE_METIS_5=ON -DMETIS_DIR=$PWD/../../metis -DHYPRE_DIR=$PWD/../../hypre/src/hypre -DMFEM_USE_MUMPS=ON -DMUMPS_DIR=$PWD/../../mumps "-DMUMPS_REQUIRED_PACKAGES=MPI;MPI_Fortran;METIS" "-DMUMPS_REQUIRED_LIBRARIES=/opt/homebrew/opt/scalapack/lib/libscalapack.dylib;/opt/homebrew/opt/openblas/lib/libopenblas.dylib;/opt/homebrew/opt/gcc/lib/gcc/current/libgfortran.dylib" -DCMAKE_Fortran_COMPILER=/opt/homebrew/bin/gfortran && make -j8 mfem
 ```
-
-Without ADIOS2, leave out the four `ADIOS2` options and `CMAKE_CXX_FLAGS`.
 
 ## Building the cases
 
@@ -144,7 +139,5 @@ cd build && ./read_mesh && mpirun -np 2 ./driver && ./vtu_writer
   missing, for example removed by a disk cleaner that deletes build folders; build MFEM
   again with the command above. The programs already built still run, since they link MFEM
   statically.
-- **`Could NOT find ADIOS2 (missing: ADIOS2_LIBRARY)`**: give the ADIOS2 libraries
-  directly, as in the MFEM command above.
 - **METIS or yaml-cpp: `Compatibility with CMake < 3.5 has been removed`**: add
   `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
