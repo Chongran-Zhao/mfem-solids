@@ -1,9 +1,9 @@
 // ============================================================================
-// NonlinearSolver_Dynamic_Mixed.hpp
+// NonlinearSolver.hpp
 //
-// include/solver/NonlinearSolver_Dynamic_Mixed.hpp for sphere_rotation, with
-// three changes; driver.cpp includes it before TimeSolver_Dynamic_Mixed.hpp,
-// so that its include guard keeps the other one out.
+// Nonlinear solver of sphere_rotation. Compared with dynamic_mixed, it
+// uses material regions, an iterative block solver and a rigid-rotation
+// initial guess, as detailed below.
 //
 // 1. The mesh has regions of their own materials, from MaterialModelData,
 //    by element attribute: the mass matrix takes the density of each region,
@@ -56,8 +56,8 @@
 // Date: Oct. 13, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef NONLINEAR_SOLVER_DYNAMIC_MIXED_HPP
-#define NONLINEAR_SOLVER_DYNAMIC_MIXED_HPP
+#ifndef NONLINEAR_SOLVER_HPP
+#define NONLINEAR_SOLVER_HPP
 
 #include <memory>
 #include <utility>
@@ -74,18 +74,18 @@
 #include "TimeMethod_GenAlpha.hpp"
 #include "Vector_3D.hpp"
 
-class NonlinearSolver_Dynamic_Mixed : public mfem::Operator
+class NonlinearSolver : public mfem::Operator
 {
 public:
    // Takes the ownership of the global assembly and of the time method, and
    // assembles the mass matrix on space_u and the pressure operators of the
    // preconditioner on space_p; the Newton settings come from the solver
    // section of config.yaml.
-   NonlinearSolver_Dynamic_Mixed(mfem::ParFiniteElementSpace &space_u,
-                                 mfem::ParFiniteElementSpace &space_p,
-                                 std::unique_ptr<GlobalAssembly> input_global_assembly,
-                                 std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
-                                 const YAML::Node &solver)
+   NonlinearSolver(mfem::ParFiniteElementSpace &space_u,
+                   mfem::ParFiniteElementSpace &space_p,
+                   std::unique_ptr<GlobalAssembly> input_global_assembly,
+                   std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
+                   const YAML::Node &solver)
       : mfem::Operator(input_global_assembly->get_num_dofs()),
         global_assembly(std::move(input_global_assembly)),
         time_method(std::move(input_time_method)),
@@ -336,7 +336,7 @@ private:
    {
    public:
       // size: the pressure dofs this rank owns.
-      SchurInverse(const NonlinearSolver_Dynamic_Mixed &input_owner, int size)
+      SchurInverse(const NonlinearSolver &input_owner, int size)
          : mfem::Solver(size), owner(input_owner), work(size) {}
 
       void SetOperator(const mfem::Operator &op) override {}
@@ -350,7 +350,7 @@ private:
       }
 
    private:
-      const NonlinearSolver_Dynamic_Mixed &owner;
+      const NonlinearSolver &owner;
       mutable mfem::Vector work;
    };
 

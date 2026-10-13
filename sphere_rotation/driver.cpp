@@ -31,7 +31,7 @@
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
-#include "NonlinearSolver_Dynamic_Mixed.hpp"
+#include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha.hpp"
 #include "TimeSolver_Dynamic_Mixed.hpp"
@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
    //    time solver, which owns the nonlinear solver.
    auto time_method =
       std::make_unique<TimeMethod_GenAlpha>(config["time_method"]["rho_inf"].as<double>());
-   auto nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic_Mixed>(
+   auto nonlinear_solver = std::make_unique<NonlinearSolver>(
       space_u, space_p, std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver_Dynamic_Mixed>(

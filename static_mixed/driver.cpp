@@ -27,7 +27,7 @@
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
-#include "NonlinearSolver_Static_Mixed.hpp"
+#include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 #include "TimeSolver_Static_Mixed.hpp"
 
@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
 
    // 7. Set up the nonlinear solver, which owns the global assembly, and the
    //    time solver, which owns the nonlinear solver.
-   auto nonlinear_solver = std::make_unique<NonlinearSolver_Static_Mixed>(
+   auto nonlinear_solver = std::make_unique<NonlinearSolver>(
       std::move(global_assembly), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver_Static_Mixed>(

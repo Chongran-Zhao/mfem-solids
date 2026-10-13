@@ -25,7 +25,7 @@
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
-#include "NonlinearSolver_Static_Disp.hpp"
+#include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 #include "TimeSolver_Static_Disp.hpp"
 
@@ -106,7 +106,7 @@ int main(int argc, char *argv[])
 
    // 7. Set up the nonlinear solver, which owns the global assembly, and the
    //    time solver, which owns the nonlinear solver.
-   auto nonlinear_solver = std::make_unique<NonlinearSolver_Static_Disp>(
+   auto nonlinear_solver = std::make_unique<NonlinearSolver>(
       std::move(global_assembly), config["solver"]);
    const int num_load_steps = config["loading"]["load_steps"].as<int>();
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();

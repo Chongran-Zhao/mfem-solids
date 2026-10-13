@@ -26,7 +26,7 @@
 
 #include <mfem.hpp>
 
-#include "NonlinearSolver_Static_Mixed.hpp"
+#include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 
 class TimeSolver_Static_Mixed
@@ -35,7 +35,7 @@ public:
    // Takes the ownership of the nonlinear solver; the results go to
    // results_dir, which rank 0 empties first and where it saves the serial
    // mesh of mesh, with its named faces.
-   TimeSolver_Static_Mixed(std::unique_ptr<NonlinearSolver_Static_Mixed> input_nonlinear_solver,
+   TimeSolver_Static_Mixed(std::unique_ptr<NonlinearSolver> input_nonlinear_solver,
                            int input_num_load_steps,
                            const std::filesystem::path &input_results_dir,
                            mfem::ParMesh &mesh)
@@ -96,7 +96,7 @@ private:
       SystemTools::save_gf(results_dir, "pres", step, serial_pres);
    }
 
-   const std::unique_ptr<NonlinearSolver_Static_Mixed> nonlinear_solver;  // one load step
+   const std::unique_ptr<NonlinearSolver> nonlinear_solver;  // one load step
    const int num_load_steps;                                              // N
    const std::filesystem::path results_dir;                               // folder of disp_XXXX.gf and pres_XXXX.gf
    mfem::Mesh serial_mesh;                                                // all elements on rank 0, empty elsewhere
