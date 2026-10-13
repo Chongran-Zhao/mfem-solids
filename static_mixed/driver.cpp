@@ -23,7 +23,6 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
-#include "LoadData.hpp"
 #include "LocalAssembly_Mixed.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
@@ -76,10 +75,8 @@ int main(int argc, char *argv[])
    pres = 0.0;
 
    // 4. Set up the boundary conditions, on the displacement only.
-   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u,
-                                                        std::make_unique<LoadData>());
-   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u,
-                                                    std::make_unique<LoadData>());
+   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
    const int num_load_steps = config["loading"]["load_steps"].as<int>();
 
    // The loading is either a prescribed displacement or a traction.

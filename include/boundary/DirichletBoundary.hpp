@@ -3,9 +3,9 @@
 //
 // Reads the Dirichlet boundary conditions from config.yaml and applies them
 // to the displacement at each load step, on grid functions of the
-// ParFiniteElementSpace, with the values of its ILoadData; the constrained
-// dofs are those this rank owns, numbered on this rank. Applying and printing
-// are collective, over all ranks.
+// ParFiniteElementSpace; the constrained dofs are those this rank owns,
+// numbered on this rank. Applying and printing are collective, over all
+// ranks.
 //
 // Author: Chongran Zhao
 // Date: Sep. 27, 2026
@@ -19,24 +19,20 @@
 #include <ios>
 #include <limits>
 #include <map>
-#include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 
-#include "ILoadData.hpp"
+#include "LoadData.hpp"
 
 class DirichletBoundary
 {
 public:
-   // Reads the Dirichlet section of config.yaml; takes the ownership of the
-   // load data.
-   DirichletBoundary(const YAML::Node &paras, mfem::ParFiniteElementSpace &fespace,
-                     std::unique_ptr<const ILoadData> input_load_data)
-      : comm(fespace.GetComm()), load_data(std::move(input_load_data))
+   // Reads the Dirichlet section of config.yaml.
+   DirichletBoundary(const YAML::Node &paras, mfem::ParFiniteElementSpace &fespace)
+      : comm(fespace.GetComm())
    {
       mfem::Mesh &mesh = *fespace.GetMesh();
 
@@ -62,7 +58,7 @@ public:
          disp_fixed_list.push_back(fixed);
       }
 
-      // Displacement-driven faces; the values come from load_data->disp_loading.
+      // Displacement-driven faces; the values come from LoadData::disp_loading.
       for (const YAML::Node &bc : paras["disp_bc"])
       {
          const std::string input_face = bc["face"].as<std::string>();
@@ -100,19 +96,19 @@ public:
       }
    }
 
-   // Apply the disp loading given by load_data->disp_loading(pt, tt).
+   // Apply the disp loading given by LoadData::disp_loading(pt, tt).
    void apply_disp_load_bc(double tt, mfem::ParGridFunction &disp) const
    {
-      apply_load_bc(disp, [&](const mfem::Vector &pt, const std::string &face, int dir)
-      { return load_data->disp_loading(pt, tt, face)(dir); });
+      apply_load_bc(disp, [tt](const mfem::Vector &pt, const std::string &face, int dir)
+      { return LoadData::disp_loading(pt, tt, face)(dir); });
    }
 
-   // Apply the velocity of the disp loading, load_data->velo_loading(pt, tt),
+   // Apply the velocity of the disp loading, LoadData::velo_loading(pt, tt),
    // for the initial state of the dynamics.
    void apply_velo_load_bc(double tt, mfem::ParGridFunction &velo) const
    {
-      apply_load_bc(velo, [&](const mfem::Vector &pt, const std::string &face, int dir)
-      { return load_data->velo_loading(pt, tt, face)(dir); });
+      apply_load_bc(velo, [tt](const mfem::Vector &pt, const std::string &face, int dir)
+      { return LoadData::velo_loading(pt, tt, face)(dir); });
    }
 
    // Print the fixed faces and the number of all constrained unknowns.
@@ -223,7 +219,6 @@ private:
    };
 
    const MPI_Comm comm;                     // the ranks of the displacement space
-   const std::unique_ptr<const ILoadData> load_data;  // prescribed displacement and velocity
 
    // "x", "y", "z" -> 0, 1, 2
    inline static const std::map<std::string, int> dir_map = {{"x", 0}, {"y", 1}, {"z", 2}};

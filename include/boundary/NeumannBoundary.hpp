@@ -2,7 +2,7 @@
 // NeumannBoundary.hpp
 //
 // Reads the Neumann boundary conditions from config.yaml and adds external
-// force integrators with the tractions of its ILoadData.
+// force integrators with the load data.
 //
 // Author: Chongran Zhao
 // Date: Sep. 28, 2026
@@ -21,17 +21,14 @@
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 
-#include "ILoadData.hpp"
+#include "LoadData.hpp"
 #include "Vector_3D.hpp"
 
 class NeumannBoundary
 {
 public:
-   // Reads the Neumann section of config.yaml; takes the ownership of the
-   // load data.
-   NeumannBoundary(const YAML::Node &paras, mfem::FiniteElementSpace &fespace,
-                   std::unique_ptr<const ILoadData> input_load_data)
-      : load_data(std::move(input_load_data))
+   // Reads the Neumann section of config.yaml.
+   NeumannBoundary(const YAML::Node &paras, mfem::FiniteElementSpace &fespace)
    {
       mfem::Mesh &mesh = *fespace.GetMesh();
 
@@ -43,10 +40,10 @@ public:
          load.face = face;
          load.marker = mesh.bdr_attribute_sets.GetAttributeSetMarker(face);
          load.traction = std::make_unique<mfem::VectorFunctionCoefficient>(3,
-            [face, data = load_data.get()](const mfem::Vector &pt, double tt, mfem::Vector &T)
+            [face](const mfem::Vector &pt, double tt, mfem::Vector &T)
             {
                const Vector_3D value =
-                  data->surface_traction(pt, tt, face);
+                  LoadData::surface_traction(pt, tt, face);
                for (int ii = 0; ii < 3; ii++)
                   T(ii) = value(ii);
             });
@@ -103,8 +100,7 @@ private:
       std::unique_ptr<mfem::VectorFunctionCoefficient> traction;  // T(pt, tt)
    };
 
-   const std::unique_ptr<const ILoadData> load_data;  // tractions of the faces
-   std::vector<traction_load> traction_load_list;    // one per entry of faces
+   std::vector<traction_load> traction_load_list;  // one per entry of faces
 };
 
 #endif
