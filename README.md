@@ -8,16 +8,16 @@ The project was developed on macOS (Apple silicon) with the versions below. The 
 are built in `../lib`, next to `mfem-solids/`; change the paths in `cmake/mfem-solids.cmake`
 if yours are elsewhere.
 
-| Package | Version | Where |
+| Package | Version | Usage |
 |---|---|---|
-| CMake | 3.20 or newer | Homebrew |
-| Open MPI | 5.0.10 | Homebrew |
-| gfortran, OpenBLAS, ScaLAPACK | Homebrew `gcc`, `openblas`, `scalapack` | Homebrew, for MUMPS |
-| METIS | 5.1.0 | `lib/metis`, library in `lib/metis/lib/libmetis.a` |
-| hypre | 3.2.0, master `5b58261` | `lib/hypre`, installed in `lib/hypre/src/hypre` |
-| MUMPS | 5.8.1 | sources in `lib/mumps-src`, libraries and headers in `lib/mumps` |
-| yaml-cpp | 0.9.0 | sources in `lib/yaml-cpp/src`, installed into `lib/yaml-cpp` |
-| MFEM | 4.10.1, master `45799eb` | `lib/mfem`, built in `lib/mfem/build` |
+| CMake | 3.20 or newer | builds the libraries and the cases |
+| Open MPI | 5.0.10 | parallel runs: the MPI compilers and `mpirun` |
+| gfortran, OpenBLAS, ScaLAPACK | Homebrew `gcc`, `openblas`, `scalapack` | for MUMPS only: it is written in Fortran, and its dense kernels use BLAS, LAPACK and ScaLAPACK |
+| METIS | 5.1.0 | splits the mesh among the ranks (`ParMesh`), and orders the matrix for MUMPS |
+| hypre | 3.2.0, master `5b58261` | the parallel matrices of MFEM (`HypreParMatrix`), and the BoomerAMG preconditioner of `sphere_rotation/` |
+| MUMPS | 5.8.1 | parallel direct solver of the linear systems of the beam cases; MFEM has only its interface |
+| yaml-cpp | 0.9.0 | reads `config.yaml` |
+| MFEM | 4.10.1, master `45799eb` | finite element spaces, meshes, assembly and the Krylov solvers |
 
 ```
 MFEM/
