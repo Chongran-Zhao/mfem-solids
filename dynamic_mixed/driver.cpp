@@ -78,10 +78,11 @@ int main(int argc, char *argv[])
 
    // 4. Set the initial state: zero displacement and pressure, and the
    //    velocity LoadData::initial_velo at the nodes.
+   const LoadData load_data;
    mfem::VectorFunctionCoefficient initial_velo_value(dim,
-      [](const mfem::Vector &pt, mfem::Vector &value)
+      [&](const mfem::Vector &pt, mfem::Vector &value)
    {
-      const Vector_3D velo_0 = LoadData::initial_velo(pt);
+      const Vector_3D velo_0 = load_data.initial_velo(pt);
       for (int comp = 0; comp < 3; comp++)
          value(comp) = velo_0(comp);
    });
@@ -93,8 +94,10 @@ int main(int argc, char *argv[])
 
    // 5. Set up the boundary conditions, on the displacement only; a
    //    prescribed displacement and a traction may act together.
-   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
-   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
+   auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u,
+                                                        std::make_unique<LoadData>());
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u,
+                                                    std::make_unique<LoadData>());
    dirichlet->print_fixed_bc();
    if (dirichlet->is_disp_load())
       dirichlet->print_disp_load();

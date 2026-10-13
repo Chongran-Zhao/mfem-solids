@@ -1,10 +1,10 @@
 // ============================================================================
 // LoadData.hpp
 //
-// Defines the loading (body force, prescribed displacement and traction)
-// and, for the dynamics, the initial velocity. The time tt is the load factor
-// t = n / N in the static programs, and the physical time in seconds in the
-// dynamic one.
+// ILoadData of the beam: the loading (body force, prescribed displacement
+// and traction) on its six faces and, for the dynamics, the initial
+// velocity. The time tt is the load factor t = n / N in the static programs,
+// and the physical time in seconds in the dynamic ones.
 //
 // Author: Chongran Zhao
 // Date: Sep. 27, 2026
@@ -18,9 +18,10 @@
 
 #include <mfem.hpp>
 
+#include "ILoadData.hpp"
 #include "Vector_3D.hpp"
 
-class LoadData
+class LoadData : public ILoadData
 {
 public:
    // Initial velocity v_0(pt) of the dynamics, at the reference position pt;
@@ -31,7 +32,7 @@ public:
    //     return Vector_3D(0.0, 0.0, 2.0 * pt(0));
    //   about the first bending mode, close to the static deflection shape:
    //     return Vector_3D(0.0, 0.0, 0.5 * pt(0) * pt(0) * (3.0 - pt(0)));
-   static Vector_3D initial_velo(const mfem::Vector &pt)
+   Vector_3D initial_velo(const mfem::Vector &pt) const override
    {
       return Vector_3D(0.0, 0.0, 2.0 * pt(0));
    }
@@ -42,7 +43,7 @@ public:
    //     return Vector_3D(0.0, 0.0, -1000.0 * 9.81 * tt);
    //   growing linearly with x:
    //     return Vector_3D(0.0, 0.0, -100.0 * pt(0) * tt);
-   static Vector_3D body_force(const mfem::Vector &pt, double tt)
+   Vector_3D body_force(const mfem::Vector &pt, double tt) const override
    {
       return Vector_3D(0.0, 0.0, 0.0);
    }
@@ -53,8 +54,8 @@ public:
    //     return Vector_3D(0.0, 0.0, -2275.0 * tt);
    //   linear in y over the face y in [0, 0.1], bending about x:
    //     return Vector_3D(0.0, 0.0, -2275.0 * (pt(1) - 0.05) / 0.05 * tt);
-   static Vector_3D surface_traction(const mfem::Vector &pt, double tt,
-                                     const std::string &face)
+   Vector_3D surface_traction(const mfem::Vector &pt, double tt,
+                              const std::string &face) const override
    {
       switch (get_face(face))
       {
@@ -83,8 +84,8 @@ public:
    //     const double y = pt(1) - 0.05, z = pt(2) - 0.05;
    //     return Vector_3D(0.0, std::cos(a) * y - std::sin(a) * z - y,
    //                           std::sin(a) * y + std::cos(a) * z - z);
-   static Vector_3D disp_loading(const mfem::Vector &pt, double tt,
-                                 const std::string &face)
+   Vector_3D disp_loading(const mfem::Vector &pt, double tt,
+                          const std::string &face) const override
    {
       switch (get_face(face))
       {
@@ -108,8 +109,8 @@ public:
    // disp_loading, for the initial state of the dynamics; keep the two
    // consistent. Its acceleration is not needed: the initial acceleration
    // is zero on the constrained dofs, as in MixPERIGEE.
-   static Vector_3D velo_loading(const mfem::Vector &pt, double tt,
-                                 const std::string &face)
+   Vector_3D velo_loading(const mfem::Vector &pt, double tt,
+                          const std::string &face) const override
    {
       switch (get_face(face))
       {

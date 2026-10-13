@@ -1,8 +1,8 @@
 // ============================================================================
 // MaterialModelData.hpp
 //
-// The material of this project, used by the drivers. Changing the material
-// means changing this file.
+// The material of the beam, used by the programs of this folder. Changing
+// the material means changing this file.
 //
 // Author: Chongran Zhao
 // Date: Sep. 29, 2026
