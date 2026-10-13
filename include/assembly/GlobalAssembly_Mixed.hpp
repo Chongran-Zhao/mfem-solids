@@ -25,11 +25,12 @@
 #include <mfem.hpp>
 
 #include "DirichletBoundary.hpp"
+#include "IGlobalAssembly.hpp"
 #include "LocalAssembly_Mixed.hpp"
 #include "NeumannBoundary.hpp"
 #include "ParBlockNonlinearForm_External.hpp"
 
-class GlobalAssembly_Mixed
+class GlobalAssembly_Mixed : public IGlobalAssembly
 {
 public:
    // Takes the ownership of the local assembly and of the boundary
@@ -58,7 +59,7 @@ public:
    // Set the tractions to time tt and assemble F_ext: each rank integrates
    // over its boundary elements, and ParallelAssemble sums the parts of the
    // shared dofs onto the rank that owns them.
-   void set_traction_load(double tt)
+   void set_traction_load(double tt) override
    {
       neumann->set_time(tt);
       local_traction.Assemble();
@@ -66,7 +67,7 @@ public:
    }
 
    // Number of unknowns this rank owns, displacement and pressure.
-   int get_num_dofs() const { return global_assembly.Height(); }
+   int get_num_dofs() const override { return global_assembly.Height(); }
 
    // Offsets of the displacement and the pressure blocks of the dofs this
    // rank owns, [0, n_u, n_u + n_p].
@@ -76,12 +77,12 @@ public:
    }
 
    // The ranks of the spaces.
-   MPI_Comm get_comm() const { return global_assembly.ParFESpace(0)->GetComm(); }
+   MPI_Comm get_comm() const override { return global_assembly.ParFESpace(0)->GetComm(); }
 
    // Consistent mass M_ab = int rho_0 N_a N_b dV of the displacement, without
    // constraints, with rho_0 of the material; the pressure has no mass. It is
    // assembled once, for the dynamics, and the caller owns it.
-   std::unique_ptr<mfem::HypreParMatrix> assemble_mass()
+   std::unique_ptr<mfem::HypreParMatrix> assemble_mass() override
    {
       mfem::ConstantCoefficient rho(local_assembly->get_rho_0());
       mfem::ParBilinearForm mass(global_assembly.ParFESpace(0));
@@ -92,7 +93,7 @@ public:
    }
 
    // R(u,p) at every dof this rank owns; the pressure has no external force.
-   void assemble_residual(const mfem::Vector &sol, mfem::Vector &residual) const
+   void assemble_residual(const mfem::Vector &sol, mfem::Vector &residual) const override
    {
       global_assembly.Mult(sol, residual);
       mfem::BlockVector residual_blocks(residual, global_assembly.GetBlockTrueOffsets());
@@ -113,18 +114,18 @@ public:
       return blocks;
    }
 
-   // K(u,p) on the dofs this rank owns, its blocks copied into one new
-   // HypreParMatrix, which the caller owns; its rows on each rank are those
-   // of the displacement, then of the pressure, as in get_offsets, so the
-   // constrained dofs keep their numbers.
-   std::unique_ptr<mfem::HypreParMatrix> assemble_tangent(const mfem::Vector &sol) const
+   // K(u,p) on the dofs this rank owns, with its blocks merged into one
+   // matrix owned by this assembly. The caller may change it until the
+   // next assemble_tangent call; constrained dofs keep their block numbers.
+   mfem::HypreParMatrix &assemble_tangent(const mfem::Vector &sol) const override
    {
       mfem::Array2D<const mfem::HypreParMatrix *> blocks = assemble_tangent_blocks(sol);
-      return std::unique_ptr<mfem::HypreParMatrix>(mfem::HypreParMatrixFromBlocks(blocks));
+      tangent.reset(mfem::HypreParMatrixFromBlocks(blocks));
+      return *tangent;
    }
 
    // R zero on the constrained dofs, which carry no equation.
-   void set_essential_bdr(mfem::Vector &residual) const
+   void set_essential_bdr(mfem::Vector &residual) const override
    {
       for (int dof : ess_tdof_list)
          residual(dof) = 0.0;
@@ -132,7 +133,7 @@ public:
 
    // K the identity on the constrained dofs; also for a matrix of the
    // displacement only, e.g. the mass.
-   void set_essential_bdr(mfem::HypreParMatrix &tangent) const
+   void set_essential_bdr(mfem::HypreParMatrix &tangent) const override
    {
       tangent.EliminateBC(ess_tdof_list, mfem::Operator::DIAG_ONE);
    }
@@ -144,7 +145,7 @@ public:
    // K_e, and EliminateBC moves K_e g to the right-hand side.
    void set_essential_bdr(mfem::HypreParMatrix &tangent,
                           const mfem::Vector &prescribed_increment,
-                          mfem::Vector &rhs) const
+                          mfem::Vector &rhs) const override
    {
       const std::unique_ptr<mfem::HypreParMatrix> eliminated(
          tangent.EliminateRowsCols(ess_tdof_list));
@@ -152,10 +153,10 @@ public:
    }
 
    // The Dirichlet boundary conditions, whose values the nonlinear solver sets.
-   const DirichletBoundary &get_dirichlet() const { return *dirichlet; }
+   const DirichletBoundary &get_dirichlet() const override { return *dirichlet; }
 
    // The Neumann boundary conditions.
-   const NeumannBoundary &get_neumann() const { return *neumann; }
+   const NeumannBoundary &get_neumann() const override { return *neumann; }
 
 private:
    // Declared before global_assembly, so that global_assembly, which
@@ -164,6 +165,7 @@ private:
    const std::unique_ptr<DirichletBoundary> dirichlet;    // constrained dofs and their values
    const std::unique_ptr<NeumannBoundary> neumann;        // tractions
    ParBlockNonlinearForm_External global_assembly;        // R + F_ext and K, without constraints
+   mutable std::unique_ptr<mfem::HypreParMatrix> tangent; // merged tangent, owned here
    mfem::ParLinearForm local_traction;                    // F_ext on the elements of this rank
    mfem::Vector external_force;                           // F_ext on the displacement dofs this rank owns
    const mfem::Array<int> ess_tdof_list;                  // constrained displacement dofs this rank owns

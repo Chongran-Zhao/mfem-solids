@@ -104,9 +104,9 @@ public:
    // K(u,p), the identity on the constrained dofs.
    mfem::Operator &GetGradient(const mfem::Vector &sol) const override
    {
-      tangent = global_assembly->assemble_tangent(sol);
-      global_assembly->set_essential_bdr(*tangent);
-      return *tangent;
+      mfem::HypreParMatrix &tangent = global_assembly->assemble_tangent(sol);
+      global_assembly->set_essential_bdr(tangent);
+      return tangent;
    }
 
 private:
@@ -140,11 +140,11 @@ private:
       mfem::Vector rhs(global_assembly->get_num_dofs());
       global_assembly->assemble_residual(sol, rhs);
       rhs.Neg();
-      tangent = global_assembly->assemble_tangent(sol);
-      global_assembly->set_essential_bdr(*tangent, prescribed_increment, rhs);
+      mfem::HypreParMatrix &tangent = global_assembly->assemble_tangent(sol);
+      global_assembly->set_essential_bdr(tangent, prescribed_increment, rhs);
 
       mfem::Vector predicted_increment(global_assembly->get_num_dofs());
-      linear_solver.SetOperator(*tangent);
+      linear_solver.SetOperator(tangent);
       linear_solver.Mult(rhs, predicted_increment);
       sol += predicted_increment;
 
@@ -156,11 +156,11 @@ private:
    }
 
    // newton_solver points to this operator, the linear solver and the
-   // monitor, so it is declared last and goes first.
+   // monitor, so it is declared last and goes first. The tangent is owned
+   // by global_assembly.
    const std::unique_ptr<GlobalAssembly_Mixed> global_assembly;   // R and K
    mfem::MUMPSSolver linear_solver;                               // parallel direct solver of the tangent
    SystemTools::BlockNewtonMonitor newton_monitor;                // prints the residual norms of u and p
-   mutable std::unique_ptr<mfem::HypreParMatrix> tangent;         // tangent of the predictor and of Newton's method
    mfem::NewtonSolver newton_solver;
 };
 
