@@ -59,8 +59,8 @@ int main(int argc, char *argv[])
 
    // 3. Set up the finite element space of the displacement.
    const int dim = mesh.Dimension();
-   const int order = config["space"]["order"].as<int>();
-   mfem::H1_FECollection fec_u(order, dim);
+   const int elem_order = config["space"]["elem_order"].as<int>();
+   mfem::H1_FECollection fec_u(elem_order, dim);
    mfem::ParFiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
    mfem::ParGridFunction disp(&space_u);
    disp = 0.0;
@@ -100,6 +100,7 @@ int main(int argc, char *argv[])
    //    local assembly and the boundary conditions to the global one, which
    //    owns them.
    auto local_assembly = std::make_unique<LocalAssembly_Disp>(std::move(material));
+   local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
    auto global_assembly = std::make_unique<GlobalAssembly_Disp>(
       space_u, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 

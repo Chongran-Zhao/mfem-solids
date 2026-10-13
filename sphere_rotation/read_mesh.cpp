@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
    const int radial_elements = paras["radial_elements"].as<int>();
    const double radial_ratio = paras["radial_ratio"].as<double>();
    const std::string output_mesh = paras["output"].as<std::string>();
-   const int order = config["space"]["order"].as<int>();
+   const int elem_order = config["space"]["elem_order"].as<int>();
 
    MFEM_VERIFY(inner_elements % 2 == 0, "inner_elements must be even.");
    MFEM_VERIFY(inner_size > 0.0 && inner_size < 1.0, "inner_size must be in (0, 1).");
@@ -176,7 +176,7 @@ int main(int argc, char *argv[])
          : (std::pow(qq, tt) - 1.0) / (std::pow(qq, radial_elements) - 1.0);
    };
 
-   mesh.SetCurvature(order, false, 3, mfem::Ordering::byVDIM);
+   mesh.SetCurvature(elem_order, false, 3, mfem::Ordering::byVDIM);
    mesh.Transform([&](const mfem::Vector &logical, mfem::Vector &point)
    {
       const double size = logical.Normlinf();
@@ -223,7 +223,7 @@ int main(int argc, char *argv[])
              << radial_elements << ", ratio " << radial_ratio << '\n'
              << std::setw(20) << "skull" << "6 x " << inner_elements << "^2 x "
              << skull_elements << '\n'
-             << std::setw(20) << "geometry order" << order << '\n'
+             << std::setw(20) << "geometry order" << elem_order << '\n'
              << std::setw(20) << "elements" << mesh.GetNE() << '\n'
              << std::setw(20) << "vertices" << mesh.GetNV() << '\n'
              << std::setw(20) << "boundary elements" << mesh.GetNBE() << " (outer)\n";

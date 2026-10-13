@@ -10,9 +10,9 @@ and traction conditions on named faces, load stepping and Newton's method.
 |---|---|---|
 | `read_mesh` | the mesh in `config.yaml` | `beam.mesh` with the six box faces named `left`, `right`, `front`, `back`, `bottom`, `top`, and a 3D view of them, `beam_boundary.html` |
 | `driver` (`static_disp/`) | `beam.mesh`, the boundary conditions, loading and solver settings | the displacement of each load step, `results_gf/disp_XXXX.gf` |
-| `driver` (`static_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | displacement `disp_XXXX.gf` and nodal pressure `pres_XXXX.gf` at each load step |
+| `driver` (`static_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.elem_order` >= 2) | displacement `disp_XXXX.gf` and nodal pressure `pres_XXXX.gf` at each load step |
 | `driver` (`dynamic_disp/`) | `beam.mesh`, the time steps, the boundary conditions and solver settings | displacement, velocity and acceleration of each time step, `disp_XXXX.gf`, `velo_XXXX.gf`, `acce_XXXX.gf`, and the time and Newton iterations of each step, `time.csv` |
-| `driver` (`dynamic_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.order` >= 2) | the files of `dynamic_disp/` and nodal pressure `pres_XXXX.gf` at each time step |
+| `driver` (`dynamic_mixed/`) | the same, in the mixed displacement-pressure form with Taylor-Hood elements (`space.elem_order` >= 2) | the files of `dynamic_disp/` and nodal pressure `pres_XXXX.gf` at each time step |
 | `vtu_writer` | `results_gf/` with its `mesh.mesh`, and the material | `results_vtu/`: the deformed mesh with displacement, pressure and element-center first and second Piola-Kirchhoff stresses; pressure is p(J) in the displacement form and the saved nodal field in the mixed form; in `dynamic_disp/` and `dynamic_mixed/` also velocity and acceleration, at the physical times of `time.csv`; open `results_vtu.pvd` in ParaView |
 | `csv_writer` | `results_gf/` with its `mesh.mesh`, and the material | `results_csv/<face>.csv`: mean displacement, reaction force F, reference face area and face-mean pressure p on the faces and directions of `csv_writer` in `config.yaml`, at each step; the reaction is the formulation's residual on the constrained dofs of the face |
 
@@ -82,7 +82,7 @@ saves it as `results_gf/mesh.mesh`; its element order is that of the ranks, so
 
 ## Notes
 
-- `vtu_writer` writes the values at the vertices only: with `space.order: 2` the midside
+- `vtu_writer` writes the values at the vertices only: with `space.elem_order: 2` the midside
   nodes are left out and ParaView draws the elements as linear.
 - The mixed driver needs a volumetric model with the pressure form J(p): `Quadratic`, or
   `Incompressible` for J = 1, set in `MaterialModelData.hpp`. `SimoPister` has none and
@@ -90,7 +90,7 @@ saves it as `results_gf/mesh.mesh`; its element order is that of the ranks, so
 - With `Incompressible`, the pressure is fixed only up to a constant when displacements
   are prescribed on every face; the drivers do not handle that case.
 - Linear hexahedra lock in bending: on a coarse mesh the stresses are poor. Quadratic
-  elements (`space.order: 2`) remove most of this.
+  elements (`space.elem_order: 2`) remove most of this.
 - Large prescribed displacements on a refined mesh may need more load steps for Newton
   to converge.
 
@@ -208,7 +208,7 @@ cd build && ./read_mesh && mpirun -np 2 ./driver && ./vtu_writer && mpirun -np 2
 ```
 
 `static_mixed/`, `dynamic_disp/` and `dynamic_mixed/` build and run the same four programs
-in the same way. The mixed folders need `space.order >= 2`; their drivers save displacement
+in the same way. The mixed folders need `space.elem_order >= 2`; their drivers save displacement
 and pressure, and their postprocessors read both fields.
 
 Each folder has its own `config.yaml`, which CMake copies into its `build/`, again whenever

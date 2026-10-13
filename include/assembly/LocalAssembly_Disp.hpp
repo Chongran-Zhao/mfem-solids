@@ -47,7 +47,7 @@ public:
       residual.SetSize(3 * num_nodes);
       residual = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = LocalAssemblyTools::get_quad_rule(elem, elem_map);
+      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
 
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
@@ -99,7 +99,7 @@ public:
       tangent.SetSize(3*num_nodes);
       tangent = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = LocalAssemblyTools::get_quad_rule(elem, elem_map);
+      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
 
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
@@ -147,8 +147,21 @@ public:
    // Reference density rho_0 of the material, for the mass matrix.
    double get_rho_0() const { return material->get_rho_0(); }
 
+   // Quadrature order of the elements; 0, the default, keeps the rule of
+   // LocalAssemblyTools::get_quad_rule.
+   void set_quad_order(int input_quad_order) { quad_order = input_quad_order; }
+
 private:
+   // The rule of order quad_order, or that of LocalAssemblyTools.
+   const mfem::IntegrationRule &get_quad_rule(const mfem::FiniteElement &elem,
+                                              mfem::ElementTransformation &elem_map) const
+   {
+      return (quad_order > 0) ? mfem::IntRules.Get(elem.GetGeomType(), quad_order)
+                              : LocalAssemblyTools::get_quad_rule(elem, elem_map);
+   }
+
    const std::unique_ptr<const MaterialModel> material;
+   int quad_order = 0;   // quadrature order, 0 for that of LocalAssemblyTools
 };
 
 #endif

@@ -77,9 +77,9 @@ int main(int argc, char *argv[])
 
    // 3. Set up the displacement and pressure spaces of the mixed driver.
    const int dim = mesh.Dimension();
-   const int order = config["space"]["order"].as<int>();
-   MFEM_VERIFY(order >= 2, "The mixed csv_writer needs space.order >= 2.");
-   mfem::H1_FECollection fec_u(order, dim), fec_p(order - 1, dim);
+   const int elem_order = config["space"]["elem_order"].as<int>();
+   MFEM_VERIFY(elem_order >= 2, "The mixed csv_writer needs space.elem_order >= 2.");
+   mfem::H1_FECollection fec_u(elem_order, dim), fec_p(elem_order - 1, dim);
    mfem::ParFiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
    mfem::ParFiniteElementSpace space_p(&mesh, &fec_p);
    SystemTools::print_space(space_u);
