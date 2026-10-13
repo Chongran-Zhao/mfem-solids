@@ -3,7 +3,7 @@
 //
 // The loading of the beam (body force, prescribed displacement and traction)
 // and, for the dynamics, its initial velocity, for the programs of this
-// folder; DirichletBoundary and NeumannBoundary find it by the include path
+// case; DirichletBoundary and NeumannBoundary find it by the include path
 // CMakeLists.txt sets. The time tt is the load factor t = n / N in the static
 // programs, and the physical time in seconds in the dynamic ones.
 //

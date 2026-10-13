@@ -1,7 +1,7 @@
 // ============================================================================
 // MaterialModelData.hpp
 //
-// The material of the beam, used by the programs of this folder. Changing
+// The material of the beam, used by the programs of this case. Changing
 // the material means changing this file.
 //
 // Author: Chongran Zhao
