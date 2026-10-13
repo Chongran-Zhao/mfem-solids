@@ -85,8 +85,8 @@ int main(int argc, char *argv[])
 
    // 3. Set up the displacement space of the driver.
    const int dim = mesh.Dimension();
-   const int order = config["space"]["order"].as<int>();
-   mfem::H1_FECollection fec(order, dim);
+   const int elem_order = config["space"]["elem_order"].as<int>();
+   mfem::H1_FECollection fec(elem_order, dim);
    mfem::ParFiniteElementSpace fespace(&mesh, &fec, dim, mfem::Ordering::byVDIM);
    mfem::ParGridFunction disp(&fespace), velo(&fespace), acce(&fespace);
    SystemTools::print_space(fespace);
@@ -98,6 +98,7 @@ int main(int argc, char *argv[])
    auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], fespace);
    const bool is_traction_load = neumann->is_traction_load();
    auto local_assembly = std::make_unique<LocalAssembly_Disp>(set_material_model());
+   local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
    auto global_assembly = std::make_unique<GlobalAssembly_Disp>(
       fespace, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
    const std::unique_ptr<mfem::HypreParMatrix> mass = global_assembly->assemble_mass();

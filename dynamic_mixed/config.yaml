@@ -25,7 +25,14 @@ mesh:
 space:
   # Order of the continuous shape functions of the displacement, at least 2;
   # the pressure is one order lower (Taylor-Hood).
-  order: 2
+  elem_order: 2
+
+  # Quadrature order of the elements, 2 x elem_order + 1: the
+  # (elem_order + 1)^3 Gauss rule, 3 x 3 x 3 points for Q2 here; 0 keeps the
+  # default rule, 2 x LocalAssemblyTools OrderGrad, 4 x 4 x 4 points here,
+  # about 1.5 times slower on this beam, which changes its displacement by
+  # about 1e-5 and its pressure by about 1e-3.
+  quad_order: 5
 
 # Time integration method, read into TimeMethod_GenAlpha.
 time_method:

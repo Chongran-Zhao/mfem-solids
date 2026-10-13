@@ -86,9 +86,9 @@ int main(int argc, char *argv[])
 
    // 3. Set up the displacement and pressure spaces of the mixed driver.
    const int dim = mesh.Dimension();
-   const int order = config["space"]["order"].as<int>();
-   MFEM_VERIFY(order >= 2, "The mixed csv_writer needs space.order >= 2.");
-   mfem::H1_FECollection fec_u(order, dim), fec_p(order - 1, dim);
+   const int elem_order = config["space"]["elem_order"].as<int>();
+   MFEM_VERIFY(elem_order >= 2, "The mixed csv_writer needs space.elem_order >= 2.");
+   mfem::H1_FECollection fec_u(elem_order, dim), fec_p(elem_order - 1, dim);
    mfem::ParFiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
    mfem::ParFiniteElementSpace space_p(&mesh, &fec_p);
    mfem::ParGridFunction disp(&space_u), velo(&space_u), acce(&space_u), pres(&space_p);
@@ -102,6 +102,7 @@ int main(int argc, char *argv[])
    auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
    const bool is_traction_load = neumann->is_traction_load();
    auto local_assembly = std::make_unique<LocalAssembly_Mixed>(set_material_model());
+   local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
    const std::unique_ptr<mfem::HypreParMatrix> mass = global_assembly->assemble_mass();

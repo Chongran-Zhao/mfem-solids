@@ -68,9 +68,9 @@ int main(int argc, char *argv[])
    //    order below the displacement, whose space is also that of the
    //    velocity and the acceleration.
    const int dim = mesh.Dimension();
-   const int order = config["space"]["order"].as<int>();
-   MFEM_VERIFY(order >= 2, "The mixed driver needs space.order >= 2 for Taylor-Hood elements.");
-   mfem::H1_FECollection fec_u(order, dim), fec_p(order - 1, dim);
+   const int elem_order = config["space"]["elem_order"].as<int>();
+   MFEM_VERIFY(elem_order >= 2, "The mixed driver needs space.elem_order >= 2 for Taylor-Hood elements.");
+   mfem::H1_FECollection fec_u(elem_order, dim), fec_p(elem_order - 1, dim);
    mfem::ParFiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
    mfem::ParFiniteElementSpace space_p(&mesh, &fec_p);
    SystemTools::print_space(space_u);
@@ -108,6 +108,7 @@ int main(int argc, char *argv[])
    //    local assembly and the boundary conditions to the global one, which
    //    owns them.
    auto local_assembly = std::make_unique<LocalAssembly_Mixed>(std::move(material));
+   local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
