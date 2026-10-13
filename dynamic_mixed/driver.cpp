@@ -108,6 +108,7 @@ int main(int argc, char *argv[])
    //    local assembly and the boundary conditions to the global one, which
    //    owns them.
    auto local_assembly = std::make_unique<LocalAssembly_Mixed>(std::move(material));
+   local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 

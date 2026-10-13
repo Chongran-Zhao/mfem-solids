@@ -21,6 +21,13 @@ space:
   # Order of the continuous shape functions.
   order: 2
 
+  # Quadrature order of the elements; 0 keeps the default rule,
+  # 2 x LocalAssemblyTools OrderGrad, 4 x 4 x 4 points for Q2 here; 5 is the
+  # 3 x 3 x 3 Gauss rule, the usual one for Q2, about 1.5 times faster on
+  # this beam, which changes its displacement by about 1e-5 and its pressure
+  # by about 1e-3.
+  quad_order: 0
+
 # Loading settings.
 loading:
   # Number of load steps; the final load is reached in equal steps.
