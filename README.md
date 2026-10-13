@@ -191,9 +191,7 @@ so the libraries of the current one are given directly, with `ADIOS2_USE_MPI`:
 cd lib/mfem && mkdir -p build && cd build && A=/opt/homebrew/opt/adios2 && cmake .. -DCMAKE_BUILD_TYPE=Release -DMFEM_USE_MPI=ON -DMFEM_USE_METIS_5=ON -DMETIS_DIR=$PWD/../../metis -DHYPRE_DIR=$PWD/../../hypre/src/hypre -DMFEM_USE_MUMPS=ON -DMUMPS_DIR=$PWD/../../mumps "-DMUMPS_REQUIRED_PACKAGES=MPI;MPI_Fortran;METIS" "-DMUMPS_REQUIRED_LIBRARIES=/opt/homebrew/opt/scalapack/lib/libscalapack.dylib;/opt/homebrew/opt/openblas/lib/libopenblas.dylib;/opt/homebrew/opt/gcc/lib/gcc/current/libgfortran.dylib" -DCMAKE_Fortran_COMPILER=/opt/homebrew/bin/gfortran -DMFEM_USE_ADIOS2=ON -DADIOS2_DIR=$A "-DADIOS2_LIBRARY=$A/lib/libadios2_cxx_mpi.dylib;$A/lib/libadios2_cxx.dylib;$A/lib/libadios2_core_mpi.dylib;$A/lib/libadios2_core.dylib" -DCMAKE_CXX_FLAGS=-DADIOS2_USE_MPI && make -j8 mfem
 ```
 
-Without ADIOS2, leave out the four `ADIOS2` options and `CMAKE_CXX_FLAGS`. The MFEM sources
-here carry a local change to `linalg/mumps.cpp` and `linalg/mumps.hpp`, which mfem-solids
-does not use.
+Without ADIOS2, leave out the four `ADIOS2` options and `CMAKE_CXX_FLAGS`.
 
 ### Building and running the cases
 
