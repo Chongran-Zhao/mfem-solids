@@ -137,26 +137,3 @@ Configure it with MPI, METIS, hypre and MUMPS, and build it in `lib/mfem/build`:
 ```bash
 mkdir -p lib/mfem/build && (cd lib/mfem/build && cmake .. -DCMAKE_BUILD_TYPE=Release -DMFEM_USE_MPI=ON -DMFEM_USE_METIS_5=ON -DMETIS_DIR=$PWD/../../metis -DHYPRE_DIR=$PWD/../../hypre/src/hypre -DMFEM_USE_MUMPS=ON -DMUMPS_DIR=$PWD/../../mumps "-DMUMPS_REQUIRED_PACKAGES=MPI;MPI_Fortran;METIS" "-DMUMPS_REQUIRED_LIBRARIES=/opt/homebrew/opt/scalapack/lib/libscalapack.dylib;/opt/homebrew/opt/openblas/lib/libopenblas.dylib;/opt/homebrew/opt/gcc/lib/gcc/current/libgfortran.dylib" -DCMAKE_Fortran_COMPILER=/opt/homebrew/bin/gfortran && make -j8 mfem)
 ```
-
-## Building the cases
-
-Each case is a CMake project of its own: `static_disp/`, `static_mixed/`, `dynamic_disp/`,
-`dynamic_mixed/` and `sphere_rotation/`; the settings they share are in
-`cmake/mfem-solids.cmake`. Each is built in its folder, e.g. `static_disp/`:
-
-```bash
-cd static_disp && cmake -B build && cmake --build build
-```
-
-and run in its `build/`, which CMake gives a copy of the case's `config.yaml`:
-
-```bash
-cd build && ./read_mesh && mpirun -np 2 ./driver && ./vtu_writer
-```
-
-## Troubleshooting
-
-- **`Could not find a package configuration file provided by "MFEM"`**: `lib/mfem/build` is
-  missing, for example removed by a disk cleaner that deletes build folders; build MFEM
-  again with the command above. The programs already built still run, since they link MFEM
-  statically.
