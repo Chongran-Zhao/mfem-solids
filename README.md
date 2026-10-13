@@ -22,7 +22,7 @@ if yours are elsewhere.
 ```
 MFEM/
 ├── lib/
-│   ├── metis/  hypre/  mumps-src/  mumps/  yaml-cpp/
+│   ├── metis/  hypre/  mumps/  yaml-cpp/
 │   └── mfem/           (built in mfem/build)
 └── mfem-solids/
 ```
@@ -32,13 +32,10 @@ MFEM/
 
 ## Installing the dependencies
 
-Install them in the order below: MUMPS needs METIS, and MFEM needs all the others. Each
-command starts in `MFEM/`, the folder that holds `lib/` and `mfem-solids/`; these are the
-commands and options the libraries of this machine were built with.
+Run the commands below in order, all from `MFEM/`, the folder that will hold `lib/` and
+`mfem-solids/`.
 
 ### 1. Homebrew packages
-
-CMake, Open MPI, and gfortran, OpenBLAS and ScaLAPACK for MUMPS:
 
 ```bash
 brew install cmake open-mpi gcc openblas scalapack
@@ -46,121 +43,74 @@ brew install cmake open-mpi gcc openblas scalapack
 
 ### 2. METIS 5.1.0
 
-Download it into `lib/metis`:
-
 ```bash
-mkdir -p lib && cd lib && curl -LO https://github.com/mfem/tpls/raw/gh-pages/metis-5.1.0.tar.gz && tar xzf metis-5.1.0.tar.gz && mv metis-5.1.0 metis && rm metis-5.1.0.tar.gz
+mkdir -p lib && (cd lib && curl -LO https://github.com/mfem/tpls/raw/gh-pages/metis-5.1.0.tar.gz && tar xzf metis-5.1.0.tar.gz && mv metis-5.1.0 metis && rm metis-5.1.0.tar.gz)
 ```
 
-Build it as a static library, with the GKlib it ships with; its old `CMakeLists.txt` needs
-`CMAKE_POLICY_VERSION_MINIMUM` with CMake 4:
-
 ```bash
-cd lib/metis && cmake -S . -B lib -DCMAKE_BUILD_TYPE=Release -DGKLIB_PATH=$PWD/GKlib -DSHARED=FALSE -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && cmake --build lib && cp lib/libmetis/libmetis.a lib/
+(cd lib/metis && cmake -S . -B lib -DCMAKE_BUILD_TYPE=Release -DGKLIB_PATH=$PWD/GKlib -DSHARED=FALSE -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && cmake --build lib && cp lib/libmetis/libmetis.a lib/)
 ```
-
-This gives `lib/metis/lib/libmetis.a`, with the headers in `lib/metis/include`.
 
 ### 3. hypre 3.2.0
 
-Download it into `lib/hypre`, at the commit used here:
-
 ```bash
-cd lib && git clone https://github.com/hypre-space/hypre.git && git -C hypre checkout 5b58261
+(cd lib && git clone https://github.com/hypre-space/hypre.git && git -C hypre checkout 5b58261)
 ```
 
-Build it with the MPI compilers, without Fortran:
-
 ```bash
-cd lib/hypre/src && ./configure --disable-fortran CC=mpicc CXX=mpicxx && make -j8 && make install
+(cd lib/hypre/src && ./configure --disable-fortran CC=mpicc CXX=mpicxx && make -j8 && make install)
 ```
-
-This installs it into `lib/hypre/src/hypre`, with `lib/libHYPRE.a` and `include/`.
 
 ### 4. MUMPS 5.8.1
 
-Download it into `lib/mumps-src`:
-
 ```bash
-mkdir -p lib/mumps-src && cd lib/mumps-src && curl -LO https://mumps-solver.org/MUMPS_5.8.1.tar.gz && tar xzf MUMPS_5.8.1.tar.gz
+mkdir -p lib/mumps-src && (cd lib/mumps-src && curl -LO https://mumps-solver.org/MUMPS_5.8.1.tar.gz && tar xzf MUMPS_5.8.1.tar.gz)
 ```
 
-Start its `Makefile.inc` from the generic one:
-
 ```bash
-cd lib/mumps-src/MUMPS_5.8.1 && cp Make.inc/Makefile.inc.generic Makefile.inc
-```
-
-and set these lines in it, with the path of your `MFEM/` folder: METIS and PORD orderings,
-the MPI compilers, OpenBLAS and ScaLAPACK of Homebrew, and `-fallow-argument-mismatch`,
-which recent gfortran needs for the MPI calls of MUMPS:
-
-```make
-LMETISDIR = /Users/chongran/MFEM/lib/metis/lib
-IMETIS    = -I/Users/chongran/MFEM/lib/metis/include
+(cd lib/mumps-src/MUMPS_5.8.1 && cp Make.inc/Makefile.inc.generic Makefile.inc && cat >> Makefile.inc <<'EOF'
+LMETISDIR  = $(topdir)/../../metis/lib
+IMETIS     = -I$(topdir)/../../metis/include
+LMETIS     = -L$(LMETISDIR) -lmetis
 ORDERINGSF = -Dmetis -Dpord
-CC = mpicc
-FC = mpif90
-FL = mpif90
+CC      = mpicc
+FC      = mpif90
+FL      = mpif90
 LAPACK  = -L/opt/homebrew/opt/openblas/lib -lopenblas
 SCALAP  = -L/opt/homebrew/opt/scalapack/lib -lscalapack
+INCPAR  =
 LIBPAR  = $(SCALAP) $(LAPACK)
 LIBBLAS = -L/opt/homebrew/opt/openblas/lib -lopenblas
 OPTF    = -O2 -fPIC -fallow-argument-mismatch
-OPTC    = -O2 -fPIC
+OPTC    = -O2 -fPIC -I.
+OPTL    = -O2
+EOF
+)
 ```
-
-Build the single and double precision libraries, and copy them and the headers to
-`lib/mumps`:
 
 ```bash
-cd lib/mumps-src/MUMPS_5.8.1 && make s d && mkdir -p ../../mumps && cp -R lib include ../../mumps/
+(cd lib/mumps-src/MUMPS_5.8.1 && make s d && mkdir -p ../../mumps && cp -R lib include ../../mumps/) && rm -rf lib/mumps-src
 ```
 
-This gives `lib/mumps/lib/libdmumps.a`, `libmumps_common.a` and `libpord.a`, with the
-headers in `lib/mumps/include`; `lib/mumps-src` may then be removed.
-
 ### 5. yaml-cpp 0.9.0
-
-Download it into `lib/yaml-cpp/src`:
 
 ```bash
 git clone --branch yaml-cpp-0.9.0 https://github.com/jbeder/yaml-cpp.git lib/yaml-cpp/src
 ```
 
-Build it as a static library and install it into `lib/yaml-cpp`:
-
 ```bash
-cd lib/yaml-cpp && cmake -S src -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD -DYAML_BUILD_SHARED_LIBS=OFF -DYAML_CPP_BUILD_TESTS=OFF -DYAML_CPP_BUILD_TOOLS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && cmake --build build && cmake --install build
+(cd lib/yaml-cpp && cmake -S src -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD -DYAML_BUILD_SHARED_LIBS=OFF -DYAML_CPP_BUILD_TESTS=OFF -DYAML_CPP_BUILD_TOOLS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && cmake --build build && cmake --install build) && rm -rf lib/yaml-cpp/build
 ```
-
-This gives `lib/yaml-cpp/lib/libyaml-cpp.a` and `lib/yaml-cpp/include`;
-`lib/yaml-cpp/build` may then be removed.
 
 ### 6. MFEM 4.10.1
 
-Download it into `lib/mfem`, at the commit used here:
-
 ```bash
-cd lib && git clone https://github.com/mfem/mfem.git && git -C mfem checkout 45799eb
+(cd lib && git clone https://github.com/mfem/mfem.git && git -C mfem checkout 45799eb)
 ```
 
-Configure it in `lib/mfem/build` with MPI, and the paths of METIS, hypre and MUMPS. MUMPS
-also needs ScaLAPACK, OpenBLAS and the Fortran runtime named explicitly:
-
 ```bash
-cd lib/mfem && mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release -DMFEM_USE_MPI=ON -DMFEM_USE_METIS_5=ON -DMETIS_DIR=$PWD/../../metis -DHYPRE_DIR=$PWD/../../hypre/src/hypre -DMFEM_USE_MUMPS=ON -DMUMPS_DIR=$PWD/../../mumps "-DMUMPS_REQUIRED_PACKAGES=MPI;MPI_Fortran;METIS" "-DMUMPS_REQUIRED_LIBRARIES=/opt/homebrew/opt/scalapack/lib/libscalapack.dylib;/opt/homebrew/opt/openblas/lib/libopenblas.dylib;/opt/homebrew/opt/gcc/lib/gcc/current/libgfortran.dylib" -DCMAKE_Fortran_COMPILER=/opt/homebrew/bin/gfortran
+mkdir -p lib/mfem/build && (cd lib/mfem/build && cmake .. -DCMAKE_BUILD_TYPE=Release -DMFEM_USE_MPI=ON -DMFEM_USE_METIS_5=ON -DMETIS_DIR=$PWD/../../metis -DHYPRE_DIR=$PWD/../../hypre/src/hypre -DMFEM_USE_MUMPS=ON -DMUMPS_DIR=$PWD/../../mumps "-DMUMPS_REQUIRED_PACKAGES=MPI;MPI_Fortran;METIS" "-DMUMPS_REQUIRED_LIBRARIES=/opt/homebrew/opt/scalapack/lib/libscalapack.dylib;/opt/homebrew/opt/openblas/lib/libopenblas.dylib;/opt/homebrew/opt/gcc/lib/gcc/current/libgfortran.dylib" -DCMAKE_Fortran_COMPILER=/opt/homebrew/bin/gfortran && make -j8 mfem)
 ```
-
-The output should list `Found HYPRE`, `Found METIS` and `Found MUMPS`. Then build it:
-
-```bash
-cd lib/mfem/build && make -j8 mfem
-```
-
-This gives `lib/mfem/build/libmfem.a`. `lib/mfem/build/MFEMTargets.cmake` records the
-absolute paths of hypre, METIS and MUMPS, so mfem-solids only needs to find MFEM; after
-moving `lib/`, configure and build MFEM again.
 
 ## Building the cases
 
@@ -184,5 +134,3 @@ cd build && ./read_mesh && mpirun -np 2 ./driver && ./vtu_writer
   missing, for example removed by a disk cleaner that deletes build folders; build MFEM
   again with the command above. The programs already built still run, since they link MFEM
   statically.
-- **METIS or yaml-cpp: `Compatibility with CMake < 3.5 has been removed`**: add
-  `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
