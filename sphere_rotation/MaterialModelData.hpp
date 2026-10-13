@@ -31,7 +31,7 @@
 #include "IMaterialModel_vol.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModel_ich_NeoHookean.hpp"
-#include "MaterialModel_vol_Incompressible_Energy.hpp"
+#include "MaterialModel_vol_Incompressible.hpp"
 #include "MaterialModel_vol_Quadratic.hpp"
 
 // The parameters of a region.
@@ -66,7 +66,7 @@ inline std::unique_ptr<IMaterialModel_vol> set_vol_model(int attribute)
 {
    const region_material &region = get_region_material(attribute);
    if (std::isinf(region.kappa))
-      return std::make_unique<MaterialModel_vol_Incompressible_Energy>(region.density);
+      return std::make_unique<MaterialModel_vol_Incompressible>(region.density);
    return std::make_unique<MaterialModel_vol_Quadratic>(region.density, region.kappa);
 }
 

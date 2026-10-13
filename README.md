@@ -221,7 +221,7 @@ given as its first argument. `mesh.file` is relative to the project directory, w
 
 **`sphere_rotation/`** is a gelatin ball in an acrylic skull shell, spun about z by its
 outer surface, in the mixed form. Its folder holds its own `LoadData.hpp`,
-`MaterialModelData.hpp`, nonlinear solver, `VTK_Tools.hpp` and writers, which replace the
+`MaterialModelData.hpp`, nonlinear solver, `VTK_Tools.hpp` and `vtu_writer`, which replace the
 shared ones for its programs:
 
 - `read_mesh` generates the cubed-sphere mesh from the `mesh` section of its `config.yaml`;
@@ -237,7 +237,7 @@ cd sphere_rotation && cmake -B build && cmake --build build
 ```
 
 ```bash
-cd build && ./read_mesh && mpirun -np 4 ./driver && ./vtu_writer && mpirun -np 2 ./csv_writer
+cd build && ./read_mesh && mpirun -np 4 ./driver && ./vtu_writer
 ```
 
 With the default mesh and `dt: 1.0e-4`, the 300 steps take about 25 minutes on 4 ranks of

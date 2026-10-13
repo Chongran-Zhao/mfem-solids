@@ -4,7 +4,7 @@
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
-#    cd build && ./read_mesh && mpirun -np 2 ./driver && ./vtu_writer && mpirun -np 2 ./csv_writer
+#    cd build && ./read_mesh && mpirun -np 4 ./driver && ./vtu_writer
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(sphere_rotation LANGUAGES CXX)
@@ -28,8 +28,3 @@ target_link_libraries(driver PRIVATE ${mfem_libraries})
 add_executable(vtu_writer vtu_writer.cpp)
 target_include_directories(vtu_writer PRIVATE ${include_dirs})
 target_link_libraries(vtu_writer PRIVATE ${mfem_libraries})
-
-# csv_writer takes the materials of the regions.
-add_executable(csv_writer csv_writer.cpp)
-target_include_directories(csv_writer PRIVATE ${include_dirs})
-target_link_libraries(csv_writer PRIVATE ${mfem_libraries})

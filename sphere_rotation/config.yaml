@@ -1,4 +1,4 @@
-# Input of read_mesh, driver, vtu_writer and csv_writer of sphere_rotation.
+# Input of read_mesh, driver and vtu_writer of sphere_rotation.
 # CMake copies it into sphere_rotation/build/, and the programs read the copy
 # of the directory they run in, or the file given as first argument. Units
 # are SI: meters, seconds. The surface of the ball turns about z as given by
@@ -87,13 +87,6 @@ solver:
   linear_rel_tol: 1.0e-8
   linear_max_iter: 200
 
-# Faces and directions reported by csv_writer; csv_writer also writes the
-# energies of the whole body.
-csv_writer:
-  - { face: outer, dir: x }
-  - { face: outer, dir: y }
-  - { face: outer, dir: z }
-
 # Output folders, in the directory the programs run in, and the VTU output:
 # every vtu_interval-th saved step, and the last, with each element cut into
 # vtu_refine^3 hexahedra at its sampling points; the files grow as
@@ -103,4 +96,3 @@ output:
   vtu_interval: 10
   vtu_refine: 2
   gf: results_gf
-  csv: results_csv
