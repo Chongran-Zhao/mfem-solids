@@ -2,12 +2,13 @@
 // vtu_writer.cpp of sphere_rotation
 //
 // The vtu_writer of dynamic_mixed, sampled within each element by the
-// VTK_Tools.hpp of this folder, with the Green-Lagrange strain
-// E = 1/2 (F^T F - I) besides the stresses. Writes the displacement, the
-// velocity, the acceleration, the pressure, the first and second
-// Piola-Kirchhoff stresses and E at the sampling points, and the region of
-// each element, for every vtu_interval-th saved time step, at the physical
-// times of time.csv, with each element cut into vtu_refine^3 hexahedra. The
+// VTK_Tools.hpp of this folder, in spherical components. Writes the
+// displacement, the velocity, the acceleration, the Cauchy and the second
+// Piola-Kirchhoff stresses and the Green-Lagrange strain E = 1/2 (F^T F - I)
+// in spherical components, the displacement also in Cartesian ones, and the
+// pressure at the sampling points, and the region of each element, for
+// every vtu_interval-th saved time step, at the physical times of time.csv,
+// with each element cut into vtu_refine^3 hexahedra. The
 // steps and the fields are those the driver saved; the stresses take the
 // material of the region of the element from MaterialModelData, which must
 // be the one the driver ran with.

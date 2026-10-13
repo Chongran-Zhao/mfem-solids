@@ -8,20 +8,30 @@
 // cube, as the visualization of MixPERIGEE does, so that the curved
 // geometry and the fields of the higher-order elements show within it; the
 // points of an element are its own, not shared with its neighbors. At each
-// point it writes the displacement, the velocity, the acceleration, the
-// pressure, the first and second Piola-Kirchhoff stresses and the
-// Green-Lagrange strain, and for each hexahedron the region of its element,
-// the element attribute. The arrays are Float32 and Int32, written in
-// binary, base64 encoded. Its vtu_writer.cpp, in this folder, includes it
-// instead of the other one.
+// point it writes the displacement, also in Cartesian components, and, in
+// spherical components (r, theta, phi), with theta from the z axis and phi
+// about it, the displacement, the velocity, the acceleration, the Cauchy and
+// the second Piola-Kirchhoff stresses and the Green-Lagrange strain; and the
+// pressure, and for each hexahedron the region of its element, the element
+// attribute. Each quantity takes the spherical basis of the configuration
+// it lives in: the current position x for the velocity, the acceleration
+// and the Cauchy stress, the reference position X for the displacement,
+// S and E,
+//    v_sph = Q(x)^T v,   sigma_sph = Q(x)^T sigma Q(x),
+//    u_sph = Q(X)^T u,   S_sph = Q(X)^T S Q(X),   E_sph = Q(X)^T E Q(X),
+// with Q = [e_r e_theta e_phi], and sigma = J^-1 P F^T. On the z axis phi is
+// taken as 0, at the center also theta. The arrays are Float32 and Int32,
+// written in binary, base64 encoded. Its vtu_writer.cpp, in this folder,
+// includes it instead of the other one.
 //
 // Author: Chongran Zhao
-// Date: Oct. 11, 2026
+// Date: Oct. 13, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #ifndef VTK_TOOLS_HPP
 #define VTK_TOOLS_HPP
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -61,13 +71,13 @@ public:
       mfem::Mesh &mesh = *fespace.GetMesh();
 
       // Point data, Float32, and cell data of the hexahedra.
-      std::vector<float> points, disp_out, velo_out, acce_out, pres_out, PK1_out, PK2_out,
-         E_out;
+      std::vector<float> points, disp_out, disp_sph_out, velo_sph_out, acce_sph_out, pres_out,
+         cauchy_sph_out, PK2_sph_out, E_sph_out;
       std::vector<std::int32_t> connectivity, offsets, regions;
       std::vector<std::uint8_t> types;
 
       mfem::Array<int> vdofs;
-      mfem::Vector elem_disp, coord(3), value(3);
+      mfem::Vector elem_disp, coord(3), current(3), value(3);
       mfem::DenseMatrix dN_dxi, dN_dX;
       for (int ee = 0; ee < mesh.GetNE(); ee++)
       {
@@ -90,35 +100,38 @@ public:
             const mfem::IntegrationPoint &ref_pt = refined.RefPts.IntPoint(qq);
             elem_map.SetIntPoint(&ref_pt);
 
-            // Deformed position x = X + u.
+            // Reference position X and deformed position x = X + u, and the
+            // spherical bases there.
             elem_map.Transform(ref_pt, coord);
             disp.GetVectorValue(elem_map, ref_pt, value);
+            add(coord, value, current);
+            const Tensor2_3D Q_ref = get_spherical_basis(coord);
+            const Tensor2_3D Q_cur = get_spherical_basis(current);
             for (int comp = 0; comp < 3; comp++)
             {
-               points.push_back(static_cast<float>(coord(comp) + value(comp)));
+               points.push_back(static_cast<float>(current(comp)));
                disp_out.push_back(static_cast<float>(value(comp)));
             }
+            append_vector(disp_sph_out, Q_ref, value);
             velo.GetVectorValue(elem_map, ref_pt, value);
-            for (int comp = 0; comp < 3; comp++)
-               velo_out.push_back(static_cast<float>(value(comp)));
+            append_vector(velo_sph_out, Q_cur, value);
             acce.GetVectorValue(elem_map, ref_pt, value);
-            for (int comp = 0; comp < 3; comp++)
-               acce_out.push_back(static_cast<float>(value(comp)));
+            append_vector(acce_sph_out, Q_cur, value);
             const double p = pres.GetValue(elem_map, ref_pt);
             pres_out.push_back(static_cast<float>(p));
 
-            // F, then P, S = F^-1 P and E = 1/2 (F^T F - I) at the point.
+            // F, then P, sigma = J^-1 P F^T, S = F^-1 P and
+            // E = 1/2 (F^T F - I) at the point.
             elem.CalcDShape(ref_pt, dN_dxi);
             mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
             const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(elem_disp, dN_dX);
             const Tensor2_3D PK1 = first_PK_stress(attribute, F, p);
+            const Tensor2_3D cauchy = (1.0 / F.det()) * PK1 * F.transpose();
             const Tensor2_3D PK2 = F.inverse() * PK1;
             const Tensor2_3D E = 0.5 * (F.transpose() * F - Tensor2_3D::identity());
-            for (int ii = 0; ii < 3; ii++)
-               for (int JJ = 0; JJ < 3; JJ++)
-                  PK1_out.push_back(static_cast<float>(PK1(ii, JJ)));
-            append_symmetric(PK2_out, PK2);
-            append_symmetric(E_out, E);
+            append_symmetric(cauchy_sph_out, Q_cur.transpose() * cauchy * Q_cur);
+            append_symmetric(PK2_sph_out, Q_ref.transpose() * PK2 * Q_ref);
+            append_symmetric(E_sph_out, Q_ref.transpose() * E * Q_ref);
          }
 
          // The hexahedra of this element; MFEM and VTK order their vertices
@@ -145,18 +158,19 @@ public:
           << "\" NumberOfCells=\"" << types.size() << "\">\n";
 
       out << "<PointData Vectors=\"displacement\" Scalars=\"pressure\">\n";
-      write_array(out, "Float32", "displacement", {"x", "y", "z"}, disp_out);
-      write_array(out, "Float32", "velocity", {"x", "y", "z"}, velo_out);
-      write_array(out, "Float32", "acceleration", {"x", "y", "z"}, acce_out);
-      write_array(out, "Float32", "pressure", {"p"}, pres_out);
-      write_array(out, "Float32", "first_PK_stress",
-                  {"xx", "xy", "xz", "yx", "yy", "yz", "zx", "zy", "zz"}, PK1_out);
+      const std::vector<std::string> sph = {"r", "theta", "phi"};
       // Only the 6 independent components of the symmetric tensors, in
-      // ParaView's order.
-      write_array(out, "Float32", "second_PK_stress", {"xx", "yy", "zz", "xy", "yz", "xz"},
-                  PK2_out);
-      write_array(out, "Float32", "Green_Lagrange_strain", {"xx", "yy", "zz", "xy", "yz", "xz"},
-                  E_out);
+      // ParaView's order, with r, theta, phi for x, y, z.
+      const std::vector<std::string> sph_sym = {"rr", "theta_theta", "phi_phi",
+                                                "r_theta", "theta_phi", "r_phi"};
+      write_array(out, "Float32", "displacement", {"x", "y", "z"}, disp_out);
+      write_array(out, "Float32", "displacement_sph", sph, disp_sph_out);
+      write_array(out, "Float32", "velocity_sph", sph, velo_sph_out);
+      write_array(out, "Float32", "acceleration_sph", sph, acce_sph_out);
+      write_array(out, "Float32", "pressure", {"p"}, pres_out);
+      write_array(out, "Float32", "Cauchy_stress_sph", sph_sym, cauchy_sph_out);
+      write_array(out, "Float32", "second_PK_stress_sph", sph_sym, PK2_sph_out);
+      write_array(out, "Float32", "Green_Lagrange_strain_sph", sph_sym, E_sph_out);
       out << "</PointData>\n";
 
       out << "<CellData Scalars=\"region\">\n";
@@ -187,6 +201,32 @@ private:
    std::filesystem::path dir;
    const int refine;                                   // hexahedra per edge of an element
    std::vector<std::pair<double, std::string>> steps;  // time and file of each step
+
+   // Q = [e_r e_theta e_phi] at the point pt, the basis vectors as columns,
+   //    e_r     = (sin theta cos phi, sin theta sin phi, cos theta),
+   //    e_theta = (cos theta cos phi, cos theta sin phi, -sin theta),
+   //    e_phi   = (-sin phi, cos phi, 0);
+   // on the z axis phi = 0, at the center also theta = 0.
+   static Tensor2_3D get_spherical_basis(const mfem::Vector &pt)
+   {
+      const double radius = pt.Norml2();
+      const double theta = (radius > 0.0) ? std::acos(pt(2) / radius) : 0.0;
+      const double phi = std::atan2(pt(1), pt(0));
+      const double sin_theta = std::sin(theta), cos_theta = std::cos(theta);
+      const double sin_phi = std::sin(phi), cos_phi = std::cos(phi);
+      return Tensor2_3D(sin_theta * cos_phi, cos_theta * cos_phi, -sin_phi,
+                        sin_theta * sin_phi, cos_theta * sin_phi, cos_phi,
+                        cos_theta, -sin_theta, 0.0);
+   }
+
+   // The components Q^T v of a vector in the basis Q.
+   static void append_vector(std::vector<float> &data, const Tensor2_3D &Q,
+                             const mfem::Vector &vv)
+   {
+      for (int ii = 0; ii < 3; ii++)
+         data.push_back(static_cast<float>(Q(0, ii) * vv(0) + Q(1, ii) * vv(1)
+                                           + Q(2, ii) * vv(2)));
+   }
 
    // The 6 independent components of a symmetric tensor, in ParaView's
    // order xx, yy, zz, xy, yz, xz.
