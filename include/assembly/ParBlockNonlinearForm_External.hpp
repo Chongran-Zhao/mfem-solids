@@ -4,7 +4,7 @@
 // mfem::ParBlockNonlinearForm that only borrows its integrators. MFEM's
 // NonlinearForm can do so through UseExternalIntegrators(), but
 // BlockNonlinearForm has no such option and deletes every integrator added to
-// it; this class leaves them to their owner, as GlobalAssembly_Mixed needs for
+// it; this class leaves them to their owner, as GlobalAssembly needs for
 // the LocalAssembly_Mixed it owns. Assembly is unchanged.
 //
 // Author: Chongran Zhao

@@ -4,7 +4,7 @@
 // LocalAssembly_Mixed with one material per region of the mesh: the element
 // residual and tangent of an element are those of the material of its
 // attribute. It is a LocalAssembly_Mixed, whose own material is that of
-// attribute 1, so that GlobalAssembly_Mixed takes it unchanged; the other
+// attribute 1, so that GlobalAssembly takes it unchanged; the other
 // attributes have a LocalAssembly_Mixed each. get_rho_0 gives the density of
 // attribute 1 only, so the mass matrix is assembled with the density of each
 // region elsewhere.

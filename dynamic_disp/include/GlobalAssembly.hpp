@@ -1,5 +1,5 @@
 // ============================================================================
-// GlobalAssembly_Disp.hpp
+// GlobalAssembly.hpp
 //
 // Parallel global assembly of the displacement form, with the Dirichlet and
 // the Neumann boundary conditions, on the dofs each rank owns:
@@ -17,8 +17,8 @@
 // Date: Oct. 1, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef GLOBAL_ASSEMBLY_DISP_HPP
-#define GLOBAL_ASSEMBLY_DISP_HPP
+#ifndef GLOBAL_ASSEMBLY_HPP
+#define GLOBAL_ASSEMBLY_HPP
 
 #include <memory>
 #include <utility>
@@ -30,15 +30,15 @@
 #include "LocalAssembly_Disp.hpp"
 #include "NeumannBoundary.hpp"
 
-class GlobalAssembly_Disp : public IGlobalAssembly
+class GlobalAssembly : public IGlobalAssembly
 {
 public:
    // Takes the ownership of the local assembly and of the boundary
    // conditions; the global_assembly only borrows the local assembly.
-   GlobalAssembly_Disp(mfem::ParFiniteElementSpace &space,
-                       std::unique_ptr<LocalAssembly_Disp> input_local_assembly,
-                       std::unique_ptr<DirichletBoundary> input_dirichlet,
-                       std::unique_ptr<NeumannBoundary> input_neumann)
+   GlobalAssembly(mfem::ParFiniteElementSpace &space,
+                  std::unique_ptr<LocalAssembly_Disp> input_local_assembly,
+                  std::unique_ptr<DirichletBoundary> input_dirichlet,
+                  std::unique_ptr<NeumannBoundary> input_neumann)
       : IGlobalAssembly(space, std::move(input_dirichlet), std::move(input_neumann)),
         local_assembly(std::move(input_local_assembly)),
         global_assembly(&space)

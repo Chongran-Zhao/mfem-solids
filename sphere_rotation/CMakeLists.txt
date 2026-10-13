@@ -12,8 +12,9 @@ project(sphere_rotation LANGUAGES CXX)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/mfem-solids.cmake)
 
 # The headers of this case come first: its LoadData.hpp, which
-# DirichletBoundary and NeumannBoundary include, and its MaterialModelData.hpp.
-set(case_include_dirs ${CMAKE_CURRENT_SOURCE_DIR} ${include_dirs})
+# DirichletBoundary and NeumannBoundary include, its MaterialModelData.hpp,
+# and GlobalAssembly.hpp in include/.
+set(case_include_dirs ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR} ${include_dirs})
 
 # config.yaml is copied into the build folder, again whenever it changes;
 # the programs read the copy of the directory they run in.

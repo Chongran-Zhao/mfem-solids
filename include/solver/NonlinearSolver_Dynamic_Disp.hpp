@@ -28,7 +28,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "DirichletBoundary.hpp"
-#include "GlobalAssembly_Disp.hpp"
+#include "GlobalAssembly.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha.hpp"
@@ -39,7 +39,7 @@ public:
    // Takes the ownership of the global assembly and of the time method, and
    // assembles the mass matrix; the Newton settings come from the solver
    // section of config.yaml.
-   NonlinearSolver_Dynamic_Disp(std::unique_ptr<GlobalAssembly_Disp> input_global_assembly,
+   NonlinearSolver_Dynamic_Disp(std::unique_ptr<GlobalAssembly> input_global_assembly,
                                 std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
                                 const YAML::Node &solver)
       : mfem::Operator(input_global_assembly->get_num_dofs()),
@@ -239,7 +239,7 @@ private:
 
    // newton_solver points to this operator, the linear solver and the
    // monitor, so it is declared last and goes first.
-   const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R, K and M
+   const std::unique_ptr<GlobalAssembly> global_assembly;   // R, K and M
    const std::unique_ptr<TimeMethod_GenAlpha> time_method;       // alpha_m, alpha_f, gamma, beta
    const std::unique_ptr<mfem::HypreParMatrix> mass;             // M, assembled once
    mfem::MUMPSSolver linear_solver;                              // parallel direct solver of the tangent
