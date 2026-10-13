@@ -2,23 +2,17 @@
 // NonlinearSolver_Dynamic_Mixed.hpp
 //
 // include/solver/NonlinearSolver_Dynamic_Mixed.hpp for sphere_rotation, with
-// four changes; driver.cpp includes it before TimeSolver_Dynamic_Mixed.hpp,
+// three changes; driver.cpp includes it before TimeSolver_Dynamic_Mixed.hpp,
 // so that its include guard keeps the other one out.
 //
 // 1. The mesh has regions of their own materials, from MaterialModelData,
 //    by element attribute: the mass matrix takes the density of each region,
-//    and the preconditioner below its mu, kappa and rho_0.
-// 2. When every region is fully incompressible, as the gelatin ball without
-//    skull, the pressure is fixed at the center of the ball: the
-//    displacement is prescribed on the whole surface, so the pressure is
-//    defined only up to a constant, since a constant pressure p_0 does no
-//    work on any admissible displacement, int p_0 div du dV =
-//    p_0 int du . n dA = 0, and the tangent is singular. The pressure dof at
-//    the vertex nearest to the origin keeps its initial value 0, as a
-//    constrained dof; the pressure elsewhere is relative to the center, and
-//    the motion is not affected. A compressible region, as the skull, sets
-//    the level of the pressure, and nothing is fixed.
-// 3. The linear systems are solved iteratively, which, unlike MUMPS, gets
+//    and the preconditioner below its mu, kappa and rho_0. The mesh must
+//    hold the skull: with the displacement prescribed on the whole surface,
+//    the incompressible gelatin alone would leave the pressure defined only
+//    up to a constant, and the tangent singular; the compressible skull
+//    sets its level.
+// 2. The linear systems are solved iteratively, which, unlike MUMPS, gets
 //    faster with more ranks. The tangent
 //       K = [A  B^T; B  C],   A = c M + alpha_f K_uu,   B = alpha_f K_pu,
 //       C = alpha_f K_pp = -M_p[alpha_f / kappa],
@@ -38,7 +32,7 @@
 //    first inverse is one Jacobi sweep, the second one V-cycle of
 //    BoomerAMG, set up again when dt changes. The initial acceleration
 //    solves M a_0 = r by CG, preconditioned by the diagonal of M.
-// 4. Newton's method starts the skull, nearly rigid, from the rigid
+// 3. Newton's method starts the skull, nearly rigid, from the rigid
 //    rotation of its surface, LoadData::disp_loading of the face "outer",
 //    instead of u_pred: from u_pred, only its surface would move, and the
 //    stiff skull would start with a residual of hundreds of newtons, which
@@ -59,14 +53,12 @@
 // ranks.
 //
 // Author: Chongran Zhao
-// Date: Oct. 11, 2026
+// Date: Oct. 13, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #ifndef NONLINEAR_SOLVER_DYNAMIC_MIXED_HPP
 #define NONLINEAR_SOLVER_DYNAMIC_MIXED_HPP
 
-#include <cmath>
-#include <limits>
 #include <memory>
 #include <utility>
 
@@ -105,29 +97,20 @@ public:
         sol_n(global_assembly->get_offsets()),
         newton_solver(global_assembly->get_comm())
    {
-      // The pressure is fixed when no region of the mesh is compressible.
-      bool is_compressible = false;
-      for (int attribute : space_p.GetParMesh()->attributes)
-         is_compressible = is_compressible || !std::isinf(get_region_material(attribute).kappa);
-      if (!is_compressible)
-         set_fixed_pressure(space_p);
-
       // The displacement dofs of the skull elements, on this rank.
       const mfem::ParMesh &mesh = *space_u.GetParMesh();
-      if (mesh.attribute_sets.AttributeSetExists("skull"))
-      {
-         const mfem::Array<int> skull_marker =
-            mesh.attribute_sets.GetAttributeSetMarker("skull");
-         mfem::Array<int> elem_vdofs;
-         for (int ee = 0; ee < mesh.GetNE(); ee++)
-            if (skull_marker[mesh.GetAttribute(ee) - 1])
-            {
-               space_u.GetElementVDofs(ee, elem_vdofs);
-               skull_vdofs.Append(elem_vdofs);
-            }
-         skull_vdofs.Sort();
-         skull_vdofs.Unique();
-      }
+      MFEM_VERIFY(mesh.attribute_sets.AttributeSetExists("skull"),
+                  "The mesh has no skull; set mesh.skull_elements >= 1.");
+      const mfem::Array<int> skull_marker = mesh.attribute_sets.GetAttributeSetMarker("skull");
+      mfem::Array<int> elem_vdofs;
+      for (int ee = 0; ee < mesh.GetNE(); ee++)
+         if (skull_marker[mesh.GetAttribute(ee) - 1])
+         {
+            space_u.GetElementVDofs(ee, elem_vdofs);
+            skull_vdofs.Append(elem_vdofs);
+         }
+      skull_vdofs.Sort();
+      skull_vdofs.Unique();
 
       // M_p[1 / (alpha_f mu)], L_p[1 / rho_0] and M_p[alpha_f / kappa], by
       // region; the sum of the last two is formed by set_step.
@@ -285,28 +268,21 @@ public:
 
    // Required by MFEM: overrides mfem::Operator::Mult, which NewtonSolver
    // calls at every iteration for the residual.
-   // R_dyn(u_{n+1},p_{n+1}), zero on the constrained dofs and at the fixed
-   // pressure.
+   // R_dyn(u_{n+1},p_{n+1}), zero on the constrained dofs.
    void Mult(const mfem::Vector &sol, mfem::Vector &residual) const override
    {
       assemble_residual(sol, residual);
       global_assembly->set_essential_bdr(residual);
-      for (int dof : fixed_pres_dof)
-         residual(num_dofs_u + dof) = 0.0;
    }
 
    // Required by MFEM: overrides mfem::Operator::GetGradient, which
    // NewtonSolver calls at every iteration for the tangent.
-   // K_eff(u_{n+1},p_{n+1}), the identity on the constrained dofs and at the
-   // fixed pressure; also sets the blocks A and B of the preconditioner.
+   // K_eff(u_{n+1},p_{n+1}), the identity on the constrained dofs; also sets
+   // the blocks A and B of the preconditioner.
    mfem::Operator &GetGradient(const mfem::Vector &sol) const override
    {
       tangent = assemble_tangent(sol);
       global_assembly->set_essential_bdr(*tangent);
-      mfem::Array<int> fixed_dof(fixed_pres_dof);
-      for (int &dof : fixed_dof)
-         dof += num_dofs_u;
-      tangent->EliminateBC(fixed_dof, mfem::Operator::DIAG_ONE);
 
       // A and B with the displacement constraints: A the identity on them,
       // B without their columns.
@@ -375,36 +351,6 @@ private:
       mutable mfem::Vector work;
    };
 
-   // The pressure vertex nearest to the origin: each rank finds the nearest
-   // of the vertices whose dof it owns, MPI_MINLOC picks the nearest of all,
-   // and its rank fixes that dof. In H1, the dof of vertex vv is the vv-th
-   // one.
-   void set_fixed_pressure(const mfem::ParFiniteElementSpace &space_p)
-   {
-      const mfem::ParMesh &mesh = *space_p.GetParMesh();
-      struct { double distance; int rank; } nearest, global_nearest;
-      nearest = {std::numeric_limits<double>::max(), space_p.GetMyRank()};
-      int nearest_dof = -1;
-      for (int vv = 0; vv < mesh.GetNV(); vv++)
-      {
-         const int dof = space_p.GetLocalTDofNumber(vv);
-         if (dof < 0)
-            continue;
-         const double *coord = mesh.GetVertex(vv);
-         const double distance = std::sqrt(coord[0] * coord[0] + coord[1] * coord[1]
-                                           + coord[2] * coord[2]);
-         if (distance < nearest.distance)
-         {
-            nearest.distance = distance;
-            nearest_dof = dof;
-         }
-      }
-      MPI_Allreduce(&nearest, &global_nearest, 1, MPI_DOUBLE_INT, MPI_MINLOC,
-                    space_p.GetComm());
-      if (global_nearest.rank == space_p.GetMyRank())
-         fixed_pres_dof.Append(nearest_dof);
-   }
-
    // Sets the step from time_n to time_n + input_dt: copies into members what
    // Mult and GetGradient need besides u_{n+1} and p_{n+1}, the known part of
    // Newmark's formula for u_{n+1},
@@ -425,13 +371,12 @@ private:
       if (global_assembly->get_neumann().is_traction_load())
          global_assembly->set_traction_load(time_n + time_method->get_alpha_f() * dt);
 
-      // L_p[1 / rho_0] / c + M_p[alpha_f / kappa], with the fixed pressure
-      // constrained, for the inertial part of S^-1, when dt changes.
+      // L_p[1 / rho_0] / c + M_p[alpha_f / kappa], for the inertial part of
+      // S^-1, when dt changes; the skull makes it nonsingular.
       if (dt != inertia_dt)
       {
          const double cc = time_method->get_alpha_m() / (time_method->get_beta() * dt * dt);
          pres_inertia.reset(mfem::Add(1.0 / cc, *pres_laplace, 1.0, *pres_compress));
-         pres_inertia->EliminateBC(fixed_pres_dof, mfem::Operator::DIAG_ONE);
          amg_p.SetOperator(*pres_inertia);
          inertia_dt = dt;
       }
@@ -499,8 +444,6 @@ private:
    const std::unique_ptr<GlobalAssembly_Mixed> global_assembly;  // R, K and M
    const std::unique_ptr<TimeMethod_GenAlpha> time_method;       // alpha_m, alpha_f, gamma, beta
    const std::unique_ptr<mfem::HypreParMatrix> mass;             // M of the displacement, assembled once
-   const int num_dofs_u = mass->Height();                        // displacement dofs this rank owns
-   mfem::Array<int> fixed_pres_dof;                              // the fixed pressure dof, if any and this rank owns it
    mfem::Array<int> skull_vdofs;                                 // displacement dofs of the skull on this rank
    std::unique_ptr<mfem::HypreParMatrix> pres_viscous;           // M_p[1 / (alpha_f mu)]
    std::unique_ptr<mfem::HypreParMatrix> pres_laplace;           // L_p[1 / rho_0]

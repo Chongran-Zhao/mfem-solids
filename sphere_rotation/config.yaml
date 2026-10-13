@@ -6,7 +6,7 @@
 
 mesh:
   # Outer radius of the ball, that of the skull, and radius of the gelatin
-  # inside; without skull, gelatin_radius = radius.
+  # inside, gelatin_radius < radius.
   radius: 0.0957596
   gelatin_radius: 0.089
 
@@ -24,7 +24,7 @@ mesh:
   radial_elements: 10
   radial_ratio: 0.5
 
-  # Element layers of the skull, of even thickness; 0 for no skull.
+  # Element layers of the skull, of even thickness, at least 1.
   skull_elements: 2
 
   # inner_elements, radial_elements and skull_elements set the mesh size: to

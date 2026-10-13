@@ -6,7 +6,7 @@
 // gelatin surface, of radius R_g, then the skull, from R_g to the outer
 // radius R. The elements of the gelatin have attribute 1, named "gelatin",
 // those of the skull attribute 2, named "skull"; the outer surface is named
-// "outer". Without skull layers, the ball is all gelatin, and R_g = R.
+// "outer".
 // Step 1: read the mesh section of config.yaml.
 // Step 2: build the straight mesh in the logical coordinates.
 // Step 3: curve it and map it onto the ball.
@@ -65,8 +65,8 @@ int main(int argc, char *argv[])
 
    MFEM_VERIFY(inner_elements % 2 == 0, "inner_elements must be even.");
    MFEM_VERIFY(inner_size > 0.0 && inner_size < 1.0, "inner_size must be in (0, 1).");
-   MFEM_VERIFY((skull_elements > 0) == (gelatin_radius < radius),
-               "Skull layers need gelatin_radius < radius, and none gelatin_radius = radius.");
+   MFEM_VERIFY(skull_elements >= 1 && gelatin_radius < radius,
+               "The skull needs skull_elements >= 1 and gelatin_radius < radius.");
    const int num_layers = radial_elements + skull_elements;
 
    // 2. A vertex is named by its index (ii, jj, kk) on the grid of the inner
@@ -204,8 +204,7 @@ int main(int argc, char *argv[])
    //    volume of the curved elements of each region is compared with the
    //    exact one.
    mesh.attribute_sets.SetAttributeSet("gelatin", mfem::Array<int>({1}));
-   if (skull_elements > 0)
-      mesh.attribute_sets.SetAttributeSet("skull", mfem::Array<int>({2}));
+   mesh.attribute_sets.SetAttributeSet("skull", mfem::Array<int>({2}));
    mesh.bdr_attribute_sets.SetAttributeSet("outer", mfem::Array<int>({1}));
 
    std::array<double, 2> volume = {0.0, 0.0};
@@ -229,7 +228,7 @@ int main(int argc, char *argv[])
              << std::setw(20) << "vertices" << mesh.GetNV() << '\n'
              << std::setw(20) << "boundary elements" << mesh.GetNBE() << " (outer)\n";
    const std::array<std::string, 2> region_names = {"gelatin", "skull"};
-   for (int region = 0; region < 1 + (skull_elements > 0); region++)
+   for (int region = 0; region < 2; region++)
       mfem::out << std::setw(20) << region_names[region] + " volume" << std::scientific
                 << std::setprecision(4) << volume[region] << ", error " << std::setprecision(3)
                 << (volume[region] - exact_volume[region]) / exact_volume[region]
