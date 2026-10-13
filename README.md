@@ -99,7 +99,7 @@ saves it as `results_gf/mesh.mesh`; its element order is that of the ranks, so
 ### Dependencies
 
 The project was developed on macOS (Apple silicon) with the versions below. The libraries
-are built in `../../lib`, next to `projects/`; change the paths in `cmake/mfem-solids.cmake`
+are built in `../lib`, next to `mfem-solids/`; change the paths in `cmake/mfem-solids.cmake`
 if yours are elsewhere.
 
 | Package | Version | Where |
@@ -119,8 +119,7 @@ MFEM/
 ├── lib/
 │   ├── metis/  hypre/  mumps-src/  mumps/  yaml-cpp/
 │   └── mfem/           (built in mfem/build)
-└── projects/
-    └── mfem-solids/
+└── mfem-solids/
 ```
 
 `cmake/mfem-solids.cmake` finds MFEM in `lib/mfem/build` and yaml-cpp in

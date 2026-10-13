@@ -79,8 +79,8 @@ class NonlinearSolver_Dynamic_Mixed : public mfem::Operator
 public:
    // Takes the ownership of the global assembly and of the time method, and
    // assembles the mass matrix on space_u and the pressure operators of the
-   // preconditioner on space_p; the Newton and the GMRES settings come from
-   // the solver section of config.yaml.
+   // preconditioner on space_p; the Newton settings come from the solver
+   // section of config.yaml.
    NonlinearSolver_Dynamic_Mixed(mfem::ParFiniteElementSpace &space_u,
                                  mfem::ParFiniteElementSpace &space_p,
                                  std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
@@ -135,10 +135,13 @@ public:
       amg_u.SetPrintLevel(0);
       preconditioner.SetDiagonalBlock(1, &schur_inverse);
 
-      linear_solver.SetRelTol(solver["linear_rel_tol"].as<double>());
+      // GMRES to 1e-8, below the Newton tolerance, so that Newton keeps its
+      // convergence; it takes 25 to 40 iterations, and at most 200, without
+      // restart.
+      linear_solver.SetRelTol(1.0e-8);
       linear_solver.SetAbsTol(0.0);
-      linear_solver.SetMaxIter(solver["linear_max_iter"].as<int>());
-      linear_solver.SetKDim(solver["linear_max_iter"].as<int>());
+      linear_solver.SetMaxIter(200);
+      linear_solver.SetKDim(200);
       linear_solver.SetPrintLevel(mfem::IterativeSolver::PrintLevel().Warnings().Errors());
       linear_solver.SetPreconditioner(preconditioner);
       newton_solver.SetOperator(*this);

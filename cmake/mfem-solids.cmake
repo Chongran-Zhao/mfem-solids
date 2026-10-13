@@ -19,8 +19,8 @@ endif()
 # The root of mfem-solids, the parent of this file's folder.
 get_filename_component(project_dir "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 
-# Libraries installed in MFEM/lib.
-set(lib_dir "${project_dir}/../../lib")
+# Libraries installed in MFEM/lib, next to mfem-solids.
+set(lib_dir "${project_dir}/../lib")
 
 find_package(MFEM REQUIRED HINTS "${lib_dir}/mfem/build")
 message(STATUS "MFEM ${MFEM_VERSION} at ${MFEM_DIR}")

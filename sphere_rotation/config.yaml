@@ -72,20 +72,18 @@ Dirichlet:
 Neumann:
   faces: []
 
-# Newton's method settings, and those of GMRES, the linear solver, with the
-# block preconditioner of NonlinearSolver_Dynamic_Mixed.hpp of this folder.
-# The residual of the stiff skull cannot drop below about 1e-9 N, its bulk
+# Newton's method settings; the linear solver is GMRES, with the block
+# preconditioner of NonlinearSolver_Dynamic_Mixed.hpp of this folder. The
+# residual of the stiff skull cannot drop below about 1e-9 N, its bulk
 # modulus, about 3e9 Pa, times the round-off of J - 1, so newton_abs_tol is
-# above that. With the skull started from the rotation of its surface, one
-# Newton iteration brings the residual to about 1e-6 of its start, which
-# newton_rel_tol = 1e-5 accepts; the fields then differ from those of 1e-7
-# by less than 1e-6.
+# above that. With the skull started from the rotation of its surface, the
+# residual starts at about 1 N, and one Newton iteration brings it to about
+# 1e-6 of that, which newton_rel_tol = 1e-5 accepts; the fields then differ
+# from those of 1e-7 by less than 1e-6.
 solver:
   newton_rel_tol: 1.0e-5
   newton_abs_tol: 1.0e-8
   newton_max_iter: 20
-  linear_rel_tol: 1.0e-8
-  linear_max_iter: 200
 
 # Output folders, in the directory the programs run in, and the VTU output:
 # every vtu_interval-th saved step, and the last, with each element cut into
