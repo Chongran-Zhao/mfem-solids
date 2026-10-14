@@ -28,10 +28,10 @@
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
-#include "NonlinearSolver_Dynamic_Disp.hpp"
+#include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha.hpp"
-#include "TimeSolver_Dynamic_Disp.hpp"
+#include "TimeSolver.hpp"
 #include "Vector_3D.hpp"
 
 int main(int argc, char *argv[])
@@ -87,7 +87,8 @@ int main(int argc, char *argv[])
    // 5. Set up the boundary conditions; a prescribed displacement and a
    //    traction may act together.
    auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
-   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u,
+                                                    LoadData::surface_traction);
    dirichlet->print_fixed_bc();
    if (dirichlet->is_disp_load())
       dirichlet->print_disp_load();
@@ -109,10 +110,10 @@ int main(int argc, char *argv[])
    //    time method, and the time solver, which owns the nonlinear solver.
    auto time_method =
       std::make_unique<TimeMethod_GenAlpha>(config["time_method"]["rho_inf"].as<double>());
-   auto nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic_Disp>(
+   auto nonlinear_solver = std::make_unique<NonlinearSolver>(
       std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
-   auto time_solver = std::make_unique<TimeSolver_Dynamic_Disp>(
+   auto time_solver = std::make_unique<TimeSolver>(
       std::move(nonlinear_solver), config["time"]["dt"].as<double>(),
       config["time"]["final_time"].as<double>(), results_dir, mesh);
 

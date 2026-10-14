@@ -1,8 +1,8 @@
 // ============================================================================
 // vtu_writer.cpp of sphere_rotation
 //
-// The vtu_writer of dynamic_mixed, sampled within each element by the
-// VTK_Tools.hpp of this folder, in spherical components. Writes the
+// The vtu_writer of dynamic_mixed, sampled within each element by
+// VTK_Tools_Sphere, in spherical components. Writes the
 // displacement, the velocity, the acceleration, the Cauchy and the second
 // Piola-Kirchhoff stresses and the Green-Lagrange strain E = 1/2 (F^T F - I)
 // in spherical components, the displacement also in Cartesian ones, and the
@@ -36,7 +36,7 @@
 #include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
 #include "Tensor2_3D.hpp"
-#include "VTK_Tools.hpp"
+#include "VTK_Tools_Sphere.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -94,8 +94,8 @@ int main(int argc, char *argv[])
    };
 
    const int vtu_interval = config["output"]["vtu_interval"].as<int>();
-   VTK_Tools output(config["output"]["vtu"].as<std::string>(),
-                    config["output"]["vtu_refine"].as<int>());
+   VTK_Tools_Sphere output(config["output"]["vtu"].as<std::string>(),
+                           config["output"]["vtu_refine"].as<int>());
 
    // 4. Write every vtu_interval-th saved step, and the last one.
    for (std::size_t ss = 0; ss < saved_steps.size(); ss++)
@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
          SystemTools::print_space(*pres->FESpace());
       }
 
-      output.save(step, time, *disp, *velo, *acce, *pres, first_PK_stress);
+      output.save(step, time, *disp, velo.get(), acce.get(), pres.get(), first_PK_stress);
    }
 
    mfem::out << '\n';

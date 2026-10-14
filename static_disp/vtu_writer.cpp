@@ -1,12 +1,14 @@
 // ============================================================================
 // vtu_writer.cpp
 //
-// Writes the displacement, the pressure, and the first and second
-// Piola-Kirchhoff stresses of each load step for ParaView, from the
-// displacement saved by the driver. The pressure p(J) and the stress are
-// computed at the element centers with the material of MaterialModelData,
-// which must be the one the driver ran with. It is serial and reads the
-// results on results/mesh.mesh, the mesh the driver gathered them onto.
+// Writes the displacement, the pressure, the Cauchy and the second
+// Piola-Kirchhoff stresses and the Green-Lagrange strain of each load step
+// for ParaView, from the displacement saved by the driver, sampled within
+// each element by VTK_Tools, which cuts it into vtu_refine^3 hexahedra. The
+// stress is computed at the sampling points with the material of
+// MaterialModelData, which must be the one the driver ran with, and the
+// pressure is p = -tr(sigma) / 3. It is serial and reads the results on
+// results/mesh.mesh, the mesh the driver gathered them onto.
 //
 // Author: Chongran Zhao
 // Date: Sep. 26, 2026
@@ -18,7 +20,6 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#include <vector>
 
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
@@ -60,15 +61,14 @@ int main(int argc, char *argv[])
    // The material; it holds no state, so this program creates its own.
    const std::unique_ptr<const MaterialModel> material = set_material_model();
 
-   // Pressure p(J), piecewise constant, and the first and second
-   // Piola-Kirchhoff stresses P and S, at the element centers.
-   const int dim = mesh.Dimension();
-   mfem::L2_FECollection fec_center(0, dim);
-   mfem::FiniteElementSpace space_pres(&mesh, &fec_center);
-   mfem::GridFunction pres(&space_pres);
-   std::vector<Tensor2_3D> PK1(mesh.GetNE()), PK2(mesh.GetNE());
+   // P = F S(F) of the material, at the deformation gradient F of a point.
+   auto first_PK_stress = [&](int, const Tensor2_3D &F, double)
+   {
+      return F * material->get_2nd_PK_stress(F);
+   };
 
-   VTK_Tools output(config["output"]["vtu"].as<std::string>());
+   VTK_Tools output(config["output"]["vtu"].as<std::string>(),
+                    config["output"]["vtu_refine"].as<int>());
 
    for (int step = 0; step <= load_steps; step++)
    {
@@ -76,17 +76,8 @@ int main(int argc, char *argv[])
       if (step == 0)
          SystemTools::print_space(*disp->FESpace());
 
-      for (int ee = 0; ee < mesh.GetNE(); ee++)
-      {
-         const Tensor2_3D F =
-            VTK_Tools::get_center_deformation_gradient(*disp->FESpace(), *disp, ee);
-         pres(ee) = material->get_p(F.det());
-         PK2[ee] = material->get_2nd_PK_stress(F);
-         PK1[ee] = F * PK2[ee];
-      }
-
       const double time = static_cast<double>(step) / load_steps;
-      output.save(step, time, *disp, pres, PK1, PK2);
+      output.save(step, time, *disp, nullptr, nullptr, nullptr, first_PK_stress);
    }
 
    mfem::out << '\n';

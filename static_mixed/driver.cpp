@@ -23,13 +23,14 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
+#include "LoadData.hpp"
 #include "LocalAssembly_Mixed.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
-#include "NonlinearSolver_Static_Mixed.hpp"
+#include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
-#include "TimeSolver_Static_Mixed.hpp"
+#include "TimeSolver.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -76,7 +77,8 @@ int main(int argc, char *argv[])
 
    // 4. Set up the boundary conditions, on the displacement only.
    auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
-   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u,
+                                                    LoadData::surface_traction);
    const int num_load_steps = config["loading"]["load_steps"].as<int>();
 
    // The loading is either a prescribed displacement or a traction.
@@ -115,10 +117,10 @@ int main(int argc, char *argv[])
 
    // 7. Set up the nonlinear solver, which owns the global assembly, and the
    //    time solver, which owns the nonlinear solver.
-   auto nonlinear_solver = std::make_unique<NonlinearSolver_Static_Mixed>(
+   auto nonlinear_solver = std::make_unique<NonlinearSolver>(
       std::move(global_assembly), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
-   auto time_solver = std::make_unique<TimeSolver_Static_Mixed>(
+   auto time_solver = std::make_unique<TimeSolver>(
       std::move(nonlinear_solver), num_load_steps, results_dir, mesh);
 
    // 8. Solve the load steps.

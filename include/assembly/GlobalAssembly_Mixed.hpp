@@ -7,10 +7,14 @@
 //    residual        R(u,p) = F_int(u,p) - F_ext, from one parallel block
 //                    form over LocalAssembly_Mixed;
 //    tangent         K(u,p) = dR/d(u,p), one HypreParMatrix of both fields,
-//                    assembled from the element tangents.
+//                    assembled from the element tangents;
+//    mass            M = int rho_0 N_a N_b dV of the displacement only, for
+//                    the dynamics.
 // set_essential_bdr sets R to zero and K to the identity on the constrained
 // displacement dofs, and, with an increment of the prescribed displacement,
-// also moves the constrained columns of K to the right-hand side.
+// also moves the constrained columns of K to the right-hand side. On each
+// rank the displacement rows come first in K, so the displacement dofs keep
+// their numbers.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -39,34 +43,28 @@ public:
                         std::unique_ptr<LocalAssembly_Mixed> input_local_assembly,
                         std::unique_ptr<DirichletBoundary> input_dirichlet,
                         std::unique_ptr<NeumannBoundary> input_neumann)
-      : local_assembly(std::move(input_local_assembly)),
+      : space(space_u),
         dirichlet(std::move(input_dirichlet)),
         neumann(std::move(input_neumann)),
         local_traction(&space_u),
+        ess_tdof_list(dirichlet->get_ess_tdof_list()),
         external_force(space_u.GetTrueVSize()),
-        ess_tdof_list(dirichlet->get_ess_tdof_list())
+        local_assembly(std::move(input_local_assembly))
    {
-      mfem::Array<mfem::ParFiniteElementSpace *> spaces({&space_u, &space_p});
-      global_assembly.SetParSpaces(spaces);
-      global_assembly.AddDomainIntegrator(local_assembly.get());
-
       external_force = 0.0;
       if (neumann->is_traction_load())
          neumann->add_traction_integrators(local_traction);
-   }
 
-   // Set the tractions to time tt and assemble F_ext: each rank integrates
-   // over its boundary elements, and ParallelAssemble sums the parts of the
-   // shared dofs onto the rank that owns them.
-   void set_traction_load(double tt)
-   {
-      neumann->set_time(tt);
-      local_traction.Assemble();
-      local_traction.ParallelAssemble(external_force);
+      mfem::Array<mfem::ParFiniteElementSpace *> spaces({&space_u, &space_p});
+      global_assembly.SetParSpaces(spaces);
+      global_assembly.AddDomainIntegrator(local_assembly.get());
    }
 
    // Number of unknowns this rank owns, displacement and pressure.
    int get_num_dofs() const { return global_assembly.Height(); }
+
+   // The ranks of the displacement space.
+   MPI_Comm get_comm() const { return space.GetComm(); }
 
    // Offsets of the displacement and the pressure blocks of the dofs this
    // rank owns, [0, n_u, n_u + n_p].
@@ -75,20 +73,14 @@ public:
       return global_assembly.GetBlockTrueOffsets();
    }
 
-   // The ranks of the spaces.
-   MPI_Comm get_comm() const { return global_assembly.ParFESpace(0)->GetComm(); }
-
-   // Consistent mass M_ab = int rho_0 N_a N_b dV of the displacement, without
-   // constraints, with rho_0 of the material; the pressure has no mass. It is
-   // assembled once, for the dynamics, and the caller owns it.
-   std::unique_ptr<mfem::HypreParMatrix> assemble_mass()
+   // Update the traction coefficients and assemble F_ext on the
+   // displacement dofs this rank owns; ParallelAssemble sums the shared
+   // contributions onto the owning rank.
+   void set_traction_load(double tt)
    {
-      mfem::ConstantCoefficient rho(local_assembly->get_rho_0());
-      mfem::ParBilinearForm mass(global_assembly.ParFESpace(0));
-      mass.AddDomainIntegrator(new mfem::VectorMassIntegrator(rho));
-      mass.Assemble();
-      mass.Finalize();
-      return std::unique_ptr<mfem::HypreParMatrix>(mass.ParallelAssemble());
+      neumann->set_time(tt);
+      local_traction.Assemble();
+      local_traction.ParallelAssemble(external_force);
    }
 
    // R(u,p) at every dof this rank owns; the pressure has no external force.
@@ -113,35 +105,45 @@ public:
       return blocks;
    }
 
-   // K(u,p) on the dofs this rank owns, its blocks copied into one new
-   // HypreParMatrix, which the caller owns; its rows on each rank are those
-   // of the displacement, then of the pressure, as in get_offsets, so the
-   // constrained dofs keep their numbers.
-   std::unique_ptr<mfem::HypreParMatrix> assemble_tangent(const mfem::Vector &sol) const
+   // K(u,p) on the dofs this rank owns, with its blocks merged into one
+   // matrix owned by this assembly. The caller may change it until the
+   // next assemble_tangent call.
+   mfem::HypreParMatrix &assemble_tangent(const mfem::Vector &sol) const
    {
       mfem::Array2D<const mfem::HypreParMatrix *> blocks = assemble_tangent_blocks(sol);
-      return std::unique_ptr<mfem::HypreParMatrix>(mfem::HypreParMatrixFromBlocks(blocks));
+      tangent.reset(mfem::HypreParMatrixFromBlocks(blocks));
+      return *tangent;
    }
 
-   // R zero on the constrained dofs, which carry no equation.
+   // M of the displacement on the dofs this rank owns, without
+   // constraints; its size is n_u, not get_num_dofs(). The caller owns it.
+   std::unique_ptr<mfem::HypreParMatrix> assemble_mass() const
+   {
+      mfem::ConstantCoefficient rho(local_assembly->get_rho_0());
+      mfem::ParBilinearForm mass(&space);
+      mass.AddDomainIntegrator(new mfem::VectorMassIntegrator(rho));
+      mass.Assemble();
+      mass.Finalize();
+      return std::unique_ptr<mfem::HypreParMatrix>(mass.ParallelAssemble());
+   }
+
+   // Zero the constrained residual entries, which carry no equation.
    void set_essential_bdr(mfem::Vector &residual) const
    {
       for (int dof : ess_tdof_list)
          residual(dof) = 0.0;
    }
 
-   // K the identity on the constrained dofs; also for a matrix of the
-   // displacement only, e.g. the mass.
+   // Identity on the constrained dofs of a tangent or displacement mass
+   // matrix.
    void set_essential_bdr(mfem::HypreParMatrix &tangent) const
    {
       tangent.EliminateBC(ess_tdof_list, mfem::Operator::DIAG_ONE);
    }
 
-   // K the identity on the constrained dofs, with the increment g of the
-   // prescribed displacement on them moved to the right-hand side:
-   //    rhs -= K g on the free dofs,   rhs = g on the constrained dofs.
-   // EliminateRowsCols takes the constrained rows and columns out of K into
-   // K_e, and EliminateBC moves K_e g to the right-hand side.
+   // Also move the prescribed increment through the eliminated columns to
+   // the right-hand side: rhs -= K g on the free dofs, rhs = g on the
+   // constrained ones. EliminateRowsCols returns the removed entries in K_e.
    void set_essential_bdr(mfem::HypreParMatrix &tangent,
                           const mfem::Vector &prescribed_increment,
                           mfem::Vector &rhs) const
@@ -151,22 +153,22 @@ public:
       tangent.EliminateBC(*eliminated, ess_tdof_list, prescribed_increment, rhs);
    }
 
-   // The Dirichlet boundary conditions, whose values the nonlinear solver sets.
    const DirichletBoundary &get_dirichlet() const { return *dirichlet; }
-
-   // The Neumann boundary conditions.
    const NeumannBoundary &get_neumann() const { return *neumann; }
 
 private:
+   mfem::ParFiniteElementSpace &space;                    // the displacement space, outlives this
+   const std::unique_ptr<DirichletBoundary> dirichlet;    // constrained displacement dofs and their values
+   const std::unique_ptr<NeumannBoundary> neumann;        // tractions
+   mfem::ParLinearForm local_traction;                    // destroyed before the tractions
+   const mfem::Array<int> ess_tdof_list;                  // constrained displacement dofs this rank owns
+   mfem::Vector external_force;                           // F_ext on the displacement dofs this rank owns
+
    // Declared before global_assembly, so that global_assembly, which
    // borrows it, goes first.
    const std::unique_ptr<LocalAssembly_Mixed> local_assembly;
-   const std::unique_ptr<DirichletBoundary> dirichlet;    // constrained dofs and their values
-   const std::unique_ptr<NeumannBoundary> neumann;        // tractions
    ParBlockNonlinearForm_External global_assembly;        // R + F_ext and K, without constraints
-   mfem::ParLinearForm local_traction;                    // F_ext on the elements of this rank
-   mfem::Vector external_force;                           // F_ext on the displacement dofs this rank owns
-   const mfem::Array<int> ess_tdof_list;                  // constrained displacement dofs this rank owns
+   mutable std::unique_ptr<mfem::HypreParMatrix> tangent; // merged tangent, owned here
 };
 
 #endif

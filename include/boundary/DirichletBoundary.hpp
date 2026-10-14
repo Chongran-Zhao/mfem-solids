@@ -6,6 +6,8 @@
 // ParFiniteElementSpace; the constrained dofs are those this rank owns,
 // numbered on this rank. Applying and printing are collective, over all
 // ranks.
+// The prescribed values come from the loading functions of the case, such
+// as LoadData::disp_loading, which its caller passes.
 //
 // Author: Chongran Zhao
 // Date: Sep. 27, 2026
@@ -25,11 +27,15 @@
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 
-#include "LoadData.hpp"
+#include "Vector_3D.hpp"
 
 class DirichletBoundary
 {
 public:
+   // A loading function of the case, the value at the reference position
+   // pt, the time tt and the named face, e.g. LoadData::disp_loading.
+   using Loading = Vector_3D (*)(const mfem::Vector &pt, double tt, const std::string &face);
+
    // Reads the Dirichlet section of config.yaml.
    DirichletBoundary(const YAML::Node &paras, mfem::ParFiniteElementSpace &fespace)
       : comm(fespace.GetComm())
@@ -58,7 +64,8 @@ public:
          disp_fixed_list.push_back(fixed);
       }
 
-      // Displacement-driven faces; the values come from LoadData::disp_loading.
+      // Displacement-driven faces; the values come from the loading the
+      // caller gives apply_load_bc.
       for (const YAML::Node &bc : paras["disp_bc"])
       {
          const std::string input_face = bc["face"].as<std::string>();
@@ -96,19 +103,21 @@ public:
       }
    }
 
-   // Apply the disp loading given by LoadData::disp_loading(pt, tt).
-   void apply_disp_load_bc(double tt, mfem::ParGridFunction &disp) const
+   // Project loading(pt, tt, face), the prescribed displacement or its
+   // velocity at time tt, e.g. LoadData::disp_loading or
+   // LoadData::velo_loading of the case, onto the dofs of every entry of
+   // disp_bc of field.
+   void apply_load_bc(double tt, Loading loading, mfem::ParGridFunction &field) const
    {
-      apply_load_bc(disp, [tt](const mfem::Vector &pt, const std::string &face, int dir)
-      { return LoadData::disp_loading(pt, tt, face)(dir); });
-   }
+      for (const disp_load &load : disp_load_list)
+      {
+         mfem::FunctionCoefficient load_value([&](const mfem::Vector &pt)
+         { return loading(pt, tt, load.face)(load.dir); });
 
-   // Apply the velocity of the disp loading, LoadData::velo_loading(pt, tt),
-   // for the initial state of the dynamics.
-   void apply_velo_load_bc(double tt, mfem::ParGridFunction &velo) const
-   {
-      apply_load_bc(velo, [tt](const mfem::Vector &pt, const std::string &face, int dir)
-      { return LoadData::velo_loading(pt, tt, face)(dir); });
+         mfem::Coefficient *coeff[3] = {nullptr, nullptr, nullptr};
+         coeff[load.dir] = &load_value;
+         field.ProjectBdrCoefficient(coeff, face_attribute_map.at(load.face));
+      }
    }
 
    // Print the fixed faces and the number of all constrained unknowns.
@@ -178,22 +187,6 @@ public:
    }
 
 private:
-   // Project value(pt, face, dir), the prescribed displacement or one of its
-   // time derivatives, onto the dofs of every entry of disp_bc.
-   template <typename Value>
-   void apply_load_bc(mfem::ParGridFunction &field, const Value &value) const
-   {
-      for (const disp_load &load : disp_load_list)
-      {
-         mfem::FunctionCoefficient load_value([&](const mfem::Vector &pt)
-         { return value(pt, load.face, load.dir); });
-
-         mfem::Coefficient *coeff[3] = {nullptr, nullptr, nullptr};
-         coeff[load.dir] = &load_value;
-         field.ProjectBdrCoefficient(coeff, face_attribute_map.at(load.face));
-      }
-   }
-
    // Number of the dofs over all ranks; each dof is owned by one rank.
    int get_global_size(const mfem::Array<int> &dofs) const
    {

@@ -54,7 +54,7 @@ time_method:
   # Spectral radius at infinite frequency of generalized-alpha, in [0, 1].
   rho_inf: 0.5
 
-# Time steps, read into TimeSolver_Dynamic_Mixed.
+# Time steps, read into TimeSolver.
 time:
   # Time step; the last step is shortened to end at final_time.
   dt: 1.0e-4
@@ -74,7 +74,7 @@ Neumann:
   faces: []
 
 # Newton's method settings; the linear solver is GMRES, with the block
-# preconditioner of NonlinearSolver_Dynamic_Mixed.hpp of this folder. The
+# preconditioner of include/NonlinearSolver.hpp of this case. The
 # residual of the stiff skull cannot drop below about 1e-9 N, its bulk
 # modulus, about 3e9 Pa, times the round-off of J - 1, so newton_abs_tol is
 # above that. With the skull started from the rotation of its surface, the

@@ -1,10 +1,11 @@
 // ============================================================================
 // LoadData.hpp
 //
-// Defines the loading (body force, prescribed displacement and traction)
-// and, for the dynamics, the initial velocity. The time tt is the load factor
-// t = n / N in the static programs, and the physical time in seconds in the
-// dynamic one.
+// The loading of the beam (body force, prescribed displacement and traction)
+// and, for the dynamics, its initial velocity, for the programs of this
+// case, which pass its functions to DirichletBoundary and NeumannBoundary.
+// The time tt is the load factor t = n / N in the static programs, and the
+// physical time in seconds in the dynamic ones.
 //
 // Author: Chongran Zhao
 // Date: Sep. 27, 2026

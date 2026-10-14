@@ -3,17 +3,13 @@
 //
 // The driver of dynamic_mixed for the gelatin ball in its skull shell, spun
 // up by its surface: the same steps, with the loading, the materials of the
-// regions and the nonlinear solver of this folder, which solves the linear
-// systems by GMRES. LoadData.hpp of this folder is included
-// first, so that its include guard keeps include/boundary/LoadData.hpp,
-// which the boundary headers include, out.
+// regions and the nonlinear solver of its include/, which solves the linear
+// systems by GMRES.
 //
 // Author: Chongran Zhao
 // Date: Oct. 11, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#include "LoadData.hpp"
-
 #include <filesystem>
 #include <iomanip>
 #include <ios>
@@ -27,14 +23,15 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
+#include "LoadData.hpp"
 #include "LocalAssembly_Mixed_Regions.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
-#include "NonlinearSolver_Dynamic_Mixed.hpp"
+#include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha.hpp"
-#include "TimeSolver_Dynamic_Mixed.hpp"
+#include "TimeSolver.hpp"
 #include "Vector_3D.hpp"
 
 int main(int argc, char *argv[])
@@ -95,7 +92,8 @@ int main(int argc, char *argv[])
    // 5. Set up the boundary conditions, on the displacement only; a
    //    prescribed displacement and a traction may act together.
    auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
-   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u,
+                                                    LoadData::surface_traction);
    dirichlet->print_fixed_bc();
    if (dirichlet->is_disp_load())
       dirichlet->print_disp_load();
@@ -121,10 +119,10 @@ int main(int argc, char *argv[])
    //    time solver, which owns the nonlinear solver.
    auto time_method =
       std::make_unique<TimeMethod_GenAlpha>(config["time_method"]["rho_inf"].as<double>());
-   auto nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic_Mixed>(
+   auto nonlinear_solver = std::make_unique<NonlinearSolver>(
       space_u, space_p, std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
-   auto time_solver = std::make_unique<TimeSolver_Dynamic_Mixed>(
+   auto time_solver = std::make_unique<TimeSolver>(
       std::move(nonlinear_solver), config["time"]["dt"].as<double>(),
       config["time"]["final_time"].as<double>(), results_dir, mesh);
 

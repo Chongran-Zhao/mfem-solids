@@ -1,5 +1,5 @@
 // ============================================================================
-// NonlinearSolver_Dynamic_Disp.hpp
+// NonlinearSolver.hpp
 //
 // Solves one time step of the displacement dynamics,
 //    M a + F_int(u) = F_ext(t),
@@ -18,8 +18,8 @@
 // Date: Oct. 3, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef NONLINEAR_SOLVER_DYNAMIC_DISP_HPP
-#define NONLINEAR_SOLVER_DYNAMIC_DISP_HPP
+#ifndef NONLINEAR_SOLVER_HPP
+#define NONLINEAR_SOLVER_HPP
 
 #include <memory>
 #include <utility>
@@ -29,38 +29,29 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Disp.hpp"
+#include "INonlinearSolver.hpp"
+#include "LoadData.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha.hpp"
 
-class NonlinearSolver_Dynamic_Disp : public mfem::Operator
+class NonlinearSolver : public INonlinearSolver
 {
 public:
    // Takes the ownership of the global assembly and of the time method, and
    // assembles the mass matrix; the Newton settings come from the solver
    // section of config.yaml.
-   NonlinearSolver_Dynamic_Disp(std::unique_ptr<GlobalAssembly_Disp> input_global_assembly,
-                                std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
-                                const YAML::Node &solver)
-      : mfem::Operator(input_global_assembly->get_num_dofs()),
+   NonlinearSolver(std::unique_ptr<GlobalAssembly_Disp> input_global_assembly,
+                   std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
+                   const YAML::Node &solver)
+      : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
         time_method(std::move(input_time_method)),
         mass(global_assembly->assemble_mass()),
-        linear_solver(global_assembly->get_comm()),
-        newton_solver(global_assembly->get_comm())
+        linear_solver(global_assembly->get_comm())
    {
-      linear_solver.SetPrintLevel(0);
-      // The tangents keep the sparsity of the first one, so MUMPS orders and
-      // analyzes it once and only factorizes the later ones.
-      linear_solver.SetReorderingReuse(true);
-      newton_solver.SetOperator(*this);
-      newton_solver.SetSolver(linear_solver);
-      newton_solver.SetRelTol(solver["newton_rel_tol"].as<double>());
-      newton_solver.SetAbsTol(solver["newton_abs_tol"].as<double>());
-      newton_solver.SetMaxIter(solver["newton_max_iter"].as<int>());
-      newton_solver.SetPrintLevel(-1);
-      newton_solver.iterative_mode = true;
-      newton_solver.SetMonitor(newton_monitor);
+      set_direct_solver(linear_solver);
+      set_newton_solver(solver, linear_solver, newton_monitor);
    }
 
    // The initial state at time tt: sets the boundary values of disp and
@@ -79,8 +70,8 @@ public:
       dirichlet.apply_fixed_bc(velo);
       if (dirichlet.is_disp_load())
       {
-         dirichlet.apply_disp_load_bc(tt, disp);
-         dirichlet.apply_velo_load_bc(tt, velo);
+         dirichlet.apply_load_bc(tt, LoadData::disp_loading, disp);
+         dirichlet.apply_load_bc(tt, LoadData::velo_loading, velo);
       }
       if (neumann.is_traction_load())
          global_assembly->set_traction_load(tt);
@@ -112,8 +103,6 @@ public:
              mfem::ParGridFunction &velo, mfem::ParGridFunction &acce)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
-      const double gamma = time_method->get_gamma();
-      const double beta = time_method->get_beta();
 
       // The values on the dofs this rank owns, those of time_n first.
       const int num_dofs = global_assembly->get_num_dofs();
@@ -130,29 +119,23 @@ public:
       disp.SetFromTrueDofs(disp_predict);
       dirichlet.apply_fixed_bc(disp);
       if (dirichlet.is_disp_load())
-         dirichlet.apply_disp_load_bc(time_n + dt, disp);
+         dirichlet.apply_load_bc(time_n + dt, LoadData::disp_loading, disp);
       disp.GetTrueDofs(disp_owned);
 
       SystemTools::print_newton_header();
 
-      // Newton iterations for R_dyn(u_{n+1}) = 0; the empty right-hand side
-      // means zero.
-      newton_solver.Mult(mfem::Vector(), disp_owned);
-      MFEM_VERIFY(newton_solver.GetConverged(),
-                  "Newton did not converge at t = " << time_n + dt << ".");
+      // Newton iterations for R_dyn(u_{n+1}) = 0.
+      const int iterations = solve_newton(time_n + dt, disp_owned);
 
       // a_{n+1} = (u_{n+1} - u_pred) / (beta dt^2),
       // v_{n+1} = v_n + dt ( (1 - gamma) a_n + gamma a_{n+1} ).
-      acce_owned = disp_owned;
-      acce_owned -= disp_predict;
-      acce_owned /= beta * dt * dt;
-      velo_owned.Add(dt * (1.0 - gamma), acce_n);
-      velo_owned.Add(dt * gamma, acce_owned);
+      acce_owned = time_method->get_acce(disp_owned, disp_predict, dt);
+      velo_owned = time_method->get_velo(velo_owned, acce_n, acce_owned, dt);
 
       disp.SetFromTrueDofs(disp_owned);
       velo.SetFromTrueDofs(velo_owned);
       acce.SetFromTrueDofs(acce_owned);
-      return newton_solver.GetNumIterations();
+      return iterations;
    }
 
    // Required by MFEM: overrides mfem::Operator::Mult, which NewtonSolver
@@ -188,12 +171,10 @@ private:
       disp_n = input_disp_n;
       acce_n = input_acce_n;
 
-      disp_predict = disp_n;
-      disp_predict.Add(dt, input_velo_n);
-      disp_predict.Add(dt * dt * (0.5 - time_method->get_beta()), acce_n);
+      disp_predict = time_method->get_disp_predict(disp_n, input_velo_n, acce_n, dt);
 
       if (global_assembly->get_neumann().is_traction_load())
-         global_assembly->set_traction_load(time_n + time_method->get_alpha_f() * dt);
+         global_assembly->set_traction_load(time_method->get_time_alpha(time_n, dt));
    }
 
    // R_dyn(u_{n+1}) = R(u_alpha, t_alpha) + M a_alpha at every dof this rank
@@ -202,18 +183,8 @@ private:
    //    a_alpha = (1 - alpha_m) a_n + alpha_m (u_{n+1} - u_pred) / (beta dt^2).
    void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
    {
-      const double alpha_m = time_method->get_alpha_m();
-      const double alpha_f = time_method->get_alpha_f();
-      const double beta = time_method->get_beta();
-
-      mfem::Vector disp_alpha(disp_n);
-      disp_alpha *= 1.0 - alpha_f;
-      disp_alpha.Add(alpha_f, disp);
-
-      mfem::Vector acce_alpha(disp);
-      acce_alpha -= disp_predict;
-      acce_alpha *= alpha_m / (beta * dt * dt);
-      acce_alpha.Add(1.0 - alpha_m, acce_n);
+      const mfem::Vector disp_alpha = time_method->get_state_alpha(disp_n, disp);
+      const mfem::Vector acce_alpha = time_method->get_acce_alpha(disp, disp_predict, acce_n, dt);
 
       global_assembly->assemble_residual(disp_alpha, residual);
       mass->AddMult(acce_alpha, residual);
@@ -224,21 +195,14 @@ private:
    // owns.
    std::unique_ptr<mfem::HypreParMatrix> assemble_tangent(const mfem::Vector &disp) const
    {
-      const double alpha_m = time_method->get_alpha_m();
       const double alpha_f = time_method->get_alpha_f();
-      const double beta = time_method->get_beta();
-
-      mfem::Vector disp_alpha(disp_n);
-      disp_alpha *= 1.0 - alpha_f;
-      disp_alpha.Add(alpha_f, disp);
+      const mfem::Vector disp_alpha = time_method->get_state_alpha(disp_n, disp);
 
       return std::unique_ptr<mfem::HypreParMatrix>(
-         mfem::Add(alpha_m / (beta * dt * dt), *mass,
+         mfem::Add(time_method->get_acce_alpha_factor(dt), *mass,
                    alpha_f, global_assembly->assemble_tangent(disp_alpha)));
    }
 
-   // newton_solver points to this operator, the linear solver and the
-   // monitor, so it is declared last and goes first.
    const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R, K and M
    const std::unique_ptr<TimeMethod_GenAlpha> time_method;       // alpha_m, alpha_f, gamma, beta
    const std::unique_ptr<mfem::HypreParMatrix> mass;             // M, assembled once
@@ -251,8 +215,6 @@ private:
    mfem::Vector disp_n;                                          // u_n on the dofs this rank owns
    mfem::Vector acce_n;                                          // a_n on the dofs this rank owns
    mfem::Vector disp_predict;                                    // u_pred on the dofs this rank owns
-
-   mfem::NewtonSolver newton_solver;
 };
 
 #endif

@@ -1,0 +1,74 @@
+// ============================================================================
+// TimeSolver.hpp
+//
+// The loop over the load steps of the static displacement form: step
+// n = 1, ..., N is solved by the nonlinear solver from the converged state of
+// step n - 1, and the displacement of every step is saved as
+// <results>/disp_XXXX.gf. Rank 0 gathers it from all ranks onto the serial
+// mesh of ParMesh::GetSerialMesh, saved as <results>/mesh.mesh; its element
+// order is that of the ranks, not that of the mesh file read by the driver.
+// It owns the nonlinear solver.
+//
+// Author: Chongran Zhao
+// Date: Oct. 1, 2026
+// Email: chongran_zhao@brown.edu
+// ============================================================================
+#ifndef TIME_SOLVER_HPP
+#define TIME_SOLVER_HPP
+
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <utility>
+
+#include <mfem.hpp>
+
+#include "ITimeSolver.hpp"
+#include "NonlinearSolver.hpp"
+
+class TimeSolver : public ITimeSolver
+{
+public:
+   // Takes the ownership of the nonlinear solver; the results go to
+   // results_dir, which rank 0 empties first and where it saves the serial
+   // mesh of mesh, with its named faces.
+   TimeSolver(std::unique_ptr<NonlinearSolver> input_nonlinear_solver,
+              int input_num_load_steps,
+              const std::filesystem::path &input_results_dir,
+              mfem::ParMesh &mesh)
+      : ITimeSolver(input_results_dir, mesh),
+        nonlinear_solver(std::move(input_nonlinear_solver)),
+        num_load_steps(input_num_load_steps)
+   {
+   }
+
+   // Solves the load steps 1, ..., N from disp, the state of step 0, and
+   // saves disp at every step, step 0 included.
+   void run(mfem::ParGridFunction &disp)
+   {
+      save_fields(0, {{"disp", &disp}});
+
+      mfem::StopWatch step_timer;
+      for (int step = 1; step <= num_load_steps; step++)
+      {
+         // Wall-clock time of the step, up to the convergence.
+         step_timer.Restart();
+
+         mfem::out << std::string(74, '=') << '\n'
+                   << "Load step " << step << " / " << num_load_steps << '\n';
+
+         // Load factor t = n / N, the time of the loading functions.
+         const double load_factor = static_cast<double>(step) / num_load_steps;
+         const int iterations = nonlinear_solver->solve(load_factor, disp);
+         print_converged(iterations, step_timer);
+
+         save_fields(step, {{"disp", &disp}});
+      }
+   }
+
+private:
+   const std::unique_ptr<NonlinearSolver> nonlinear_solver;   // one load step
+   const int num_load_steps;                                  // N
+};
+
+#endif

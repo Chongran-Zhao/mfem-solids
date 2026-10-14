@@ -9,8 +9,6 @@
 // and nu at small strains and stays stable at large ones,
 //    Psi = kappa/2 (J - 1)^2 + Psi_ich^NH(F),
 //    mu = E / (2 (1 + nu)),   kappa = E / (3 (1 - 2 nu)).
-// It replaces include/material/MaterialModelData.hpp for the programs of
-// this folder.
 //
 // Author: Chongran Zhao
 // Date: Oct. 11, 2026
