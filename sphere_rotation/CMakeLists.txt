@@ -11,10 +11,16 @@ project(sphere_rotation LANGUAGES CXX)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/mfem-solids.cmake)
 
-# The headers of this case, in its include/: its LoadData.hpp,
-# MaterialModelData.hpp, LocalAssembly_Mixed_Regions.hpp, NonlinearSolver.hpp,
-# TimeSolver.hpp and VTK_Tools_Sphere.hpp.
-set(case_include_dirs ${CMAKE_CURRENT_SOURCE_DIR}/include ${include_dirs})
+# The headers of this case, in its include/; like the shared ones, listed
+# for the record, not needed to build, and checked against the folder.
+set(case_headers
+  include/LoadData.hpp
+  include/LocalAssembly_Mixed_Regions.hpp
+  include/MaterialModelData.hpp
+  include/NonlinearSolver.hpp
+  include/TimeSolver.hpp
+  include/VTK_Tools_Sphere.hpp)
+check_header_list(${CMAKE_CURRENT_SOURCE_DIR}/include ${case_headers})
 
 # config.yaml is copied into the build folder, again whenever it changes;
 # the programs read the copy of the directory they run in.
@@ -24,11 +30,11 @@ add_executable(read_mesh read_mesh.cpp)
 target_include_directories(read_mesh PRIVATE ${MFEM_INCLUDE_DIRS})
 target_link_libraries(read_mesh PRIVATE ${mfem_libraries})
 
-add_executable(driver driver.cpp)
-target_include_directories(driver PRIVATE ${case_include_dirs})
-target_link_libraries(driver PRIVATE ${mfem_libraries})
+add_executable(driver driver.cpp ${case_headers})
+target_include_directories(driver PRIVATE include)
+target_link_libraries(driver PRIVATE mfem_solids)
 
 # vtu_writer writes spherical components, with VTK_Tools_Sphere.hpp.
-add_executable(vtu_writer vtu_writer.cpp)
-target_include_directories(vtu_writer PRIVATE ${case_include_dirs})
-target_link_libraries(vtu_writer PRIVATE ${mfem_libraries})
+add_executable(vtu_writer vtu_writer.cpp ${case_headers})
+target_include_directories(vtu_writer PRIVATE include)
+target_link_libraries(vtu_writer PRIVATE mfem_solids)
