@@ -17,19 +17,16 @@
 #define TIME_SOLVER_HPP
 
 #include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <ios>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include <mfem.hpp>
 
+#include "ITimeSolver.hpp"
 #include "NonlinearSolver.hpp"
-#include "SystemTools.hpp"
 
-class TimeSolver
+class TimeSolver : public ITimeSolver
 {
 public:
    // Takes the ownership of the nonlinear solver; the results go to
@@ -39,27 +36,17 @@ public:
               int input_num_load_steps,
               const std::filesystem::path &input_results_dir,
               mfem::ParMesh &mesh)
-      : nonlinear_solver(std::move(input_nonlinear_solver)),
-        num_load_steps(input_num_load_steps),
-        results_dir(input_results_dir),
-        serial_mesh(mesh.GetSerialMesh(0))
+      : ITimeSolver(input_results_dir, mesh),
+        nonlinear_solver(std::move(input_nonlinear_solver)),
+        num_load_steps(input_num_load_steps)
    {
-      if (mfem::Mpi::Root())
-      {
-         SystemTools::make_empty_dir(results_dir);
-         mesh.bdr_attribute_sets.Copy(serial_mesh.bdr_attribute_sets);
-         std::ofstream mesh_file(results_dir / "mesh.mesh");
-         mesh_file.precision(16);
-         serial_mesh.Print(mesh_file);
-      }
-      MPI_Barrier(mesh.GetComm());
    }
 
    // Solves the load steps 1, ..., N from disp and pres, the state of step
    // 0, and saves them at every step, step 0 included.
    void run(mfem::ParGridFunction &disp, mfem::ParGridFunction &pres)
    {
-      save_step(0, disp, pres);
+      save_fields(0, {{"disp", &disp}, {"pres", &pres}});
 
       mfem::StopWatch step_timer;
       for (int step = 1; step <= num_load_steps; step++)
@@ -73,33 +60,15 @@ public:
          // Load factor t = n / N, the time of the loading functions.
          const double load_factor = static_cast<double>(step) / num_load_steps;
          const int iterations = nonlinear_solver->solve(load_factor, disp, pres);
+         print_converged(iterations, step_timer);
 
-         mfem::out << "converged in " << iterations
-                   << " iterations. Time taken: " << std::fixed << std::setprecision(2)
-                   << step_timer.RealTime() << " sec. " << SystemTools::get_time()
-                   << std::defaultfloat << std::setprecision(6) << '\n';
-
-         save_step(step, disp, pres);
+         save_fields(step, {{"disp", &disp}, {"pres", &pres}});
       }
    }
 
 private:
-   // Gathers disp and pres onto serial_mesh and saves them on rank 0; every
-   // rank takes part.
-   void save_step(int step, const mfem::ParGridFunction &disp, const mfem::ParGridFunction &pres)
-   {
-      const mfem::GridFunction serial_disp = disp.GetSerialGridFunction(0, serial_mesh);
-      const mfem::GridFunction serial_pres = pres.GetSerialGridFunction(0, serial_mesh);
-      if (!mfem::Mpi::Root())
-         return;
-      SystemTools::save_gf(results_dir, "disp", step, serial_disp);
-      SystemTools::save_gf(results_dir, "pres", step, serial_pres);
-   }
-
-   const std::unique_ptr<NonlinearSolver> nonlinear_solver;  // one load step
-   const int num_load_steps;                                              // N
-   const std::filesystem::path results_dir;                               // folder of disp_XXXX.gf and pres_XXXX.gf
-   mfem::Mesh serial_mesh;                                                // all elements on rank 0, empty elsewhere
+   const std::unique_ptr<NonlinearSolver> nonlinear_solver;   // one load step
+   const int num_load_steps;                                  // N
 };
 
 #endif
