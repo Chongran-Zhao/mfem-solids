@@ -15,7 +15,6 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/mfem-solids.cmake)
 # for the record, not needed to build, and checked against the folder.
 set(case_headers
   include/LoadData.hpp
-  include/LocalAssembly_Mixed_Regions.hpp
   include/MaterialModelData.hpp
   include/NonlinearSolver.hpp
   include/TimeSolver.hpp

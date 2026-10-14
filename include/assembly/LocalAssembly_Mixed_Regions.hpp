@@ -65,7 +65,7 @@ public:
 
    // Quadrature order of the elements of every region; 0 keeps the rule of
    // LocalAssemblyTools::get_quad_rule.
-   void set_quad_order(int input_quad_order) override
+   void set_quad_order(int input_quad_order)
    {
       LocalAssembly_Mixed::set_quad_order(input_quad_order);
       for (const std::unique_ptr<LocalAssembly_Mixed> &region : other_regions)

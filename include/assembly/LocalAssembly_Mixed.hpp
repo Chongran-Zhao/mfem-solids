@@ -7,8 +7,7 @@
 // model enters only through J(p), so the same local assembly covers
 // compressible and fully incompressible materials. It is an MFEM
 // BlockNonlinearFormIntegrator, called by BlockNonlinearForm, which assembles
-// the global residual and tangent; the material and the quadrature rule
-// are those of ILocalAssembly.
+// the global residual and tangent.
 //
 // Author: Chongran Zhao
 // Date: Sep. 29, 2026
@@ -22,19 +21,18 @@
 
 #include <mfem.hpp>
 
-#include "ILocalAssembly.hpp"
 #include "LocalAssemblyTools.hpp"
 #include "MaterialModel.hpp"
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
 #include "Vector_3D.hpp"
 
-class LocalAssembly_Mixed : public mfem::BlockNonlinearFormIntegrator, public ILocalAssembly
+class LocalAssembly_Mixed : public mfem::BlockNonlinearFormIntegrator
 {
 public:
    // Takes ownership of the material, as in LocalAssembly_Disp.
    LocalAssembly_Mixed(std::unique_ptr<const MaterialModel> input_material)
-      : ILocalAssembly(std::move(input_material)) {}
+      : material(std::move(input_material)) {}
 
    // Required by MFEM: overrides mfem::BlockNonlinearFormIntegrator::
    // AssembleElementVector, which BlockNonlinearForm calls on every element.
@@ -235,6 +233,25 @@ public:
                K_pp(cc, dd) += dV * dJ_dp * M(cc) * M(dd);
       }
    }
+
+   // Reference density rho_0 of the material, for the mass matrix.
+   double get_rho_0() const { return material->get_rho_0(); }
+
+   // Quadrature order of the elements; 0, the default, keeps the rule of
+   // LocalAssemblyTools::get_quad_rule.
+   void set_quad_order(int input_quad_order) { quad_order = input_quad_order; }
+
+private:
+   // The rule of order quad_order, or that of LocalAssemblyTools.
+   const mfem::IntegrationRule &get_quad_rule(const mfem::FiniteElement &elem,
+                                              mfem::ElementTransformation &elem_map) const
+   {
+      return (quad_order > 0) ? mfem::IntRules.Get(elem.GetGeomType(), quad_order)
+                              : LocalAssemblyTools::get_quad_rule(elem, elem_map);
+   }
+
+   const std::unique_ptr<const MaterialModel> material;
+   int quad_order = 0;   // quadrature order, 0 for that of LocalAssemblyTools
 };
 
 #endif
