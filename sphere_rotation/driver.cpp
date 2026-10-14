@@ -26,7 +26,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "DirichletBoundary.hpp"
-#include "GlobalAssembly.hpp"
+#include "GlobalAssembly_Mixed.hpp"
 #include "LocalAssembly_Mixed_Regions.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
    //    owns them.
    auto local_assembly = std::make_unique<LocalAssembly_Mixed_Regions>(std::move(materials));
    local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
-   auto global_assembly = std::make_unique<GlobalAssembly>(
+   auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
    // 8. Set up the nonlinear solver, which owns the global assembly and the

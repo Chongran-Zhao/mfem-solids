@@ -37,7 +37,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "DirichletBoundary.hpp"
-#include "GlobalAssembly.hpp"
+#include "GlobalAssembly_Disp.hpp"
 #include "LocalAssemblyTools.hpp"
 #include "LocalAssembly_Disp.hpp"
 #include "MaterialModel.hpp"
@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
    const bool is_traction_load = neumann->is_traction_load();
    auto local_assembly = std::make_unique<LocalAssembly_Disp>(set_material_model());
    local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
-   auto global_assembly = std::make_unique<GlobalAssembly>(
+   auto global_assembly = std::make_unique<GlobalAssembly_Disp>(
       fespace, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
    const std::unique_ptr<mfem::HypreParMatrix> mass = global_assembly->assemble_mass();
    const int num_dofs = fespace.GetTrueVSize();

@@ -66,7 +66,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "DirichletBoundary.hpp"
-#include "GlobalAssembly.hpp"
+#include "GlobalAssembly_Mixed.hpp"
 #include "LoadData.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
@@ -83,7 +83,7 @@ public:
    // section of config.yaml.
    NonlinearSolver(mfem::ParFiniteElementSpace &space_u,
                    mfem::ParFiniteElementSpace &space_p,
-                   std::unique_ptr<GlobalAssembly> input_global_assembly,
+                   std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
                    std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
                    const YAML::Node &solver)
       : mfem::Operator(input_global_assembly->get_num_dofs()),
@@ -444,7 +444,7 @@ private:
    // monitor, so it is declared last and goes first; the preconditioner
    // points to the AMG solvers and to schur_inverse, which reads dt, the
    // time method and the pressure operators.
-   const std::unique_ptr<GlobalAssembly> global_assembly;  // R, K and M
+   const std::unique_ptr<GlobalAssembly_Mixed> global_assembly;  // R, K and M
    const std::unique_ptr<TimeMethod_GenAlpha> time_method;       // alpha_m, alpha_f, gamma, beta
    const std::unique_ptr<mfem::HypreParMatrix> mass;             // M of the displacement, assembled once
    mfem::Array<int> skull_vdofs;                                 // displacement dofs of the skull on this rank

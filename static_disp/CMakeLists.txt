@@ -12,7 +12,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/mfem-solids.cmake)
 
 # The headers of this case, in its include/, come first: its LoadData.hpp,
 # which DirichletBoundary and NeumannBoundary include, and its
-# MaterialModelData.hpp, GlobalAssembly.hpp and NonlinearSolver.hpp.
+# MaterialModelData.hpp and NonlinearSolver.hpp.
 set(case_include_dirs ${CMAKE_CURRENT_SOURCE_DIR}/include ${include_dirs})
 
 # config.yaml is copied into the build folder, again whenever it changes;

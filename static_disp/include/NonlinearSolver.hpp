@@ -25,7 +25,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "DirichletBoundary.hpp"
-#include "GlobalAssembly.hpp"
+#include "GlobalAssembly_Disp.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 
@@ -34,7 +34,7 @@ class NonlinearSolver : public mfem::Operator
 public:
    // Takes the ownership of the global assembly; the Newton settings come
    // from the solver section of config.yaml.
-   NonlinearSolver(std::unique_ptr<GlobalAssembly> input_global_assembly,
+   NonlinearSolver(std::unique_ptr<GlobalAssembly_Disp> input_global_assembly,
                    const YAML::Node &solver)
       : mfem::Operator(input_global_assembly->get_num_dofs()),
         global_assembly(std::move(input_global_assembly)),
@@ -150,7 +150,7 @@ private:
    // newton_solver points to this operator, the linear solver and the
    // monitor, so it is declared last and goes first. The tangent is owned by
    // global_assembly.
-   const std::unique_ptr<GlobalAssembly> global_assembly;   // R and K
+   const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R and K
    mfem::MUMPSSolver linear_solver;                              // parallel direct solver of the tangent
    SystemTools::NewtonMonitor newton_monitor;                    // prints the residual norms
    mfem::NewtonSolver newton_solver;

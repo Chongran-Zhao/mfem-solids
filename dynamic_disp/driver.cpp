@@ -22,7 +22,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "DirichletBoundary.hpp"
-#include "GlobalAssembly.hpp"
+#include "GlobalAssembly_Disp.hpp"
 #include "LoadData.hpp"
 #include "LocalAssembly_Disp.hpp"
 #include "MaterialModel.hpp"
@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
    //    owns them.
    auto local_assembly = std::make_unique<LocalAssembly_Disp>(std::move(material));
    local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
-   auto global_assembly = std::make_unique<GlobalAssembly>(
+   auto global_assembly = std::make_unique<GlobalAssembly_Disp>(
       space_u, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
    // 8. Set up the nonlinear solver, which owns the global assembly and the
