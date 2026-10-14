@@ -17,9 +17,6 @@
 // extended by g = G = 0 for s <= 0, and g = 1, G = s - 1/2 for s >= 1, psi
 // being symmetric about 1/2. The integrals are taken by Gauss quadrature.
 //
-// It replaces include/boundary/LoadData.hpp: driver.cpp includes it first,
-// and the include guard keeps the other one out.
-//
 // Author: Chongran Zhao
 // Date: Oct. 11, 2026
 // Email: chongran_zhao@brown.edu

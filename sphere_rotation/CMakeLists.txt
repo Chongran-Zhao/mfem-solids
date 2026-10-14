@@ -11,9 +11,10 @@ project(sphere_rotation LANGUAGES CXX)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/mfem-solids.cmake)
 
-# The headers of this case: its LoadData.hpp and MaterialModelData.hpp, and
-# NonlinearSolver.hpp and TimeSolver.hpp in include/.
-set(case_include_dirs ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR} ${include_dirs})
+# The headers of this case, in its include/: its LoadData.hpp,
+# MaterialModelData.hpp, LocalAssembly_Mixed_Regions.hpp, NonlinearSolver.hpp,
+# TimeSolver.hpp and VTK_Tools_Sphere.hpp.
+set(case_include_dirs ${CMAKE_CURRENT_SOURCE_DIR}/include ${include_dirs})
 
 # config.yaml is copied into the build folder, again whenever it changes;
 # the programs read the copy of the directory they run in.
@@ -27,8 +28,7 @@ add_executable(driver driver.cpp)
 target_include_directories(driver PRIVATE ${case_include_dirs})
 target_link_libraries(driver PRIVATE ${mfem_libraries})
 
-# vtu_writer writes spherical components, with the VTK_Tools_Sphere.hpp of
-# its include/.
+# vtu_writer writes spherical components, with VTK_Tools_Sphere.hpp.
 add_executable(vtu_writer vtu_writer.cpp)
 target_include_directories(vtu_writer PRIVATE ${case_include_dirs})
 target_link_libraries(vtu_writer PRIVATE ${mfem_libraries})

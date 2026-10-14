@@ -3,17 +3,13 @@
 //
 // The driver of dynamic_mixed for the gelatin ball in its skull shell, spun
 // up by its surface: the same steps, with the loading, the materials of the
-// regions and the nonlinear solver of this folder, which solves the linear
-// systems by GMRES. LoadData.hpp of this folder is included
-// first, so that its include guard keeps include/boundary/LoadData.hpp,
-// which the boundary headers include, out.
+// regions and the nonlinear solver of its include/, which solves the linear
+// systems by GMRES.
 //
 // Author: Chongran Zhao
 // Date: Oct. 11, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#include "LoadData.hpp"
-
 #include <filesystem>
 #include <iomanip>
 #include <ios>
@@ -27,6 +23,7 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
+#include "LoadData.hpp"
 #include "LocalAssembly_Mixed_Regions.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
