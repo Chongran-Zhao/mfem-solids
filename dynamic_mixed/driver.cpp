@@ -33,7 +33,7 @@
 #include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha.hpp"
-#include "TimeSolver_Dynamic_Mixed.hpp"
+#include "TimeSolver.hpp"
 #include "Vector_3D.hpp"
 
 int main(int argc, char *argv[])
@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
    auto nonlinear_solver = std::make_unique<NonlinearSolver>(
       std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
-   auto time_solver = std::make_unique<TimeSolver_Dynamic_Mixed>(
+   auto time_solver = std::make_unique<TimeSolver>(
       std::move(nonlinear_solver), config["time"]["dt"].as<double>(),
       config["time"]["final_time"].as<double>(), results_dir, mesh);
 

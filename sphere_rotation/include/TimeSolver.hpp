@@ -1,23 +1,23 @@
 // ============================================================================
-// TimeSolver_Dynamic_Disp.hpp
+// TimeSolver.hpp
 //
-// The loop over the time steps of the displacement dynamics: the initial
-// state is completed by the nonlinear solver, and step n = 1, ..., N is
-// solved from the state of step n - 1, in steps of dt up to the final time,
-// the last one shortened to end there. The displacement, the velocity and
-// the acceleration of every step are saved as <results>/disp_XXXX.gf,
-// velo_XXXX.gf and acce_XXXX.gf, and the time of each step in
-// <results>/time.csv. Rank 0 gathers the fields from all ranks onto the
-// serial mesh of ParMesh::GetSerialMesh, saved as <results>/mesh.mesh; its
-// element order is that of the ranks, not that of the mesh file read by the
-// driver. It owns the nonlinear solver.
+// The loop over the time steps of the mixed displacement-pressure dynamics:
+// the initial state is completed by the nonlinear solver, and step
+// n = 1, ..., N is solved from the state of step n - 1, in steps of dt up to
+// the final time, the last one shortened to end there. The displacement, the
+// velocity, the acceleration and the pressure of every step are saved as
+// <results>/disp_XXXX.gf, velo_XXXX.gf, acce_XXXX.gf and pres_XXXX.gf, and the
+// time of each step in <results>/time.csv. Rank 0 gathers the fields from
+// all ranks onto the serial mesh of ParMesh::GetSerialMesh, saved as
+// <results>/mesh.mesh; its element order is that of the ranks, not that of
+// the mesh file read by the driver. It owns the nonlinear solver.
 //
 // Author: Chongran Zhao
 // Date: Oct. 3, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef TIME_SOLVER_DYNAMIC_DISP_HPP
-#define TIME_SOLVER_DYNAMIC_DISP_HPP
+#ifndef TIME_SOLVER_HPP
+#define TIME_SOLVER_HPP
 
 #include <algorithm>
 #include <cmath>
@@ -34,16 +34,16 @@
 #include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 
-class TimeSolver_Dynamic_Disp
+class TimeSolver
 {
 public:
    // Takes the ownership of the nonlinear solver; the results go to
    // results_dir, which rank 0 empties first and where it saves the serial
    // mesh of mesh, with its named faces.
-   TimeSolver_Dynamic_Disp(std::unique_ptr<NonlinearSolver> input_nonlinear_solver,
-                           double input_nominal_dt, double input_final_time,
-                           const std::filesystem::path &input_results_dir,
-                           mfem::ParMesh &mesh)
+   TimeSolver(std::unique_ptr<NonlinearSolver> input_nonlinear_solver,
+              double input_nominal_dt, double input_final_time,
+              const std::filesystem::path &input_results_dir,
+              mfem::ParMesh &mesh)
       : nonlinear_solver(std::move(input_nonlinear_solver)),
         nominal_dt(input_nominal_dt),
         final_time(input_final_time),
@@ -61,13 +61,14 @@ public:
       MPI_Barrier(mesh.GetComm());
    }
 
-   // Completes disp, velo and acce, the initial state at t = 0, solves the
-   // time steps, and saves the state at every step, step 0 included.
+   // Completes disp, velo and acce, the initial state at t = 0 with pres,
+   // solves the time steps, and saves the state at every step, step 0
+   // included.
    void run(mfem::ParGridFunction &disp, mfem::ParGridFunction &velo,
-            mfem::ParGridFunction &acce)
+            mfem::ParGridFunction &acce, mfem::ParGridFunction &pres)
    {
-      nonlinear_solver->initialize(0.0, disp, velo, acce);
-      save_step(0, disp, velo, acce);
+      nonlinear_solver->initialize(0.0, disp, velo, acce, pres);
+      save_step(0, disp, velo, acce, pres);
 
       std::ofstream time_file;
       if (mfem::Mpi::Root())
@@ -95,14 +96,14 @@ public:
                    << "Time step " << step << " / " << num_steps << ", t = " << time
                    << ", dt = " << dt << '\n';
 
-         const int iterations = nonlinear_solver->solve(time_n, dt, disp, velo, acce);
+         const int iterations = nonlinear_solver->solve(time_n, dt, disp, velo, acce, pres);
 
          mfem::out << "converged in " << iterations
                    << " iterations. Time taken: " << std::fixed << std::setprecision(2)
                    << step_timer.RealTime() << " sec. " << SystemTools::get_time()
                    << std::defaultfloat << std::setprecision(6) << '\n';
 
-         save_step(step, disp, velo, acce);
+         save_step(step, disp, velo, acce, pres);
          if (mfem::Mpi::Root())
             time_file << step << ',' << time << ',' << dt << ',' << iterations << '\n';
 
@@ -114,10 +115,10 @@ private:
    // Gathers the fields of a step onto serial_mesh and saves them on rank 0;
    // every rank takes part.
    void save_step(int step, const mfem::ParGridFunction &disp, const mfem::ParGridFunction &velo,
-                  const mfem::ParGridFunction &acce)
+                  const mfem::ParGridFunction &acce, const mfem::ParGridFunction &pres)
    {
       const std::pair<const char *, const mfem::ParGridFunction *> fields[] = {
-         {"disp", &disp}, {"velo", &velo}, {"acce", &acce}};
+         {"disp", &disp}, {"velo", &velo}, {"acce", &acce}, {"pres", &pres}};
       for (const auto &[name, field] : fields)
       {
          const mfem::GridFunction serial_field = field->GetSerialGridFunction(0, serial_mesh);
@@ -127,10 +128,10 @@ private:
    }
 
    const std::unique_ptr<NonlinearSolver> nonlinear_solver;  // one time step
-   const double nominal_dt;                                               // dt of config.yaml
-   const double final_time;                                               // end of the time steps
-   const std::filesystem::path results_dir;                               // folder of the results
-   mfem::Mesh serial_mesh;                                                // all elements on rank 0, empty elsewhere
+   const double nominal_dt;                                                // dt of config.yaml
+   const double final_time;                                                // end of the time steps
+   const std::filesystem::path results_dir;                                // folder of the results
+   mfem::Mesh serial_mesh;                                                 // all elements on rank 0, empty elsewhere
 };
 
 #endif

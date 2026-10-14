@@ -1,5 +1,5 @@
 // ============================================================================
-// TimeSolver_Dynamic_Mixed.hpp
+// TimeSolver.hpp
 //
 // The loop over the time steps of the mixed displacement-pressure dynamics:
 // the initial state is completed by the nonlinear solver, and step
@@ -16,8 +16,8 @@
 // Date: Oct. 3, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef TIME_SOLVER_DYNAMIC_MIXED_HPP
-#define TIME_SOLVER_DYNAMIC_MIXED_HPP
+#ifndef TIME_SOLVER_HPP
+#define TIME_SOLVER_HPP
 
 #include <algorithm>
 #include <cmath>
@@ -34,16 +34,16 @@
 #include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 
-class TimeSolver_Dynamic_Mixed
+class TimeSolver
 {
 public:
    // Takes the ownership of the nonlinear solver; the results go to
    // results_dir, which rank 0 empties first and where it saves the serial
    // mesh of mesh, with its named faces.
-   TimeSolver_Dynamic_Mixed(std::unique_ptr<NonlinearSolver> input_nonlinear_solver,
-                            double input_nominal_dt, double input_final_time,
-                            const std::filesystem::path &input_results_dir,
-                            mfem::ParMesh &mesh)
+   TimeSolver(std::unique_ptr<NonlinearSolver> input_nonlinear_solver,
+              double input_nominal_dt, double input_final_time,
+              const std::filesystem::path &input_results_dir,
+              mfem::ParMesh &mesh)
       : nonlinear_solver(std::move(input_nonlinear_solver)),
         nominal_dt(input_nominal_dt),
         final_time(input_final_time),

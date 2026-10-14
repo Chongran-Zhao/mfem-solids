@@ -29,7 +29,7 @@
 #include "NeumannBoundary.hpp"
 #include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
-#include "TimeSolver_Static_Mixed.hpp"
+#include "TimeSolver.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
    auto nonlinear_solver = std::make_unique<NonlinearSolver>(
       std::move(global_assembly), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
-   auto time_solver = std::make_unique<TimeSolver_Static_Mixed>(
+   auto time_solver = std::make_unique<TimeSolver>(
       std::move(nonlinear_solver), num_load_steps, results_dir, mesh);
 
    // 8. Solve the load steps.
