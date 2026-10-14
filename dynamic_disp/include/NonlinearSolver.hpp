@@ -102,8 +102,6 @@ public:
              mfem::ParGridFunction &velo, mfem::ParGridFunction &acce)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
-      const double gamma = time_method->get_gamma();
-      const double beta = time_method->get_beta();
 
       // The values on the dofs this rank owns, those of time_n first.
       const int num_dofs = global_assembly->get_num_dofs();
@@ -130,11 +128,8 @@ public:
 
       // a_{n+1} = (u_{n+1} - u_pred) / (beta dt^2),
       // v_{n+1} = v_n + dt ( (1 - gamma) a_n + gamma a_{n+1} ).
-      acce_owned = disp_owned;
-      acce_owned -= disp_predict;
-      acce_owned /= beta * dt * dt;
-      velo_owned.Add(dt * (1.0 - gamma), acce_n);
-      velo_owned.Add(dt * gamma, acce_owned);
+      acce_owned = time_method->get_acce(disp_owned, disp_predict, dt);
+      velo_owned = time_method->get_velo(velo_owned, acce_n, acce_owned, dt);
 
       disp.SetFromTrueDofs(disp_owned);
       velo.SetFromTrueDofs(velo_owned);
@@ -175,12 +170,10 @@ private:
       disp_n = input_disp_n;
       acce_n = input_acce_n;
 
-      disp_predict = disp_n;
-      disp_predict.Add(dt, input_velo_n);
-      disp_predict.Add(dt * dt * (0.5 - time_method->get_beta()), acce_n);
+      disp_predict = time_method->get_disp_predict(disp_n, input_velo_n, acce_n, dt);
 
       if (global_assembly->get_neumann().is_traction_load())
-         global_assembly->set_traction_load(time_n + time_method->get_alpha_f() * dt);
+         global_assembly->set_traction_load(time_method->get_time_alpha(time_n, dt));
    }
 
    // R_dyn(u_{n+1}) = R(u_alpha, t_alpha) + M a_alpha at every dof this rank
@@ -189,18 +182,8 @@ private:
    //    a_alpha = (1 - alpha_m) a_n + alpha_m (u_{n+1} - u_pred) / (beta dt^2).
    void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
    {
-      const double alpha_m = time_method->get_alpha_m();
-      const double alpha_f = time_method->get_alpha_f();
-      const double beta = time_method->get_beta();
-
-      mfem::Vector disp_alpha(disp_n);
-      disp_alpha *= 1.0 - alpha_f;
-      disp_alpha.Add(alpha_f, disp);
-
-      mfem::Vector acce_alpha(disp);
-      acce_alpha -= disp_predict;
-      acce_alpha *= alpha_m / (beta * dt * dt);
-      acce_alpha.Add(1.0 - alpha_m, acce_n);
+      const mfem::Vector disp_alpha = time_method->get_state_alpha(disp_n, disp);
+      const mfem::Vector acce_alpha = time_method->get_acce_alpha(disp, disp_predict, acce_n, dt);
 
       global_assembly->assemble_residual(disp_alpha, residual);
       mass->AddMult(acce_alpha, residual);
@@ -211,16 +194,11 @@ private:
    // owns.
    std::unique_ptr<mfem::HypreParMatrix> assemble_tangent(const mfem::Vector &disp) const
    {
-      const double alpha_m = time_method->get_alpha_m();
       const double alpha_f = time_method->get_alpha_f();
-      const double beta = time_method->get_beta();
-
-      mfem::Vector disp_alpha(disp_n);
-      disp_alpha *= 1.0 - alpha_f;
-      disp_alpha.Add(alpha_f, disp);
+      const mfem::Vector disp_alpha = time_method->get_state_alpha(disp_n, disp);
 
       return std::unique_ptr<mfem::HypreParMatrix>(
-         mfem::Add(alpha_m / (beta * dt * dt), *mass,
+         mfem::Add(time_method->get_acce_alpha_factor(dt), *mass,
                    alpha_f, global_assembly->assemble_tangent(disp_alpha)));
    }
 

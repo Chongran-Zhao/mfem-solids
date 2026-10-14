@@ -204,8 +204,6 @@ public:
              mfem::ParGridFunction &pres)
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
-      const double gamma = time_method->get_gamma();
-      const double beta = time_method->get_beta();
 
       // The values on the dofs this rank owns, those of time_n first;
       // sol = [u; p] holds both fields.
@@ -246,11 +244,8 @@ public:
 
       // a_{n+1} = (u_{n+1} - u_pred) / (beta dt^2),
       // v_{n+1} = v_n + dt ( (1 - gamma) a_n + gamma a_{n+1} ).
-      acce_owned = sol.GetBlock(0);
-      acce_owned -= disp_predict;
-      acce_owned /= beta * dt * dt;
-      velo_owned.Add(dt * (1.0 - gamma), acce_n);
-      velo_owned.Add(dt * gamma, acce_owned);
+      acce_owned = time_method->get_acce(sol.GetBlock(0), disp_predict, dt);
+      velo_owned = time_method->get_velo(velo_owned, acce_n, acce_owned, dt);
 
       disp.SetFromTrueDofs(sol.GetBlock(0));
       pres.SetFromTrueDofs(sol.GetBlock(1));
@@ -357,18 +352,16 @@ private:
       sol_n = input_sol_n;
       acce_n = input_acce_n;
 
-      disp_predict = input_sol_n.GetBlock(0);
-      disp_predict.Add(dt, input_velo_n);
-      disp_predict.Add(dt * dt * (0.5 - time_method->get_beta()), acce_n);
+      disp_predict = time_method->get_disp_predict(input_sol_n.GetBlock(0), input_velo_n, acce_n, dt);
 
       if (global_assembly->get_neumann().is_traction_load())
-         global_assembly->set_traction_load(time_n + time_method->get_alpha_f() * dt);
+         global_assembly->set_traction_load(time_method->get_time_alpha(time_n, dt));
 
       // L_p[1 / rho_0] / c + M_p[alpha_f / kappa], for the inertial part of
       // S^-1, when dt changes; the skull makes it nonsingular.
       if (dt != inertia_dt)
       {
-         const double cc = time_method->get_alpha_m() / (time_method->get_beta() * dt * dt);
+         const double cc = time_method->get_acce_alpha_factor(dt);
          pres_inertia.reset(mfem::Add(1.0 / cc, *pres_laplace, 1.0, *pres_compress));
          amg_p.SetOperator(*pres_inertia);
          inertia_dt = dt;
@@ -381,20 +374,11 @@ private:
    //    a_alpha = (1 - alpha_m) a_n + alpha_m (u_{n+1} - u_pred) / (beta dt^2).
    void assemble_residual(const mfem::Vector &sol, mfem::Vector &residual) const
    {
-      const double alpha_m = time_method->get_alpha_m();
-      const double alpha_f = time_method->get_alpha_f();
-      const double beta = time_method->get_beta();
+      const mfem::Vector sol_alpha = time_method->get_state_alpha(sol_n, sol);
 
-      mfem::Vector sol_alpha(sol_n);
-      sol_alpha *= 1.0 - alpha_f;
-      sol_alpha.Add(alpha_f, sol);
-
-      // From u_{n+1}, the displacement block of sol, copied.
-      mfem::Vector acce_alpha(mass->Height());
-      acce_alpha = sol.GetData();
-      acce_alpha -= disp_predict;
-      acce_alpha *= alpha_m / (beta * dt * dt);
-      acce_alpha.Add(1.0 - alpha_m, acce_n);
+      // u_{n+1}, the displacement block of sol, not copied.
+      const mfem::Vector disp(sol.GetData(), mass->Height());
+      const mfem::Vector acce_alpha = time_method->get_acce_alpha(disp, disp_predict, acce_n, dt);
 
       global_assembly->assemble_residual(sol_alpha, residual);
       mfem::BlockVector residual_blocks(residual, global_assembly->get_offsets());
@@ -409,17 +393,12 @@ private:
    // B = tangent_pu for the preconditioner.
    std::unique_ptr<mfem::HypreParMatrix> assemble_tangent(const mfem::Vector &sol) const
    {
-      const double alpha_m = time_method->get_alpha_m();
       const double alpha_f = time_method->get_alpha_f();
-      const double beta = time_method->get_beta();
-
-      mfem::Vector sol_alpha(sol_n);
-      sol_alpha *= 1.0 - alpha_f;
-      sol_alpha.Add(alpha_f, sol);
+      const mfem::Vector sol_alpha = time_method->get_state_alpha(sol_n, sol);
 
       mfem::Array2D<const mfem::HypreParMatrix *> blocks =
          global_assembly->assemble_tangent_blocks(sol_alpha);
-      tangent_uu.reset(mfem::Add(alpha_m / (beta * dt * dt), *mass, alpha_f, *blocks(0, 0)));
+      tangent_uu.reset(mfem::Add(time_method->get_acce_alpha_factor(dt), *mass, alpha_f, *blocks(0, 0)));
       tangent_pu = std::make_unique<mfem::HypreParMatrix>(*blocks(1, 0));
       *tangent_pu *= alpha_f;
       blocks(0, 0) = tangent_uu.get();
