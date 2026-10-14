@@ -162,8 +162,8 @@ public:
       dirichlet.apply_fixed_bc(velo);
       if (dirichlet.is_disp_load())
       {
-         dirichlet.apply_disp_load_bc(tt, disp);
-         dirichlet.apply_velo_load_bc(tt, velo);
+         dirichlet.apply_load_bc(tt, LoadData::disp_loading, disp);
+         dirichlet.apply_load_bc(tt, LoadData::velo_loading, velo);
       }
       if (neumann.is_traction_load())
          global_assembly->set_traction_load(tt);
@@ -234,7 +234,7 @@ public:
          disp(vdof) = rotation(vdof);
       dirichlet.apply_fixed_bc(disp);
       if (dirichlet.is_disp_load())
-         dirichlet.apply_disp_load_bc(time_new, disp);
+         dirichlet.apply_load_bc(time_new, LoadData::disp_loading, disp);
       disp.GetTrueDofs(sol.GetBlock(0));
 
       SystemTools::print_block_newton_header();

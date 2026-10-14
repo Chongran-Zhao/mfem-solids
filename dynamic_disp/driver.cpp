@@ -87,7 +87,8 @@ int main(int argc, char *argv[])
    // 5. Set up the boundary conditions; a prescribed displacement and a
    //    traction may act together.
    auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
-   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u,
+                                                    LoadData::surface_traction);
    dirichlet->print_fixed_bc();
    if (dirichlet->is_disp_load())
       dirichlet->print_disp_load();

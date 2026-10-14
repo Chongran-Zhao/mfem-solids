@@ -33,6 +33,7 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
+#include "LoadData.hpp"
 #include "LocalAssembly_Mixed.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
@@ -91,7 +92,8 @@ int main(int argc, char *argv[])
    // and the boundary conditions are created anew from MaterialModelData and
    // config.yaml.
    auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
-   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u);
+   auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u,
+                                                    LoadData::surface_traction);
    const bool is_traction_load = neumann->is_traction_load();
    auto local_assembly = std::make_unique<LocalAssembly_Mixed>(set_material_model());
    local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());

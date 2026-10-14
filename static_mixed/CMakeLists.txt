@@ -10,8 +10,7 @@ project(static_mixed LANGUAGES CXX)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/mfem-solids.cmake)
 
-# The headers of this case, in its include/, come first: its LoadData.hpp,
-# which DirichletBoundary and NeumannBoundary include, and its
+# The headers of this case, in its include/: its LoadData.hpp,
 # MaterialModelData.hpp, NonlinearSolver.hpp and TimeSolver.hpp.
 set(case_include_dirs ${CMAKE_CURRENT_SOURCE_DIR}/include ${include_dirs})
 

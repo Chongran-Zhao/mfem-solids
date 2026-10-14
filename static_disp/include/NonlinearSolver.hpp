@@ -27,6 +27,7 @@
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Disp.hpp"
 #include "INonlinearSolver.hpp"
+#include "LoadData.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 
@@ -113,7 +114,7 @@ private:
       disp_target = disp;
       dirichlet.apply_fixed_bc(disp_target);
       if (dirichlet.is_disp_load())
-         dirichlet.apply_disp_load_bc(tt, disp_target);
+         dirichlet.apply_load_bc(tt, LoadData::disp_loading, disp_target);
       mfem::Vector target_owned(disp_owned.Size());
       disp_target.GetTrueDofs(target_owned);
       mfem::Vector prescribed_increment(target_owned);
