@@ -27,8 +27,8 @@ add_executable(driver driver.cpp)
 target_include_directories(driver PRIVATE ${case_include_dirs})
 target_link_libraries(driver PRIVATE ${mfem_libraries})
 
-# vtu_writer also writes the Green-Lagrange strain, with the VTK_Tools.hpp of
-# this folder.
+# vtu_writer writes spherical components, with the VTK_Tools_Sphere.hpp of
+# its include/.
 add_executable(vtu_writer vtu_writer.cpp)
 target_include_directories(vtu_writer PRIVATE ${case_include_dirs})
 target_link_libraries(vtu_writer PRIVATE ${mfem_libraries})

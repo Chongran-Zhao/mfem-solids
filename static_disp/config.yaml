@@ -65,5 +65,9 @@ csv_writer:
 # Output folders, in the directory the programs run in.
 output:
   vtu: results_vtu
+  # vtu_writer cuts each element into vtu_refine^3 hexahedra at its
+  # (vtu_refine + 1)^3 sampling points; 1, the element itself, suffices for
+  # Q1, whose fields are linear in each direction.
+  vtu_refine: 1
   gf: results_gf
   csv: results_csv
