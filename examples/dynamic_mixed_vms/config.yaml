@@ -34,7 +34,7 @@ space:
 
   # Factor of the VMS parameter tau = tau_factor h^2 / (2 mu), h the size of
   # the element; larger values smooth the pressure more.
-  tau_factor: 1.0
+  tau_factor: 0.1
 
 # Time integration method, read into TimeMethod_GenAlpha.
 time_method:

@@ -12,9 +12,9 @@
 //    grad M_c = F^-T Grad M_c,   tau = tau_factor h^2 / (2 mu),
 // with h the size of the element in the reference configuration. Div P_ich
 // is kept in R_mom, so that the stabilization vanishes for the exact
-// solution; its tangent drops the derivative of AA_ich, the only part of
-// the tangent that is not exact. The momentum equation is that of
-// LocalAssembly_Mixed, so the tangent is not symmetric.
+// solution; its tangent needs the derivative of AA_ich, given by the
+// material. The momentum equation is that of LocalAssembly_Mixed, so the
+// tangent is not symmetric.
 //
 // The acceleration enters as a_alpha = acce_offset + acce_factor u_alpha, an
 // affine function of the displacement that the local assembly receives, set
@@ -104,8 +104,9 @@ public:
          const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
          const Tensor2_3D F_inv = F.inverse();
          const Tensor4_3D AA_ich = material->get_1st_elasticity_tensor_ich(F);
+         const std::array<Tensor2_3D, 3> d2u_dX2 = get_disp_hessian(disp, d2N_dX2);
          const Vector_3D R_mom = get_momentum_residual(disp, pres, elem_acce_offset, N,
-                                                      d2N_dX2, dM_dX, F, AA_ich);
+                                                      d2u_dX2, dM_dX, F, AA_ich);
 
          // dV = w_q * det( dX/dxi )
          const double dV = quad_pt.weight * elem_map.Weight();
@@ -126,7 +127,12 @@ public:
    //                           + grad_l M_c (grad N_b . R_mom)
    //                           - J grad_l N_b (grad M_c . grad p)
    //                           + J grad_l p (grad M_c . grad N_b)
-   //                           + grad_k M_c AA_ich_kJlL N_b,LJ ) dV,
+   //                           + grad_k M_c dDivP_kl ) dV,
+   //    dDivP_kl = AA_ich_kJlL N_b,LJ + dAA_ich_kJlL/dF_mM u_m,MJ N_b,L,
+   // the derivative of P_ich_kJ,J = AA_ich_kJmM u_m,MJ, whose second part
+   // is the derivative of AA_ich along the slices G^J_mM = u_m,MJ,
+   //    dAA_ich_kJlL/dF_mM G^J_mM = dAA_ich[G^J]_kJlL,
+   // since dAA_ich_kJlL/dF_mM is symmetric in (l L) and (m M);
    // K_pp(c, d)   -= int tau J grad M_c . grad M_d dV.
    void AssembleElementGrad(const mfem::Array<const mfem::FiniteElement *> &elem,
                             mfem::ElementTransformation &elem_map,
@@ -171,8 +177,23 @@ public:
          const Tensor2_3D F_inv = F.inverse();
          const double J = F.det();
          const Tensor4_3D AA_ich = material->get_1st_elasticity_tensor_ich(F);
+         const std::array<Tensor2_3D, 3> d2u_dX2 = get_disp_hessian(disp, d2N_dX2);
          const Vector_3D R_mom = get_momentum_residual(disp, pres, elem_acce_offset, N,
-                                                      d2N_dX2, dM_dX, F, AA_ich);
+                                                      d2u_dX2, dM_dX, F, AA_ich);
+
+         // sum_J dAA_ich[G^J]_kJlL, G^J_mM = u_m,MJ, stored as [l](k, L).
+         std::array<Tensor2_3D, 3> dAA_d2u;
+         for (int JJ = 0; JJ < 3; JJ++)
+         {
+            const Tensor2_3D slice_J(d2u_dX2[0](0, JJ), d2u_dX2[0](1, JJ), d2u_dX2[0](2, JJ),
+                                     d2u_dX2[1](0, JJ), d2u_dX2[1](1, JJ), d2u_dX2[1](2, JJ),
+                                     d2u_dX2[2](0, JJ), d2u_dX2[2](1, JJ), d2u_dX2[2](2, JJ));
+            const Tensor4_3D dAA_ich = material->get_d_1st_elasticity_tensor_ich(F, slice_J);
+            for (int ll = 0; ll < 3; ll++)
+               for (int kk = 0; kk < 3; kk++)
+                  for (int LL = 0; LL < 3; LL++)
+                     dAA_d2u[ll](kk, LL) += dAA_ich(kk, JJ, ll, LL);
+         }
 
          // grad p = F^-T Grad p, Grad p = M_c,J p_c.
          Vector_3D dp_dX;
@@ -191,13 +212,17 @@ public:
                                       + dNb_dx(2) * R_mom(2);
             const Tensor2_3D d2Nb_dX2 = get_hessian(d2N_dX2, bb);
 
-            // AA_ich_kJlL N_b,LJ for every k and l.
-            Tensor2_3D AA_d2Nb;
+            // dDivP_kl for every k and l.
+            Tensor2_3D dDivP;
             for (int kk = 0; kk < 3; kk++)
                for (int ll = 0; ll < 3; ll++)
+               {
                   for (int JJ = 0; JJ < 3; JJ++)
                      for (int LL = 0; LL < 3; LL++)
-                        AA_d2Nb(kk, ll) += AA_ich(kk, JJ, ll, LL) * d2Nb_dX2(LL, JJ);
+                        dDivP(kk, ll) += AA_ich(kk, JJ, ll, LL) * d2Nb_dX2(LL, JJ);
+                  for (int LL = 0; LL < 3; LL++)
+                     dDivP(kk, ll) += dAA_d2u[ll](kk, LL) * dN_dX(bb, LL);
+               }
 
             for (int cc = 0; cc < num_nodes_p; cc++)
             {
@@ -213,8 +238,8 @@ public:
                        + dMc_dx(ll) * dNb_dx_R_mom
                        - J * dNb_dx(ll) * dMc_dx_dp_dx
                        + J * dp_dx(ll) * dMc_dx_dNb_dx
-                       + dMc_dx(0) * AA_d2Nb(0, ll) + dMc_dx(1) * AA_d2Nb(1, ll)
-                       + dMc_dx(2) * AA_d2Nb(2, ll) );
+                       + dMc_dx(0) * dDivP(0, ll) + dMc_dx(1) * dDivP(1, ll)
+                       + dMc_dx(2) * dDivP(2, ll) );
             }
          }
 
@@ -237,7 +262,7 @@ private:
    // P_ich_kJ,J = AA_ich_kJlL u_l,LJ.
    Vector_3D get_momentum_residual(const mfem::Vector &disp, const mfem::Vector &pres,
                                    const mfem::Vector &elem_acce_offset, const mfem::Vector &N,
-                                   const mfem::DenseMatrix &d2N_dX2,
+                                   const std::array<Tensor2_3D, 3> &d2u_dX2,
                                    const mfem::DenseMatrix &dM_dX, const Tensor2_3D &F,
                                    const Tensor4_3D &AA_ich) const
    {
@@ -260,15 +285,6 @@ private:
          for (int JJ = 0; JJ < 3; JJ++)
             dp_dX(JJ) += dM_dX(cc, JJ) * pres(cc);
 
-      // u_l,LJ = d_al N_a,LJ
-      std::array<Tensor2_3D, 3> d2u_dX2;
-      for (int aa = 0; aa < num_nodes_u; aa++)
-      {
-         const Tensor2_3D d2Na_dX2 = get_hessian(d2N_dX2, aa);
-         for (int ll = 0; ll < 3; ll++)
-            d2u_dX2[ll] += disp(aa+ll*num_nodes_u) * d2Na_dX2;
-      }
-
       Vector_3D out;
       for (int kk = 0; kk < 3; kk++)
       {
@@ -279,6 +295,21 @@ private:
             for (int ll = 0; ll < 3; ll++)
                for (int LL = 0; LL < 3; LL++)
                   out(kk) -= AA_ich(kk, JJ, ll, LL) * d2u_dX2[ll](LL, JJ);
+      }
+      return out;
+   }
+
+   // u_l,LJ = d_al N_a,LJ, stored as [l](L, J).
+   static std::array<Tensor2_3D, 3> get_disp_hessian(const mfem::Vector &disp,
+                                                     const mfem::DenseMatrix &d2N_dX2)
+   {
+      const int num_nodes_u = d2N_dX2.Height();
+      std::array<Tensor2_3D, 3> out;
+      for (int aa = 0; aa < num_nodes_u; aa++)
+      {
+         const Tensor2_3D d2Na_dX2 = get_hessian(d2N_dX2, aa);
+         for (int ll = 0; ll < 3; ll++)
+            out[ll] += disp(aa+ll*num_nodes_u) * d2Na_dX2;
       }
       return out;
    }
