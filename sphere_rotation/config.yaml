@@ -54,7 +54,7 @@ time_method:
   # Spectral radius at infinite frequency of generalized-alpha, in [0, 1].
   rho_inf: 0.5
 
-# Time steps, read into TimeSolver_Dynamic_Mixed.
+# Time steps, read into TimeSolver.
 time:
   # Time step; the last step is shortened to end at final_time.
   dt: 1.0e-4

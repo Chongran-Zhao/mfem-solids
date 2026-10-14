@@ -41,7 +41,7 @@ time_method:
   # frequencies of Q2, unresolved by dt, which make the pressure oscillate.
   rho_inf: 0.5
 
-# Time steps, read into TimeSolver_Dynamic_Mixed.
+# Time steps, read into TimeSolver.
 time:
   # Time step; the last step is shortened to end at final_time.
   dt: 0.01
