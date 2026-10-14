@@ -241,7 +241,7 @@ public:
    // LocalAssemblyTools::get_quad_rule.
    void set_quad_order(int input_quad_order) { quad_order = input_quad_order; }
 
-private:
+protected:
    // The rule of order quad_order, or that of LocalAssemblyTools.
    const mfem::IntegrationRule &get_quad_rule(const mfem::FiniteElement &elem,
                                               mfem::ElementTransformation &elem_map) const
