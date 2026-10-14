@@ -83,6 +83,7 @@ set(shared_headers
   ${project_dir}/include/assembly/LocalAssembly_Disp.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_Regions.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS.hpp
   ${project_dir}/include/assembly/ParBlockNonlinearForm_External.hpp
   ${project_dir}/include/boundary/DirichletBoundary.hpp
   ${project_dir}/include/boundary/NeumannBoundary.hpp

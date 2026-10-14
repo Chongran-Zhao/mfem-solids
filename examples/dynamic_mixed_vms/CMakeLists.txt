@@ -1,0 +1,38 @@
+# ============================================================================
+# dynamic_mixed_vms: hyperelastodynamics in the mixed displacement-pressure
+# form, equal-order elements with the VMS stabilization
+#
+# Build and run in this folder:
+#    cmake -B build && cmake --build build
+#    cd build && ./read_mesh && mpirun -np 2 ./driver
+# ============================================================================
+cmake_minimum_required(VERSION 3.20)
+project(dynamic_mixed_vms LANGUAGES CXX)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/mfem-solids.cmake)
+
+# The headers of this case, in its include/; like the shared ones, listed
+# for the record, not needed to build, and checked against the folder.
+set(case_headers
+  include/LoadData.hpp
+  include/MaterialModelData.hpp
+  include/NonlinearSolver.hpp
+  include/TimeSolver.hpp)
+check_header_list(${CMAKE_CURRENT_SOURCE_DIR}/include ${case_headers})
+
+# config.yaml is copied into the build folder, again whenever it changes;
+# the programs read the copy of the directory they run in.
+configure_file(config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
+
+# The mesh preparation of dynamic_mixed, with its HTML template.
+add_executable(read_mesh ../dynamic_mixed/read_mesh.cpp)
+target_include_directories(read_mesh PRIVATE ${MFEM_INCLUDE_DIRS})
+target_link_libraries(read_mesh PRIVATE ${mfem_libraries})
+# The mesh file is found from the project directory, the HTML template from
+# dynamic_mixed.
+target_compile_definitions(read_mesh PRIVATE PROJECT_DIR="${project_dir}"
+                                             SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../dynamic_mixed")
+
+add_executable(driver driver.cpp ${case_headers})
+target_include_directories(driver PRIVATE include)
+target_link_libraries(driver PRIVATE mfem_solids)
