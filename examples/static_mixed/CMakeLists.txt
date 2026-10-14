@@ -1,14 +1,14 @@
 # ============================================================================
-# dynamic_mixed: hyperelastodynamics in the mixed displacement-pressure form
+# static_mixed: hyperelastostatics in the mixed displacement-pressure form
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
 #    cd build && ./read_mesh && mpirun -np 2 ./driver && ./vtu_writer && mpirun -np 2 ./csv_writer
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
-project(dynamic_mixed LANGUAGES CXX)
+project(static_mixed LANGUAGES CXX)
 
-include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/mfem-solids.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/mfem-solids.cmake)
 
 # The headers of this case, in its include/; like the shared ones, listed
 # for the record, not needed to build, and checked against the folder.

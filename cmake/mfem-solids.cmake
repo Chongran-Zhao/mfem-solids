@@ -1,8 +1,8 @@
 # ============================================================================
 # mfem-solids.cmake
 #
-# Settings shared by the folders of this project; each folder's
-# CMakeLists.txt includes it after its own project() call:
+# Settings shared by the examples of this project, in examples/; the
+# CMakeLists.txt of each includes it after its own project() call:
 #    project_dir     the root of mfem-solids
 #    mfem_libraries  MFEM, built with MPI and MUMPS, MPI, and yaml-cpp
 #    mfem_solids     the target of the shared headers of include/, with

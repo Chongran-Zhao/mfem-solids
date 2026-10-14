@@ -14,7 +14,7 @@
 clear; close all; clc;
 
 % Result folders, relative to the repository, and their legend labels.
-csv_dirs = {'static_disp/build/results_csv'};
+csv_dirs = {'examples/static_disp/build/results_csv'};
 labels = {'displacement'};
 
 assert(numel(labels) == numel(csv_dirs), 'One label per folder.');
