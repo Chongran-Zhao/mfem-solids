@@ -1,9 +1,11 @@
 // ============================================================================
 // driver.cpp of dynamic_mixed_vms
 //
-// Hyperelastodynamics in the mixed displacement-pressure (u/p) form, with
-// equal-order elements stabilized by the VMS term of LocalAssembly_Mixed_VMS
-// and the generalized-alpha method in physical time. The
+// Hyperelastodynamics in the rate form of the mixed displacement-pressure
+// (u/p) formulation, as in PERIGEE solids: the velocity and the pressure are
+// the unknowns, of equal order, stabilized by the VMS term of
+// LocalAssembly_Mixed_VMS, with the first-order generalized-alpha method in
+// physical time. The
 // time steps and the boundary conditions are read from config.yaml, the
 // latter referring to faces by name; the material is given by
 // MaterialModelData, whose volumetric model decides whether it is
@@ -33,7 +35,7 @@
 #include "NeumannBoundary.hpp"
 #include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
-#include "TimeMethod_GenAlpha.hpp"
+#include "TimeMethod_GenAlpha_1st.hpp"
 #include "TimeSolver.hpp"
 #include "Vector_3D.hpp"
 
@@ -119,7 +121,7 @@ int main(int argc, char *argv[])
    // 8. Set up the nonlinear solver, which owns the global assembly and the
    //    time method, and the time solver, which owns the nonlinear solver.
    auto time_method =
-      std::make_unique<TimeMethod_GenAlpha>(config["time_method"]["rho_inf"].as<double>());
+      std::make_unique<TimeMethod_GenAlpha_1st>(config["time_method"]["rho_inf"].as<double>());
    auto nonlinear_solver = std::make_unique<NonlinearSolver>(
       std::move(global_assembly), local_assembly_ref, std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
