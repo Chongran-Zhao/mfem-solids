@@ -30,11 +30,12 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
+#include "INonlinearSolver.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha.hpp"
 
-class NonlinearSolver : public mfem::Operator
+class NonlinearSolver : public INonlinearSolver
 {
 public:
    // Takes the ownership of the global assembly and of the time method, and
@@ -43,27 +44,16 @@ public:
    NonlinearSolver(std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
                    std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
                    const YAML::Node &solver)
-      : mfem::Operator(input_global_assembly->get_num_dofs()),
+      : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
         time_method(std::move(input_time_method)),
         mass(global_assembly->assemble_mass()),
         linear_solver(global_assembly->get_comm()),
         newton_monitor(global_assembly->get_offsets(), global_assembly->get_comm()),
-        sol_n(global_assembly->get_offsets()),
-        newton_solver(global_assembly->get_comm())
+        sol_n(global_assembly->get_offsets())
    {
-      linear_solver.SetPrintLevel(0);
-      // The tangents keep the sparsity of the first one, so MUMPS orders and
-      // analyzes it once and only factorizes the later ones.
-      linear_solver.SetReorderingReuse(true);
-      newton_solver.SetOperator(*this);
-      newton_solver.SetSolver(linear_solver);
-      newton_solver.SetRelTol(solver["newton_rel_tol"].as<double>());
-      newton_solver.SetAbsTol(solver["newton_abs_tol"].as<double>());
-      newton_solver.SetMaxIter(solver["newton_max_iter"].as<int>());
-      newton_solver.SetPrintLevel(-1);
-      newton_solver.iterative_mode = true;
-      newton_solver.SetMonitor(newton_monitor);
+      set_direct_solver(linear_solver);
+      set_newton_solver(solver, linear_solver, newton_monitor);
    }
 
    // The initial state at time tt: sets the boundary values of disp and
@@ -142,11 +132,8 @@ public:
 
       SystemTools::print_block_newton_header();
 
-      // Newton iterations for R_dyn(u_{n+1},p_{n+1}) = 0; the empty
-      // right-hand side means zero.
-      newton_solver.Mult(mfem::Vector(), sol);
-      MFEM_VERIFY(newton_solver.GetConverged(),
-                  "Newton did not converge at t = " << time_n + dt << ".");
+      // Newton iterations for R_dyn(u_{n+1},p_{n+1}) = 0.
+      const int iterations = solve_newton(time_n + dt, sol);
 
       // a_{n+1} = (u_{n+1} - u_pred) / (beta dt^2),
       // v_{n+1} = v_n + dt ( (1 - gamma) a_n + gamma a_{n+1} ).
@@ -160,7 +147,7 @@ public:
       pres.SetFromTrueDofs(sol.GetBlock(1));
       velo.SetFromTrueDofs(velo_owned);
       acce.SetFromTrueDofs(acce_owned);
-      return newton_solver.GetNumIterations();
+      return iterations;
    }
 
    // Required by MFEM: overrides mfem::Operator::Mult, which NewtonSolver
@@ -257,8 +244,6 @@ private:
          mfem::HypreParMatrixFromBlocks(blocks, &coefficients));
    }
 
-   // newton_solver points to this operator, the linear solver and the
-   // monitor, so it is declared last and goes first.
    const std::unique_ptr<GlobalAssembly_Mixed> global_assembly;  // R, K and M
    const std::unique_ptr<TimeMethod_GenAlpha> time_method;       // alpha_m, alpha_f, gamma, beta
    const std::unique_ptr<mfem::HypreParMatrix> mass;             // M of the displacement, assembled once
@@ -271,8 +256,6 @@ private:
    mfem::BlockVector sol_n;                                      // [u_n; p_n] on the dofs this rank owns
    mfem::Vector acce_n;                                          // a_n on the dofs this rank owns
    mfem::Vector disp_predict;                                    // u_pred on the dofs this rank owns
-
-   mfem::NewtonSolver newton_solver;
 };
 
 #endif

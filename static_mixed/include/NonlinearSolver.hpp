@@ -26,34 +26,24 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
+#include "INonlinearSolver.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
 
-class NonlinearSolver : public mfem::Operator
+class NonlinearSolver : public INonlinearSolver
 {
 public:
    // Takes the ownership of the global assembly; the Newton settings come
    // from the solver section of config.yaml.
    NonlinearSolver(std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
                    const YAML::Node &solver)
-      : mfem::Operator(input_global_assembly->get_num_dofs()),
+      : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
         linear_solver(global_assembly->get_comm()),
-        newton_monitor(global_assembly->get_offsets(), global_assembly->get_comm()),
-        newton_solver(global_assembly->get_comm())
+        newton_monitor(global_assembly->get_offsets(), global_assembly->get_comm())
    {
-      linear_solver.SetPrintLevel(0);
-      // The tangents keep the sparsity of the first one, so MUMPS orders and
-      // analyzes it once and only factorizes the later ones.
-      linear_solver.SetReorderingReuse(true);
-      newton_solver.SetOperator(*this);
-      newton_solver.SetSolver(linear_solver);
-      newton_solver.SetRelTol(solver["newton_rel_tol"].as<double>());
-      newton_solver.SetAbsTol(solver["newton_abs_tol"].as<double>());
-      newton_solver.SetMaxIter(solver["newton_max_iter"].as<int>());
-      newton_solver.SetPrintLevel(-1);
-      newton_solver.iterative_mode = true;
-      newton_solver.SetMonitor(newton_monitor);
+      set_direct_solver(linear_solver);
+      set_newton_solver(solver, linear_solver, newton_monitor);
    }
 
    // Solves the load at time tt from the converged disp and pres of the
@@ -81,13 +71,12 @@ public:
          neumann.print_traction_load_by_step();
       SystemTools::print_block_newton_header();
 
-      // Newton iterations for R(u,p) = 0; the empty right-hand side means zero.
-      newton_solver.Mult(mfem::Vector(), sol);
-      MFEM_VERIFY(newton_solver.GetConverged(), "Newton did not converge at t = " << tt << ".");
+      // Newton iterations for R(u,p) = 0.
+      const int iterations = solve_newton(tt, sol);
 
       disp.SetFromTrueDofs(sol.GetBlock(0));
       pres.SetFromTrueDofs(sol.GetBlock(1));
-      return newton_solver.GetNumIterations();
+      return iterations;
    }
 
    // Required by MFEM: overrides mfem::Operator::Mult, which NewtonSolver
@@ -155,13 +144,10 @@ private:
       disp.SetFromTrueDofs(sol.GetBlock(0));
    }
 
-   // newton_solver points to this operator, the linear solver and the
-   // monitor, so it is declared last and goes first. The tangent is owned
-   // by global_assembly.
+   // The tangent is owned by global_assembly.
    const std::unique_ptr<GlobalAssembly_Mixed> global_assembly;   // R and K
    mfem::MUMPSSolver linear_solver;                               // parallel direct solver of the tangent
    SystemTools::BlockNewtonMonitor newton_monitor;                // prints the residual norms of u and p
-   mfem::NewtonSolver newton_solver;
 };
 
 #endif
