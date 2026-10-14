@@ -100,6 +100,7 @@ set(shared_headers
   ${project_dir}/include/system/Tensor2_3D.hpp
   ${project_dir}/include/system/Tensor4_3D.hpp
   ${project_dir}/include/system/Vector_3D.hpp
-  ${project_dir}/include/visualization/VTK_Tools.hpp)
+  ${project_dir}/include/visualization/VTK_Tools.hpp
+  ${project_dir}/include/visualization/VTK_Tools_Sphere.hpp)
 target_sources(mfem_solids INTERFACE ${shared_headers})
 check_header_list(${project_dir}/include ${shared_headers})

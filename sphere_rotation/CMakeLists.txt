@@ -17,8 +17,7 @@ set(case_headers
   include/LoadData.hpp
   include/MaterialModelData.hpp
   include/NonlinearSolver.hpp
-  include/TimeSolver.hpp
-  include/VTK_Tools_Sphere.hpp)
+  include/TimeSolver.hpp)
 check_header_list(${CMAKE_CURRENT_SOURCE_DIR}/include ${case_headers})
 
 # config.yaml is copied into the build folder, again whenever it changes;
