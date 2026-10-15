@@ -1,5 +1,5 @@
-# Input of read_mesh, driver and vtu_writer of sphere_rotation.
-# CMake copies it into sphere_rotation/build/, and the programs read the copy
+# Input of read_mesh, driver and vtu_writer of sphere_rotation_TaylorHood.
+# CMake copies it into sphere_rotation_TaylorHood/build/, and the programs read the copy
 # of the directory they run in, or the file given as first argument. Units
 # are SI: meters, seconds. The surface of the ball turns about z by the
 # measured angle of LoadData; the body starts at rest.

@@ -1,5 +1,5 @@
 # ============================================================================
-# sphere_rotation_vms: the gelatin ball in its skull shell of sphere_rotation,
+# sphere_rotation_vms: the gelatin ball in its skull shell of sphere_rotation_TaylorHood,
 # in the rate form of the mixed formulation, equal-order elements with the VMS
 # stabilization, solved by GMRES
 #
@@ -26,8 +26,8 @@ check_header_list(${CMAKE_CURRENT_SOURCE_DIR}/include ${case_headers})
 configure_file(config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
 configure_file(angle_coefficients.csv ${CMAKE_CURRENT_BINARY_DIR}/angle_coefficients.csv COPYONLY)
 
-# The mesh generation and the VTU writer of sphere_rotation.
-add_executable(read_mesh ../sphere_rotation/read_mesh.cpp)
+# The mesh generation of sphere_rotation_TaylorHood.
+add_executable(read_mesh ../sphere_rotation_TaylorHood/read_mesh.cpp)
 target_include_directories(read_mesh PRIVATE ${MFEM_INCLUDE_DIRS})
 target_link_libraries(read_mesh PRIVATE ${mfem_libraries})
 
@@ -36,6 +36,6 @@ target_include_directories(driver PRIVATE include)
 target_link_libraries(driver PRIVATE mfem_solids)
 
 # vtu_writer writes spherical components, with VTK_Tools_Sphere.hpp.
-add_executable(vtu_writer ../sphere_rotation/vtu_writer.cpp ${case_headers})
+add_executable(vtu_writer vtu_writer.cpp ${case_headers})
 target_include_directories(vtu_writer PRIVATE include)
 target_link_libraries(vtu_writer PRIVATE mfem_solids)

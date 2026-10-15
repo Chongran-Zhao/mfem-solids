@@ -1,5 +1,5 @@
 // ============================================================================
-// vtu_writer.cpp of sphere_rotation
+// vtu_writer.cpp of sphere_rotation_TaylorHood
 //
 // The vtu_writer of dynamic_mixed_TaylorHood, sampled within each element by
 // VTK_Tools_Sphere, in spherical components. Writes the

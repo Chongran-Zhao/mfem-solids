@@ -1,5 +1,5 @@
 # ============================================================================
-# sphere_rotation: a gelatin ball in a skull shell, spun up about z by its
+# sphere_rotation_TaylorHood: a gelatin ball in a skull shell, spun up about z by its
 # surface, in the mixed displacement-pressure form
 #
 # Build and run in this folder:
@@ -7,7 +7,7 @@
 #    cd build && ./read_mesh && mpirun -np 4 ./driver && ./vtu_writer
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
-project(sphere_rotation LANGUAGES CXX)
+project(sphere_rotation_TaylorHood LANGUAGES CXX)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/mfem-solids.cmake)
 

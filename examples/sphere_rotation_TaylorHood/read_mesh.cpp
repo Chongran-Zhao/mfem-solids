@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
    //    the ball and the output file, the space section the order of the
    //    curved geometry. By default the config.yaml of the directory the
    //    program runs in is read, the copy CMake puts in
-   //    sphere_rotation/build/.
+   //    sphere_rotation_TaylorHood/build/.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
                  : std::filesystem::path("config.yaml");

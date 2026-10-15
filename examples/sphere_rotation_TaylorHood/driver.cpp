@@ -1,5 +1,5 @@
 // ============================================================================
-// driver.cpp of sphere_rotation
+// driver.cpp of sphere_rotation_TaylorHood
 //
 // The driver of dynamic_mixed_TaylorHood for the gelatin ball in its skull shell, spun
 // up by its surface: the same steps, with the loading, the materials of the

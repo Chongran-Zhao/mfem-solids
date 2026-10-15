@@ -90,8 +90,8 @@ Neumann:
 # residual of the stiff skull cannot drop below about 1e-9 N, its bulk
 # modulus, about 3e9 Pa, times the round-off of J - 1, so newton_abs_tol is
 # above that. With the skull started from the rotation of its surface, the
-# residual starts at about 1 N in sphere_rotation; newton_rel_tol and
-# newton_abs_tol are those of sphere_rotation.
+# residual starts at about 1 N in sphere_rotation_TaylorHood; newton_rel_tol and
+# newton_abs_tol are those of sphere_rotation_TaylorHood.
 solver:
   newton_rel_tol: 1.0e-5
   newton_abs_tol: 1.0e-8

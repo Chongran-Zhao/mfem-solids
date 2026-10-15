@@ -1,7 +1,7 @@
 // ============================================================================
 // NonlinearSolver.hpp
 //
-// Nonlinear solver of sphere_rotation. Compared with dynamic_mixed_TaylorHood, it
+// Nonlinear solver of sphere_rotation_TaylorHood. Compared with dynamic_mixed_TaylorHood, it
 // uses material regions, an iterative block solver and a rigid-rotation
 // initial guess, as detailed below.
 //

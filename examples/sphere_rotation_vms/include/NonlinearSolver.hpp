@@ -25,9 +25,9 @@
 // method from the velocity of the rotation of its surface,
 // LoadData::velo_loading of the face "outer", instead of v_n: from v_n, only
 // its surface would move, and the stiff skull would start with a large
-// residual, as in sphere_rotation.
+// residual, as in sphere_rotation_TaylorHood.
 //
-// The linear systems are solved iteratively, as in sphere_rotation. The
+// The linear systems are solved iteratively, as in sphere_rotation_TaylorHood. The
 // tangent with respect to v_{n+1} and p_{n+1},
 //    K = [A  B_up; B_pu  C],   A = s M + alpha_f K_uu,
 //    C = alpha_f K_pp = -alpha_f (tau J L_p + M_p[c_r / kappa]),
