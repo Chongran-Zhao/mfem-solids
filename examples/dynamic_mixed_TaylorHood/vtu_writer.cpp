@@ -1,5 +1,5 @@
 // ============================================================================
-// vtu_writer.cpp of dynamic_mixed
+// vtu_writer.cpp of dynamic_mixed_TaylorHood
 //
 // Writes the displacement, the velocity, the acceleration, the pressure, the
 // Cauchy and the second Piola-Kirchhoff stresses and the Green-Lagrange

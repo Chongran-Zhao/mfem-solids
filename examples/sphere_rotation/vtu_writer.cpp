@@ -1,7 +1,7 @@
 // ============================================================================
 // vtu_writer.cpp of sphere_rotation
 //
-// The vtu_writer of dynamic_mixed, sampled within each element by
+// The vtu_writer of dynamic_mixed_TaylorHood, sampled within each element by
 // VTK_Tools_Sphere, in spherical components. Writes the
 // displacement, the velocity, the acceleration, the Cauchy and the second
 // Piola-Kirchhoff stresses and the Green-Lagrange strain E = 1/2 (F^T F - I)

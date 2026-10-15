@@ -1,14 +1,16 @@
 // ============================================================================
-// driver.cpp of static_mixed
+// driver.cpp of dynamic_mixed_TaylorHood
 //
-// Hyperelastostatics in the mixed displacement-pressure (u/p) form, with
-// Taylor-Hood elements. Boundary conditions are read from config.yaml and
-// refer to faces by name; the material is given by MaterialModelData, whose
-// volumetric model decides whether it is compressible or fully
-// incompressible.
+// Hyperelastodynamics in the mixed displacement-pressure (u/p) form, with
+// Taylor-Hood elements and the generalized-alpha method in physical time. The
+// time steps and the boundary conditions are read from config.yaml, the
+// latter referring to faces by name; the material is given by
+// MaterialModelData, whose volumetric model decides whether it is
+// compressible or fully incompressible, and the initial velocity and the
+// loading by LoadData. The initial displacement and pressure are zero.
 //
 // Author: Chongran Zhao
-// Date: Sep. 29, 2026
+// Date: Oct. 3, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #include <filesystem>
@@ -24,13 +26,15 @@
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
 #include "LoadData.hpp"
-#include "LocalAssembly_Mixed.hpp"
+#include "LocalAssembly_Mixed_TaylorHood.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
+#include "TimeMethod_GenAlpha.hpp"
 #include "TimeSolver.hpp"
+#include "Vector_3D.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -61,7 +65,8 @@ int main(int argc, char *argv[])
    serial_mesh.Clear();
 
    // 3. Set up the finite element spaces, Taylor-Hood: the pressure one
-   //    order below the displacement.
+   //    order below the displacement, whose space is also that of the
+   //    velocity and the acceleration.
    const int dim = mesh.Dimension();
    const int elem_order = config["space"]["elem_order"].as<int>();
    MFEM_VERIFY(elem_order >= 2, "The mixed driver needs space.elem_order >= 2 for Taylor-Hood elements.");
@@ -71,60 +76,56 @@ int main(int argc, char *argv[])
    SystemTools::print_space(space_u);
    SystemTools::print_space(space_p);
 
-   mfem::ParGridFunction disp(&space_u), pres(&space_p);
+   // 4. Set the initial state: zero displacement and pressure, and the
+   //    velocity LoadData::initial_velo at the nodes.
+   mfem::VectorFunctionCoefficient initial_velo_value(dim,
+      [](const mfem::Vector &pt, mfem::Vector &value)
+   {
+      const Vector_3D velo_0 = LoadData::initial_velo(pt);
+      for (int comp = 0; comp < 3; comp++)
+         value(comp) = velo_0(comp);
+   });
+   mfem::ParGridFunction disp(&space_u), velo(&space_u), acce(&space_u), pres(&space_p);
    disp = 0.0;
+   velo.ProjectCoefficient(initial_velo_value);
+   acce = 0.0;
    pres = 0.0;
 
-   // 4. Set up the boundary conditions, on the displacement only.
+   // 5. Set up the boundary conditions, on the displacement only; a
+   //    prescribed displacement and a traction may act together.
    auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
    auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u,
                                                     LoadData::surface_traction);
-   const int num_load_steps = config["loading"]["load_steps"].as<int>();
-
-   // The loading is either a prescribed displacement or a traction.
-   const std::string loading_type = config["loading"]["type"].as<std::string>();
-   if (loading_type == "displacement")
-   {
-      MFEM_VERIFY(dirichlet->is_disp_load() && !neumann->is_traction_load(),
-                  "The loading type is displacement, so disp_bc must have an "
-                  "entry and Neumann no face.");
-   }
-   else if (loading_type == "traction")
-   {
-      MFEM_VERIFY(neumann->is_traction_load() && !dirichlet->is_disp_load(),
-                  "The loading type is traction, so Neumann must have a face "
-                  "and disp_bc no entry.");
-   }
-   else
-      MFEM_ABORT("Unknown loading type \"" << loading_type << "\".");
-
    dirichlet->print_fixed_bc();
    if (dirichlet->is_disp_load())
       dirichlet->print_disp_load();
-   else
+   if (neumann->is_traction_load())
       neumann->print_traction_load();
 
-   // 5. Set up the material model.
+   // 6. Set up the material model.
    std::unique_ptr<MaterialModel> material = set_material_model();
 
-   // 6. Set up the assembly: the material goes to the local assembly, and the
+   // 7. Set up the assembly: the material goes to the local assembly, and the
    //    local assembly and the boundary conditions to the global one, which
    //    owns them.
-   auto local_assembly = std::make_unique<LocalAssembly_Mixed>(std::move(material));
+   auto local_assembly = std::make_unique<LocalAssembly_Mixed_TaylorHood>(std::move(material));
    local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
-   // 7. Set up the nonlinear solver, which owns the global assembly, and the
-   //    time solver, which owns the nonlinear solver.
+   // 8. Set up the nonlinear solver, which owns the global assembly and the
+   //    time method, and the time solver, which owns the nonlinear solver.
+   auto time_method =
+      std::make_unique<TimeMethod_GenAlpha>(config["time_method"]["rho_inf"].as<double>());
    auto nonlinear_solver = std::make_unique<NonlinearSolver>(
-      std::move(global_assembly), config["solver"]);
+      std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver>(
-      std::move(nonlinear_solver), num_load_steps, results_dir, mesh);
+      std::move(nonlinear_solver), config["time"]["dt"].as<double>(),
+      config["time"]["final_time"].as<double>(), results_dir, mesh);
 
-   // 8. Solve the load steps.
-   time_solver->run(disp, pres);
+   // 9. Solve the time steps.
+   time_solver->run(disp, velo, acce, pres);
 
    mfem::out << std::string(74, '=') << "\n\n";
    mfem::out << "Job finished on " << SystemTools::get_time() << ' ' << SystemTools::get_date()

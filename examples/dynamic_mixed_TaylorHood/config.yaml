@@ -1,7 +1,12 @@
-# Input of the driver of static_mixed.
-# CMake copies it into static_mixed/build/, and the driver reads the copy of
-# the directory it runs in, or the file given as first argument. The mesh is
-# the beam.mesh of read_mesh, in that directory.
+# Input of read_mesh, driver, vtu_writer and csv_writer of dynamic_mixed_TaylorHood.
+# CMake copies it into dynamic_mixed_TaylorHood/build/, and the programs read the copy of
+# the directory they run in, or the file given as first argument. mesh.file is
+# relative to the project directory. Times are physical, in seconds; the
+# loading functions of LoadData receive the physical time. The initial
+# velocity is LoadData::initial_velo, and the initial displacement and
+# pressure zero.
+# The default case is the beam fixed on its left face, set swinging along z
+# by the initial velocity, without load.
 
 mesh:
   # Mesh file in MFEM format.
@@ -15,10 +20,11 @@ mesh:
 
   # Web page showing the named faces in 3D, and whether to open it.
   output_html: beam_boundary.html
-  open_html: true
+  open_html: false
 
 space:
-  # Order of the continuous shape functions.
+  # Order of the continuous shape functions of the displacement, at least 2;
+  # the pressure is one order lower (Taylor-Hood).
   elem_order: 2
 
   # Quadrature order of the elements, 2 x elem_order + 1: the
@@ -28,12 +34,18 @@ space:
   # about 1e-5 and its pressure by about 1e-3.
   quad_order: 5
 
-# Loading settings.
-loading:
-  # Number of load steps; the final load is reached in equal steps.
-  load_steps: 25
-  # Loading type, displacement or traction.
-  type: displacement
+# Time integration method, read into TimeMethod_GenAlpha.
+time_method:
+  # Spectral radius at infinite frequency of generalized-alpha, in [0, 1];
+  # 1 is the midpoint rule, without numerical damping. 0.5 damps the high
+  # frequencies of Q2, unresolved by dt, which make the pressure oscillate.
+  rho_inf: 0.5
+
+# Time steps, read into TimeSolver.
+time:
+  # Time step; the last step is shortened to end at final_time.
+  dt: 0.01
+  final_time: 5.0
 
 # Displacement boundary conditions, one entry per face and direction.
 Dirichlet:
@@ -43,23 +55,21 @@ Dirichlet:
     - { face: left, dir: y }
     - { face: left, dir: z }
   # Prescribed displacement, given by LoadData::disp_loading.
-  disp_bc:
-    - { face: right, dir: z }
+  disp_bc: []
 
 # Traction faces; the traction is given by LoadData::surface_traction.
 Neumann:
   faces: []
-# faces: [right, top]
 
 # Newton's method settings.
 # The linear solver is MUMPS.
 solver:
   newton_rel_tol: 1.0e-8
-  newton_abs_tol: 0.0
+  newton_abs_tol: 1.0e-10
   newton_max_iter: 20
 
 # Faces and directions reported by csv_writer, one entry per face and
-# direction.
+# direction; csv_writer also writes the energies of the whole body.
 csv_writer:
   - { face: left, dir: z }
   - { face: right, dir: z }

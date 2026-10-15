@@ -1,7 +1,7 @@
 // ============================================================================
 // driver.cpp of sphere_rotation
 //
-// The driver of dynamic_mixed for the gelatin ball in its skull shell, spun
+// The driver of dynamic_mixed_TaylorHood for the gelatin ball in its skull shell, spun
 // up by its surface: the same steps, with the loading, the materials of the
 // regions and the nonlinear solver of its include/, which solves the linear
 // systems by GMRES.
@@ -24,7 +24,7 @@
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
 #include "LoadData.hpp"
-#include "LocalAssembly_Mixed_Regions.hpp"
+#include "LocalAssembly_Mixed_TaylorHood_Regions.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
    // 7. Set up the assembly: the materials go to the local assembly, and the
    //    local assembly and the boundary conditions to the global one, which
    //    owns them.
-   auto local_assembly = std::make_unique<LocalAssembly_Mixed_Regions>(std::move(materials));
+   auto local_assembly = std::make_unique<LocalAssembly_Mixed_TaylorHood_Regions>(std::move(materials));
    local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));

@@ -1,5 +1,5 @@
 // ============================================================================
-// csv_writer.cpp of dynamic_mixed
+// csv_writer.cpp of dynamic_mixed_TaylorHood
 //
 // Writes, at each saved time step of time.csv,
 //    mean displacement, mean pressure and reaction force on the faces and
@@ -41,7 +41,7 @@
 #include "GlobalAssembly_Mixed.hpp"
 #include "LoadData.hpp"
 #include "LocalAssemblyTools.hpp"
-#include "LocalAssembly_Mixed.hpp"
+#include "LocalAssembly_Mixed_TaylorHood.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
    auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u,
                                                     LoadData::surface_traction);
    const bool is_traction_load = neumann->is_traction_load();
-   auto local_assembly = std::make_unique<LocalAssembly_Mixed>(set_material_model());
+   auto local_assembly = std::make_unique<LocalAssembly_Mixed_TaylorHood>(set_material_model());
    local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));

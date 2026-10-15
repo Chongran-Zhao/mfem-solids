@@ -1,12 +1,12 @@
 # ============================================================================
-# dynamic_mixed: hyperelastodynamics in the mixed displacement-pressure form
+# dynamic_mixed_TaylorHood: hyperelastodynamics in the mixed displacement-pressure form
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
 #    cd build && ./read_mesh && mpirun -np 2 ./driver && ./vtu_writer && mpirun -np 2 ./csv_writer
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
-project(dynamic_mixed LANGUAGES CXX)
+project(dynamic_mixed_TaylorHood LANGUAGES CXX)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/mfem-solids.cmake)
 

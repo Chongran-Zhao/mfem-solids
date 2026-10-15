@@ -11,8 +11,9 @@
 //    u = disp_offset + disp_factor v,
 //    dv/dt = dot_velo_offset + dot_factor v,   dp/dt = dot_pres_offset + dot_factor p,
 // set by set_rates at every time step. The residual is
-//    R^a_k = int N_a,J (P_ich_kJ - p J F^-1_Jk) dV, that of LocalAssembly_Mixed
-//            at u, without the inertia M dv/dt, added by the nonlinear solver;
+//    R^a_k = int N_a,J (P_ich_kJ - p J F^-1_Jk) dV, the momentum equation of
+//            LocalAssembly_Mixed at u, without the inertia M dv/dt, added by
+//            the nonlinear solver;
 //    R^c   = -int M_c (J F^-1_Jk v_k,J - J'(p) dp/dt) dV
 //            - int tau grad M_c . R_mom dV,
 // with the residual of the momentum equation, per reference volume,
@@ -93,15 +94,16 @@ public:
       const mfem::FiniteElement &elem_p = *elem[1];
       const mfem::Vector &velo = *elem_sol[0];
       const mfem::Vector &pres = *elem_sol[1];
+      mfem::Vector &residual_u = *residual[0];
       mfem::Vector &residual_p = *residual[1];
 
       const int num_nodes_u = elem_u.GetDof();
       const int num_nodes_p = elem_p.GetDof();
       const ElementRates rates = get_element_rates(elem_map, velo, pres);
 
-      // R^a_k at u; the mass equation of LocalAssembly_Mixed is replaced.
-      const mfem::Array<const mfem::Vector *> disp_sol({&rates.disp, &pres});
-      LocalAssembly_Mixed::AssembleElementVector(elem, elem_map, disp_sol, residual);
+      residual_u.SetSize(3 * num_nodes_u);
+      residual_u = 0.0;
+      residual_p.SetSize(num_nodes_p);
       residual_p = 0.0;
 
       mfem::Vector N(num_nodes_u), M(num_nodes_p);
@@ -126,6 +128,9 @@ public:
          // dV = w_q * det( dX/dxi )
          const double dV = quad_pt.weight * elem_map.Weight();
 
+         // R^a_k at u.
+         add_momentum_residual(dN_dX, get_1st_PK_stress(state.F, state.p), dV, residual_u);
+
          // J div v - J'(p) dp/dt, zero where the volume rate matches the
          // pressure rate.
          const double vol_rate = state.J * state.div_velo - state.dJ_dp * state.dot_pres;
@@ -133,9 +138,9 @@ public:
          for (int cc = 0; cc < num_nodes_p; cc++)
          {
             const Vector_3D dMc_dx = get_spatial_gradient(dM_dX, cc, state.F_inv);
-            residual_p(cc) -= dV * (M(cc) * vol_rate
-                                    + tau * (dMc_dx(0) * state.R_mom(0) + dMc_dx(1) * state.R_mom(1)
-                                           + dMc_dx(2) * state.R_mom(2)));
+            const double dMc_dx_R_mom = dMc_dx(0) * state.R_mom(0) + dMc_dx(1) * state.R_mom(1)
+                                      + dMc_dx(2) * state.R_mom(2);
+            residual_p(cc) -= dV * (M(cc) * vol_rate + tau * dMc_dx_R_mom);
          }
       }
    }
@@ -144,8 +149,8 @@ public:
    // AssembleElementGrad. The derivatives with respect to v and p, with
    // grad N_b = F^-T Grad N_b, grad v the spatial velocity gradient and
    // the factors c_u = disp_factor, c_r = dot_factor:
-   // K_uu(a k, b l) = c_u K_uu of LocalAssembly_Mixed at u,
-   // K_up(a k, d)   = K_up of LocalAssembly_Mixed at u,
+   // K_uu(a k, b l) = c_u int N_a,J AA_kJlL N_b,L dV, AA of LocalAssembly_Mixed at u,
+   // K_up(a k, d)   = -int J N_a,J F^-1_Jk M_d dV,
    // K_pu(c, b l)   = -int M_c J ( grad_l N_b + c_u ( grad_l N_b div v
    //                                               - grad_k N_b grad_l v_k ) ) dV
    //                  + int tau ( - rho_0 c_r N_b grad_l M_c
@@ -171,6 +176,7 @@ public:
       const mfem::Vector &velo = *elem_sol[0];
       const mfem::Vector &pres = *elem_sol[1];
       mfem::DenseMatrix &K_uu = *tangent(0, 0);
+      mfem::DenseMatrix &K_up = *tangent(0, 1);
       mfem::DenseMatrix &K_pu = *tangent(1, 0);
       mfem::DenseMatrix &K_pp = *tangent(1, 1);
 
@@ -178,11 +184,13 @@ public:
       const int num_nodes_p = elem_p.GetDof();
       const ElementRates rates = get_element_rates(elem_map, velo, pres);
 
-      // K_uu and K_up at u; the mass equation is replaced.
-      const mfem::Array<const mfem::Vector *> disp_sol({&rates.disp, &pres});
-      LocalAssembly_Mixed::AssembleElementGrad(elem, elem_map, disp_sol, tangent);
-      K_uu *= disp_factor;
+      K_uu.SetSize(3 * num_nodes_u, 3 * num_nodes_u);
+      K_uu = 0.0;
+      K_up.SetSize(3 * num_nodes_u, num_nodes_p);
+      K_up = 0.0;
+      K_pu.SetSize(num_nodes_p, 3 * num_nodes_u);
       K_pu = 0.0;
+      K_pp.SetSize(num_nodes_p, num_nodes_p);
       K_pp = 0.0;
 
       mfem::Vector N(num_nodes_u), M(num_nodes_p);
@@ -225,6 +233,17 @@ public:
          // dV = w_q * det( dX/dxi )
          const double dV = quad_pt.weight * elem_map.Weight();
 
+         // K_uu and K_up of the momentum equation at u.
+         add_momentum_tangent_uu(dN_dX, get_1st_elasticity_tensor(state.F, state.p),
+                                 disp_factor * dV, K_uu);
+         for (int aa = 0; aa < num_nodes_u; aa++)
+            for (int kk = 0; kk < 3; kk++)
+            {
+               const double J_dNa_dx = get_J_dNa_dx(dN_dX, aa, kk, J, F_inv);
+               for (int dd = 0; dd < num_nodes_p; dd++)
+                  K_up(aa+kk*num_nodes_u, dd) -= dV * J_dNa_dx * M(dd);
+            }
+
          for (int bb = 0; bb < num_nodes_u; bb++)
          {
             const Vector_3D dNb_dx = get_spatial_gradient(dN_dX, bb, F_inv);
@@ -233,10 +252,11 @@ public:
             const Tensor2_3D d2Nb_dX2 = get_hessian(d2N_dX2, bb);
 
             // grad_k N_b grad_l v_k for every l.
+            const Tensor2_3D &dv_dx = state.dv_dx;
             const Vector_3D dNb_dx_dv_dx(
-               dNb_dx(0) * state.dv_dx(0, 0) + dNb_dx(1) * state.dv_dx(1, 0) + dNb_dx(2) * state.dv_dx(2, 0),
-               dNb_dx(0) * state.dv_dx(0, 1) + dNb_dx(1) * state.dv_dx(1, 1) + dNb_dx(2) * state.dv_dx(2, 1),
-               dNb_dx(0) * state.dv_dx(0, 2) + dNb_dx(1) * state.dv_dx(1, 2) + dNb_dx(2) * state.dv_dx(2, 2));
+               dNb_dx(0) * dv_dx(0, 0) + dNb_dx(1) * dv_dx(1, 0) + dNb_dx(2) * dv_dx(2, 0),
+               dNb_dx(0) * dv_dx(0, 1) + dNb_dx(1) * dv_dx(1, 1) + dNb_dx(2) * dv_dx(2, 1),
+               dNb_dx(0) * dv_dx(0, 2) + dNb_dx(1) * dv_dx(1, 2) + dNb_dx(2) * dv_dx(2, 2));
 
             // dDivP_kl for every k and l.
             Tensor2_3D dDivP;
@@ -307,6 +327,7 @@ private:
       double J;                            // det F
       Tensor2_3D dv_dx;                    // grad_l v_k, stored as (k, l)
       double div_velo;                     // div v = grad_k v_k
+      double p;                            // pressure
       Vector_3D dp_dx;                     // grad p
       double dot_pres;                     // dp/dt
       double dJ_dp;                        // J'(p)
@@ -372,17 +393,17 @@ private:
 
       // Grad p = M_c,J p_c, grad p = F^-T Grad p, p and dp/dt.
       Vector_3D dp_dX;
-      double p = 0.0;
+      out.p = 0.0;
       out.dot_pres = 0.0;
       for (int cc = 0; cc < num_nodes_p; cc++)
       {
          for (int JJ = 0; JJ < 3; JJ++)
             dp_dX(JJ) += dM_dX(cc, JJ) * pres(cc);
-         p += M(cc) * pres(cc);
+         out.p += M(cc) * pres(cc);
          out.dot_pres += M(cc) * rates.dot_pres(cc);
       }
       out.dp_dx = get_spatial_gradient(dp_dX, out.F_inv);
-      out.dJ_dp = material->get_dJ_dp(p);
+      out.dJ_dp = material->get_dJ_dp(out.p);
 
       // dv_k/dt = N_a dv_ak/dt
       Vector_3D dot_velo;
