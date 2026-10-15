@@ -1,0 +1,53 @@
+// ============================================================================
+// MaterialModelData.hpp
+//
+// The material of the beam, used by the programs of this case. Changing
+// the material means changing this file.
+//
+// Author: Chongran Zhao
+// Date: Sep. 29, 2026
+// Email: chongran_zhao@brown.edu
+// ============================================================================
+#ifndef MATERIAL_MODEL_DATA_HPP
+#define MATERIAL_MODEL_DATA_HPP
+
+#include <memory>
+
+#include "IMaterialModel_ich.hpp"
+#include "IMaterialModel_vol.hpp"
+#include "MaterialModel.hpp"
+#include "MaterialModel_ich_NeoHookean.hpp"
+#include "MaterialModel_vol_Quadratic.hpp"
+
+// Young's modulus, Poisson's ratio and reference density of the reference
+// case; the density matters only to the dynamics.
+inline constexpr double young = 540.0e3;
+inline constexpr double poisson = 0.324;
+inline constexpr double density = 1000.0;
+
+// Shear modulus mu from young and poisson, of the Neo-Hookean model and of
+// tau of the VMS stabilization.
+inline constexpr double shear_modulus = young / (2.0 * (1.0 + poisson));
+
+// Volumetric model: quadratic, with kappa from young and poisson, and the
+// density.
+inline std::unique_ptr<IMaterialModel_vol> set_vol_model()
+{
+   const double kappa = young / (3.0 * (1.0 - 2.0 * poisson));
+   return std::make_unique<MaterialModel_vol_Quadratic>(density, kappa);
+}
+
+// Isochoric model: Neo-Hookean, with shear_modulus.
+inline std::unique_ptr<IMaterialModel_ich> set_ich_model()
+{
+   return std::make_unique<MaterialModel_ich_NeoHookean>(shear_modulus);
+}
+
+// The material: the volumetric and the isochoric model together. It holds no
+// state, so each owner, e.g. each local assembly, creates its own.
+inline std::unique_ptr<MaterialModel> set_material_model()
+{
+   return std::make_unique<MaterialModel>(set_vol_model(), set_ich_model());
+}
+
+#endif

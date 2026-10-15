@@ -30,7 +30,7 @@ space:
   # default rule, 2 x LocalAssemblyTools OrderGrad, 3 x 3 x 3 points here.
   quad_order: 3
 
-# Time integration method, read into TimeMethod_GenAlpha.
+# Time integration method, read into TimeMethod_GenAlpha_2nd_Order.
 time_method:
   # Spectral radius at infinite frequency of generalized-alpha, in [0, 1];
   # 1 is the midpoint rule, without numerical damping.

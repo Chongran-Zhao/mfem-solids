@@ -33,7 +33,7 @@
 #include "LoadData.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
-#include "TimeMethod_GenAlpha.hpp"
+#include "TimeMethod_GenAlpha_2nd_Order.hpp"
 
 class NonlinearSolver : public INonlinearSolver
 {
@@ -42,7 +42,7 @@ public:
    // assembles the mass matrix; the Newton settings come from the solver
    // section of config.yaml.
    NonlinearSolver(std::unique_ptr<GlobalAssembly_Disp> input_global_assembly,
-                   std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
+                   std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> input_time_method,
                    const YAML::Node &solver)
       : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
@@ -204,7 +204,7 @@ private:
    }
 
    const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R, K and M
-   const std::unique_ptr<TimeMethod_GenAlpha> time_method;       // alpha_m, alpha_f, gamma, beta
+   const std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> time_method; // alpha_m, alpha_f, gamma, beta
    const std::unique_ptr<mfem::HypreParMatrix> mass;             // M, assembled once
    mfem::MUMPSSolver linear_solver;                              // parallel direct solver of the tangent
    SystemTools::NewtonMonitor newton_monitor;                    // prints the residual norms

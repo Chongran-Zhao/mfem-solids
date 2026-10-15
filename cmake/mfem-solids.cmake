@@ -82,7 +82,10 @@ set(shared_headers
   ${project_dir}/include/assembly/LocalAssemblyTools.hpp
   ${project_dir}/include/assembly/LocalAssembly_Disp.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed.hpp
-  ${project_dir}/include/assembly/LocalAssembly_Mixed_Regions.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood_Regions.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS_Regions.hpp
   ${project_dir}/include/assembly/ParBlockNonlinearForm_External.hpp
   ${project_dir}/include/boundary/DirichletBoundary.hpp
   ${project_dir}/include/boundary/NeumannBoundary.hpp
@@ -95,7 +98,8 @@ set(shared_headers
   ${project_dir}/include/material/MaterialModel_vol_SimoPister.hpp
   ${project_dir}/include/solver/INonlinearSolver.hpp
   ${project_dir}/include/solver/ITimeSolver.hpp
-  ${project_dir}/include/solver/TimeMethod_GenAlpha.hpp
+  ${project_dir}/include/solver/TimeMethod_GenAlpha_2nd_Order.hpp
+  ${project_dir}/include/solver/TimeMethod_GenAlpha_1st_Order.hpp
   ${project_dir}/include/system/SystemTools.hpp
   ${project_dir}/include/system/Tensor2_3D.hpp
   ${project_dir}/include/system/Tensor4_3D.hpp

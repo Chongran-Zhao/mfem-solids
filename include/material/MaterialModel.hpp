@@ -89,6 +89,28 @@ public:
                            ich_model->get_2nd_elasticity_tensor(F));
    }
 
+   // Derivative of AA_ich along dF, dAA_ich = dAA_ich/dF : dF, for the
+   // tangent of the VMS stabilization. From AA_iJkL = F_iM CC_MJNL F_kN
+   // + delta_ik S_JL, with dC = dF^T F + F^T dF and dS = 1/2 CC : dC,
+   // dAA_iJkL = dF_iM CC_MJNL F_kN + F_iM CC_MJNL dF_kN
+   //          + F_iM dCC_MJNL F_kN + delta_ik dS_JL.
+   Tensor4_3D get_d_1st_elasticity_tensor_ich(const Tensor2_3D &F, const Tensor2_3D &dF) const
+   {
+      const Tensor2_3D dC = dF.transpose() * F + F.transpose() * dF;
+      const Tensor4_3D CC = ich_model->get_2nd_elasticity_tensor(F);
+
+      // dS_JL = 1/2 CC_JLMN dC_MN
+      Tensor2_3D dS;
+      for (int JJ = 0; JJ < 3; JJ++)
+         for (int LL = 0; LL < 3; LL++)
+            for (int MM = 0; MM < 3; MM++)
+               for (int NN = 0; NN < 3; NN++)
+                  dS(JJ, LL) += 0.5 * CC(JJ, LL, MM, NN) * dC(MM, NN);
+
+      return get_AA_CC_BB(dF, CC, F) + get_AA_CC_BB(F, CC, dF)
+             + from_CC_to_AA(F, dS, ich_model->get_d_2nd_elasticity_tensor(F, dC));
+   }
+
    // Pressure p(J) of the volumetric model.
    double get_p(double J) const { return vol_model->get_p(J); }
 
@@ -128,6 +150,30 @@ private:
             for (int LL = 0; LL < 3; LL++)
                AA(ii, JJ, ii, LL) += PK2(JJ, LL);
       return AA;
+   }
+
+   // A_iM CC_MJNL B_kN
+   static Tensor4_3D get_AA_CC_BB(const Tensor2_3D &AA, const Tensor4_3D &CC,
+                                  const Tensor2_3D &BB)
+   {
+      // A_iM CC_MJNL
+      Tensor4_3D AA_CC;
+      for (int ii = 0; ii < 3; ii++)
+         for (int JJ = 0; JJ < 3; JJ++)
+            for (int NN = 0; NN < 3; NN++)
+               for (int LL = 0; LL < 3; LL++)
+                  for (int MM = 0; MM < 3; MM++)
+                     AA_CC(ii, JJ, NN, LL) += AA(ii, MM) * CC(MM, JJ, NN, LL);
+
+      // A_iM CC_MJNL B_kN
+      Tensor4_3D out;
+      for (int ii = 0; ii < 3; ii++)
+         for (int JJ = 0; JJ < 3; JJ++)
+            for (int kk = 0; kk < 3; kk++)
+               for (int LL = 0; LL < 3; LL++)
+                  for (int NN = 0; NN < 3; NN++)
+                     out(ii, JJ, kk, LL) += AA_CC(ii, JJ, NN, LL) * BB(kk, NN);
+      return out;
    }
 
    std::unique_ptr<IMaterialModel_vol> vol_model;  // Psi_vol(J)
