@@ -32,10 +32,11 @@ space:
   # default rule, 2 x LocalAssemblyTools OrderGrad.
   quad_order: 3
 
-  # Factor of the VMS parameter tau = tau_factor h / (c rho_0), c = sqrt(mu /
-  # rho_0), h the cube root of the element volume; 0.02 is about the
-  # tau_M = 0.01 h_diag / (c rho_0) of PERIGEE on cubes, h_diag = sqrt(3) h.
-  tau_factor: 0.02
+  # Factor of the VMS parameter tau = tau_factor dx J / (c rho_0) of PERIGEE:
+  # dx the longest diagonal of the element, c the largest wave speed
+  # (sqrt((kappa + 4/3 mu) / rho_0) here, the material being compressible).
+  # PERIGEE takes 0.01.
+  tau_factor: 0.01
 
 # Time integration method, read into TimeMethod_GenAlpha_1st.
 time_method:

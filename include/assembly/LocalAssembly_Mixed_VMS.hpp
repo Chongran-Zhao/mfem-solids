@@ -17,9 +17,13 @@
 //            - int tau grad M_c . R_mom dV,
 // with the residual of the momentum equation, per reference volume,
 //    R_mom = rho_0 dv/dt + J F^-T Grad p - Div P_ich,
-// grad M_c = F^-T Grad M_c and tau = tau_factor h / (c rho_0), c = sqrt(mu /
-// rho_0), h the size of the element in the reference configuration. Div P_ich
-// is kept in R_mom, so that the stabilization vanishes for the exact solution.
+// grad M_c = F^-T Grad M_c and, as in PERIGEE and Liu & Marsden (CMAME 337,
+// 2018), tau = tau_factor dx J / (c rho_0): dx the longest diagonal of a
+// hexahedron or the diameter of the circumscribed sphere of a tetrahedron, in
+// the reference configuration, and c the largest wave speed, sqrt(mu / rho_0)
+// for an incompressible material and sqrt((kappa + 4/3 mu) / rho_0), kappa =
+// -1 / J'(0), for a compressible one. Div P_ich is kept in R_mom, so that the
+// stabilization vanishes for the exact solution.
 // The tangent is that with respect to v and p, exact for a J(p) linear in p,
 // as are those of the volumetric models of the mixed form; it is not
 // symmetric.
@@ -31,6 +35,7 @@
 #ifndef LOCAL_ASSEMBLY_MIXED_VMS_HPP
 #define LOCAL_ASSEMBLY_MIXED_VMS_HPP
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <memory>
@@ -98,7 +103,7 @@ public:
       mfem::DenseMatrix dN_dxi(num_nodes_u, 3), dN_dX(num_nodes_u, 3), d2N_dX2(num_nodes_u, 6);
       mfem::DenseMatrix dM_dxi(num_nodes_p, 3), dM_dX(num_nodes_p, 3);
 
-      const double tau = get_tau(elem_u, elem_map);
+      const double tau_J = get_tau_per_J(elem_u, elem_map);
 
       const mfem::IntegrationRule &quad_rule = get_quad_rule(elem_u, elem_map);
 
@@ -111,6 +116,7 @@ public:
 
          const QuadPointState state = get_quad_point_state(velo, pres, rates, N, dN_dX,
                                                            d2N_dX2, M, dM_dX);
+         const double tau = tau_J * state.J;
 
          // dV = w_q * det( dX/dxi )
          const double dV = quad_pt.weight * elem_map.Weight();
@@ -139,6 +145,7 @@ public:
    //                                               - grad_k N_b grad_l v_k ) ) dV
    //                  + int tau ( - rho_0 c_r N_b grad_l M_c
    //                              + c_u ( grad_l M_c (grad N_b . R_mom)
+   //                                      - grad_l N_b (grad M_c . R_mom)
    //                                      - J grad_l N_b (grad M_c . grad p)
    //                                      + J grad_l p (grad M_c . grad N_b)
    //                                      + grad_k M_c dDivP_kl ) ) dV,
@@ -146,7 +153,8 @@ public:
    // the derivative of P_ich_kJ,J = AA_ich_kJmM u_m,MJ with respect to u,
    // whose second part is the derivative of AA_ich along the slices
    // G^J_mM = u_m,MJ, dAA_ich_kJlL/dF_mM G^J_mM = dAA_ich[G^J]_kJlL, since
-   // dAA_ich_kJlL/dF_mM is symmetric in (l L) and (m M);
+   // dAA_ich_kJlL/dF_mM is symmetric in (l L) and (m M); the term
+   // - grad_l N_b (grad M_c . R_mom) is the derivative of the J in tau;
    // K_pp(c, d)     = int ( c_r J'(p) M_c M_d - tau J grad M_c . grad M_d ) dV.
    void AssembleElementGrad(const mfem::Array<const mfem::FiniteElement *> &elem,
                             mfem::ElementTransformation &elem_map,
@@ -176,7 +184,7 @@ public:
       mfem::DenseMatrix dN_dxi(num_nodes_u, 3), dN_dX(num_nodes_u, 3), d2N_dX2(num_nodes_u, 6);
       mfem::DenseMatrix dM_dxi(num_nodes_p, 3), dM_dX(num_nodes_p, 3);
 
-      const double tau = get_tau(elem_u, elem_map);
+      const double tau_J = get_tau_per_J(elem_u, elem_map);
       const double rho_0 = material->get_rho_0();
 
       const mfem::IntegrationRule &quad_rule = get_quad_rule(elem_u, elem_map);
@@ -192,6 +200,7 @@ public:
                                                            d2N_dX2, M, dM_dX);
          const Tensor2_3D &F_inv = state.F_inv;
          const double J = state.J;
+         const double tau = tau_J * J;
 
          // sum_J dAA_ich[G^J]_kJlL, G^J_mM = u_m,MJ, stored as [l](k, L).
          std::array<Tensor2_3D, 3> dAA_d2u;
@@ -243,6 +252,8 @@ public:
                                          + dMc_dx(2) * state.dp_dx(2);
                const double dMc_dx_dNb_dx = dMc_dx(0) * dNb_dx(0) + dMc_dx(1) * dNb_dx(1)
                                           + dMc_dx(2) * dNb_dx(2);
+               const double dMc_dx_R_mom = dMc_dx(0) * state.R_mom(0) + dMc_dx(1) * state.R_mom(1)
+                                         + dMc_dx(2) * state.R_mom(2);
 
                for (int ll = 0; ll < 3; ll++)
                   K_pu(cc, bb+ll*num_nodes_u) += dV *
@@ -251,6 +262,7 @@ public:
                                                          - dNb_dx_dv_dx(ll) ) )
                        + tau * ( - rho_0 * dot_factor * N(bb) * dMc_dx(ll)
                                  + disp_factor * ( dMc_dx(ll) * dNb_dx_R_mom
+                                                   - dNb_dx(ll) * dMc_dx_R_mom
                                                    - J * dNb_dx(ll) * dMc_dx_dp_dx
                                                    + J * state.dp_dx(ll) * dMc_dx_dNb_dx
                                                    + dMc_dx(0) * dDivP(0, ll)
@@ -438,19 +450,71 @@ private:
       return out;
    }
 
-   // tau = tau_factor h / (c rho_0), c = sqrt(mu / rho_0), h the cube root
-   // of the reference volume of the element, taken at its center.
-   double get_tau(const mfem::FiniteElement &elem, mfem::ElementTransformation &elem_map) const
+   // tau / J = tau_factor dx / (c rho_0), with dx the size of the element and
+   // c the largest wave speed; constant over the element.
+   double get_tau_per_J(const mfem::FiniteElement &elem,
+                        mfem::ElementTransformation &elem_map) const
+   {
+      const double rho_0 = material->get_rho_0();
+      const double dJ_dp = material->get_dJ_dp(0.0);
+      const double wave_modulus = (dJ_dp == 0.0) ? shear_modulus
+                                                 : -1.0 / dJ_dp + 4.0 / 3.0 * shear_modulus;
+      return tau_factor * get_elem_size(elem, elem_map) / (std::sqrt(wave_modulus / rho_0) * rho_0);
+   }
+
+   // dx of PERIGEE in the reference configuration: the longest of the four
+   // diagonals of a hexahedron, between vertices 0-6, 1-7, 2-4 and 3-5, or
+   // the diameter of the sphere through the four vertices of a tetrahedron.
+   static double get_elem_size(const mfem::FiniteElement &elem,
+                               mfem::ElementTransformation &elem_map)
    {
       const mfem::Geometry::Type geom = elem.GetGeomType();
-      elem_map.SetIntPoint(&mfem::Geometries.GetCenter(geom));
-      const double elem_size = std::cbrt(elem_map.Weight() * mfem::Geometry::Volume[geom]);
-      const double rho_0 = material->get_rho_0();
-      return tau_factor * elem_size / (std::sqrt(shear_modulus / rho_0) * rho_0);
+      const mfem::IntegrationRule &ref_vertices = *mfem::Geometries.GetVertices(geom);
+      std::array<Vector_3D, 8> vertex;
+      mfem::Vector xyz(3);
+      for (int vv = 0; vv < ref_vertices.GetNPoints(); vv++)
+      {
+         elem_map.Transform(ref_vertices.IntPoint(vv), xyz);
+         vertex[vv] = Vector_3D(xyz(0), xyz(1), xyz(2));
+      }
+
+      if (geom == mfem::Geometry::CUBE)
+      {
+         double out = 0.0;
+         const int diagonals[4][2] = {{0, 6}, {1, 7}, {2, 4}, {3, 5}};
+         for (const auto &diagonal : diagonals)
+            out = std::max(out, get_distance(vertex[diagonal[0]], vertex[diagonal[1]]));
+         return out;
+      }
+
+      MFEM_VERIFY(geom == mfem::Geometry::TETRAHEDRON,
+                  "LocalAssembly_Mixed_VMS supports hexahedra and tetrahedra.");
+      // The center x of the sphere solves 2 (X_i - X_0) . x = |X_i|^2 - |X_0|^2.
+      Tensor2_3D AA;
+      Vector_3D bb;
+      for (int ii = 0; ii < 3; ii++)
+      {
+         for (int jj = 0; jj < 3; jj++)
+            AA(ii, jj) = 2.0 * (vertex[ii+1](jj) - vertex[0](jj));
+         for (int jj = 0; jj < 3; jj++)
+            bb(ii) += vertex[ii+1](jj) * vertex[ii+1](jj) - vertex[0](jj) * vertex[0](jj);
+      }
+      const Tensor2_3D AA_inv = AA.inverse();
+      const Vector_3D center(AA_inv(0, 0) * bb(0) + AA_inv(0, 1) * bb(1) + AA_inv(0, 2) * bb(2),
+                             AA_inv(1, 0) * bb(0) + AA_inv(1, 1) * bb(1) + AA_inv(1, 2) * bb(2),
+                             AA_inv(2, 0) * bb(0) + AA_inv(2, 1) * bb(1) + AA_inv(2, 2) * bb(2));
+      return 2.0 * get_distance(center, vertex[0]);
+   }
+
+   // |X - Y|
+   static double get_distance(const Vector_3D &X, const Vector_3D &Y)
+   {
+      return std::sqrt((X(0) - Y(0)) * (X(0) - Y(0)) + (X(1) - Y(1)) * (X(1) - Y(1))
+                       + (X(2) - Y(2)) * (X(2) - Y(2)));
    }
 
    const double shear_modulus;                            // mu of tau
-   const double tau_factor;                               // tau = tau_factor h / (c rho_0)
+   const double tau_factor;                               // tau = tau_factor dx J / (c rho_0)
    const mfem::GridFunction *disp_offset = nullptr;       // u = disp_offset + disp_factor v
    double disp_factor = 0.0;
    const mfem::GridFunction *dot_velo_offset = nullptr;   // dv/dt = dot_velo_offset + dot_factor v
