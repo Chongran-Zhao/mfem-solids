@@ -4,7 +4,7 @@
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
-#    cd build && ./read_mesh && mpirun -np 2 ./driver
+#    cd build && ./read_mesh && mpirun -np 2 ./driver && ./vtu_writer && mpirun -np 2 ./csv_writer
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(dynamic_mixed_vms LANGUAGES CXX)
@@ -36,3 +36,11 @@ target_compile_definitions(read_mesh PRIVATE PROJECT_DIR="${project_dir}"
 add_executable(driver driver.cpp ${case_headers})
 target_include_directories(driver PRIVATE include)
 target_link_libraries(driver PRIVATE mfem_solids)
+
+add_executable(vtu_writer vtu_writer.cpp ${case_headers})
+target_include_directories(vtu_writer PRIVATE include)
+target_link_libraries(vtu_writer PRIVATE mfem_solids)
+
+add_executable(csv_writer csv_writer.cpp ${case_headers})
+target_include_directories(csv_writer PRIVATE include)
+target_link_libraries(csv_writer PRIVATE mfem_solids)
