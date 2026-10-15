@@ -33,10 +33,11 @@ space:
   quad_order: 3
 
   # Factor of the VMS parameter tau = tau_factor dx J / (c rho_0) of PERIGEE:
-  # dx the longest diagonal of the element, c the largest wave speed
-  # (sqrt((kappa + 4/3 mu) / rho_0) here, the material being compressible).
-  # PERIGEE takes 0.01.
-  tau_factor: 0.01
+  # dx the longest diagonal of the element, c the largest wave speed. PERIGEE
+  # takes 0.01 for an incompressible material and 0 for a compressible one,
+  # whose mass equation holds dp/dt / kappa and needs no stabilization; 0.01
+  # over-smooths the pressure of this compressible beam.
+  tau_factor: 0.0
 
 # Time integration method, read into TimeMethod_GenAlpha_1st.
 time_method:
