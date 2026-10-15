@@ -6,7 +6,7 @@
 // stabilization of the mass equation, so that the velocity and the pressure
 // may have the same order (Q1/Q1, Q2/Q2), as in PERIGEE solids. The unknowns
 // of the element are the velocity v and the pressure p at the intermediate
-// state of TimeMethod_GenAlpha_1st; the displacement and the rates are
+// state of TimeMethod_GenAlpha_1st_Order; the displacement and the rates are
 // affine functions of them,
 //    u = disp_offset + disp_factor v,
 //    dv/dt = dot_velo_offset + dot_factor v,   dp/dt = dot_pres_offset + dot_factor p,

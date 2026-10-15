@@ -35,7 +35,7 @@
 #include "NeumannBoundary.hpp"
 #include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
-#include "TimeMethod_GenAlpha_1st.hpp"
+#include "TimeMethod_GenAlpha_1st_Order.hpp"
 #include "TimeSolver.hpp"
 #include "Vector_3D.hpp"
 
@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
    // 8. Set up the nonlinear solver, which owns the global assembly and the
    //    time method, and the time solver, which owns the nonlinear solver.
    auto time_method =
-      std::make_unique<TimeMethod_GenAlpha_1st>(config["time_method"]["rho_inf"].as<double>());
+      std::make_unique<TimeMethod_GenAlpha_1st_Order>(config["time_method"]["rho_inf"].as<double>());
    auto nonlinear_solver = std::make_unique<NonlinearSolver>(
       std::move(global_assembly), local_assembly_ref, std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();

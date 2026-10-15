@@ -49,7 +49,7 @@ space:
   # curved Q2 elements.
   quad_order: 5
 
-# Time integration method, read into TimeMethod_GenAlpha.
+# Time integration method, read into TimeMethod_GenAlpha_2nd_Order.
 time_method:
   # Spectral radius at infinite frequency of generalized-alpha, in [0, 1].
   rho_inf: 0.5

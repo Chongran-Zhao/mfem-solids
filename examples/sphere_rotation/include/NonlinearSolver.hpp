@@ -72,7 +72,7 @@
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
-#include "TimeMethod_GenAlpha.hpp"
+#include "TimeMethod_GenAlpha_2nd_Order.hpp"
 #include "Vector_3D.hpp"
 
 class NonlinearSolver : public INonlinearSolver
@@ -85,7 +85,7 @@ public:
    NonlinearSolver(mfem::ParFiniteElementSpace &space_u,
                    mfem::ParFiniteElementSpace &space_p,
                    std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
-                   std::unique_ptr<TimeMethod_GenAlpha> input_time_method,
+                   std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> input_time_method,
                    const YAML::Node &solver)
       : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
@@ -412,7 +412,7 @@ private:
    // The preconditioner points to the AMG solvers and to schur_inverse,
    // which reads dt, the time method and the pressure operators.
    const std::unique_ptr<GlobalAssembly_Mixed> global_assembly;  // R, K and M
-   const std::unique_ptr<TimeMethod_GenAlpha> time_method;       // alpha_m, alpha_f, gamma, beta
+   const std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> time_method; // alpha_m, alpha_f, gamma, beta
    const std::unique_ptr<mfem::HypreParMatrix> mass;             // M of the displacement, assembled once
    mfem::Array<int> skull_vdofs;                                 // displacement dofs of the skull on this rank
    std::unique_ptr<mfem::HypreParMatrix> pres_viscous;           // M_p[1 / (alpha_f mu)]

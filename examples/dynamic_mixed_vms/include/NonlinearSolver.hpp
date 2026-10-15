@@ -4,7 +4,7 @@
 // Solves one time step of the rate form of the mixed displacement-pressure
 // dynamics, as in PERIGEE solids,
 //    du/dt = v,   M dv/dt + F_int(u,p) = F_ext(t),   J div v = J'(p) dp/dt weakly,
-// with the generalized-alpha method of first order, TimeMethod_GenAlpha_1st:
+// with the generalized-alpha method of first order, TimeMethod_GenAlpha_1st_Order:
 // the equations hold at the intermediate states and the time t_alpha, and
 // v_{n+1} and p_{n+1} are the unknowns of Newton's method; u_{n+1} follows
 // from the kinematics du_alpha = v_alpha. The pressure has no inertia. The
@@ -40,7 +40,7 @@
 #include "LocalAssembly_Mixed_VMS.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
-#include "TimeMethod_GenAlpha_1st.hpp"
+#include "TimeMethod_GenAlpha_1st_Order.hpp"
 
 class NonlinearSolver : public INonlinearSolver
 {
@@ -51,7 +51,7 @@ public:
    // which owns it.
    NonlinearSolver(std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
                    LocalAssembly_Mixed_VMS &input_local_assembly,
-                   std::unique_ptr<TimeMethod_GenAlpha_1st> input_time_method,
+                   std::unique_ptr<TimeMethod_GenAlpha_1st_Order> input_time_method,
                    const YAML::Node &solver)
       : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
@@ -282,7 +282,7 @@ private:
 
    const std::unique_ptr<GlobalAssembly_Mixed> global_assembly;   // R, K and M
    LocalAssembly_Mixed_VMS &local_assembly;                       // that of global_assembly, for set_rates
-   const std::unique_ptr<TimeMethod_GenAlpha_1st> time_method;    // alpha_m, alpha_f, gamma
+   const std::unique_ptr<TimeMethod_GenAlpha_1st_Order> time_method; // alpha_m, alpha_f, gamma
    const std::unique_ptr<mfem::HypreParMatrix> mass;              // M of the velocity, assembled once
    mfem::MUMPSSolver linear_solver;                               // parallel direct solver of the tangent
    SystemTools::BlockNewtonMonitor newton_monitor;                // prints the residual norms of v and p

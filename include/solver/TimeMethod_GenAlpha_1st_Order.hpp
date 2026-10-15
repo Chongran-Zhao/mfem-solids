@@ -1,5 +1,5 @@
 // ============================================================================
-// TimeMethod_GenAlpha_1st.hpp
+// TimeMethod_GenAlpha_1st_Order.hpp
 //
 // Parameters of the generalized-alpha method for first-order dynamics, from
 // the spectral radius rho_inf in [0, 1] at infinite frequency, as in PERIGEE
@@ -23,15 +23,15 @@
 // Date: Oct. 14, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef TIME_METHOD_GENALPHA_1ST_HPP
-#define TIME_METHOD_GENALPHA_1ST_HPP
+#ifndef TIME_METHOD_GENALPHA_1ST_ORDER_HPP
+#define TIME_METHOD_GENALPHA_1ST_ORDER_HPP
 
 #include <mfem.hpp>
 
-class TimeMethod_GenAlpha_1st
+class TimeMethod_GenAlpha_1st_Order
 {
 public:
-   TimeMethod_GenAlpha_1st(double rho_inf)
+   TimeMethod_GenAlpha_1st_Order(double rho_inf)
       : alpha_m(0.5 * (3.0 - rho_inf) / (1.0 + rho_inf)),
         alpha_f(1.0 / (1.0 + rho_inf)),
         gamma(0.5 + alpha_m - alpha_f)
