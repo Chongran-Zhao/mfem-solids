@@ -2,30 +2,29 @@
 // LoadData.hpp
 //
 // The loading of sphere_rotation: the surface of the ball, the face "outer",
-// turns rigidly about the z axis through the origin, while the body starts at
-// rest, without body force or traction. The angular velocity changes in two
-// smooth stages, each by the bump pulse of Wan et al.: from 0 to omega_1
-// over tau_1, then from omega_1 to omega_2 = -2 omega_1 over tau_2, and
-// stays at omega_2 after:
-//    omega(t) = omega_1 g(t / tau_1) + (omega_2 - omega_1) g((t - tau_1) / tau_2),
-//    Omega(t) = omega_1 tau_1 G(t / tau_1)
-//             + (omega_2 - omega_1) tau_2 G((t - tau_1) / tau_2),
-// with the angle Omega the integral of omega, and
-//    psi(s) = exp(1 - 1 / (1 - (2 s - 1)^2))   on (0, 1),
-//    g(s)   = int_0^s psi / int_0^1 psi,
-//    G(s)   = int_0^s g = s g(s) - int_0^s sigma psi / int_0^1 psi,
-// extended by g = G = 0 for s <= 0, and g = 1, G = s - 1/2 for s >= 1, psi
-// being symmetric about 1/2. The integrals are taken by Gauss quadrature.
+// turns rigidly about the z axis through the origin by the measured angle,
+// while the body starts at rest, without body force or traction. The angle
+// theta(t) is a piecewise quintic polynomial fitted to the measurements,
+// read by read_rotation from a CSV file of one row per interval,
+//    t_start, t_end, c5, c4, c3, c2, c1, c0,
+// in seconds, with theta(t) = sum_k c_k (t - t_start)^k on
+// t_start <= t <= t_end. The surface turns by Omega(t) = theta(t) - theta(0),
+// so that it starts from the reference configuration, at the angular
+// velocity omega(t) = theta'(t); t must stay within the intervals of the file.
 //
 // Author: Chongran Zhao
-// Date: Oct. 11, 2026
+// Date: Oct. 15, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #ifndef LOAD_DATA_HPP
 #define LOAD_DATA_HPP
 
+#include <array>
 #include <cmath>
+#include <fstream>
+#include <sstream>
 #include <string>
+#include <vector>
 
 #include <mfem.hpp>
 
@@ -34,11 +33,37 @@
 class LoadData
 {
 public:
-   // Angular velocities about z after the two stages, and their durations.
-   inline static constexpr double omega_1 = -8.57;
-   inline static constexpr double omega_2 = -2.0 * omega_1;
-   inline static constexpr double tau_1 = 0.01;
-   inline static constexpr double tau_2 = 0.02;
+   // Reads the intervals of theta(t) from the CSV file, its first line the
+   // header; needed before the loading functions are called.
+   static void read_rotation(const std::string &file)
+   {
+      std::ifstream input(file);
+      MFEM_VERIFY(input, "Cannot open the rotation file \"" << file << "\".");
+      std::string line;
+      std::getline(input, line);
+      intervals.clear();
+      while (std::getline(input, line))
+      {
+         if (line.find_first_not_of(" \t\r") == std::string::npos)
+            continue;
+         std::stringstream stream(line);
+         std::string entry;
+         std::array<double, 8> values;
+         for (double &value : values)
+         {
+            MFEM_VERIFY(std::getline(stream, entry, ','),
+                        "A row of \"" << file << "\" has fewer than 8 columns.");
+            value = std::stod(entry);
+         }
+         intervals.push_back({values[0], values[1],
+                              {values[2], values[3], values[4], values[5], values[6], values[7]}});
+      }
+      MFEM_VERIFY(!intervals.empty(), "The rotation file \"" << file << "\" has no interval.");
+      theta_0 = get_theta(intervals.front().t_start, 0);
+   }
+
+   // The end of the last interval, the last time of the loading.
+   static double get_end_time() { return intervals.back().t_end; }
 
    // The body starts at rest.
    static Vector_3D initial_velo(const mfem::Vector &pt)
@@ -89,62 +114,50 @@ private:
       MFEM_VERIFY(face == "outer", "Unknown face \"" << face << "\".");
    }
 
-   // psi(s), zero outside (0, 1).
-   static double psi(double ss)
+   // An interval of theta(t): its times and the coefficients c5, ..., c0
+   // of the descending powers of t - t_start.
+   struct interval
    {
-      if (ss <= 0.0 || ss >= 1.0)
-         return 0.0;
-      const double xx = 2.0 * ss - 1.0;
-      return std::exp(1.0 - 1.0 / (1.0 - xx * xx));
-   }
+      double t_start;
+      double t_end;
+      std::array<double, 6> coefficients;
+   };
 
-   // int_0^s sigma^power psi(sigma) d sigma, power 0 or 1, s in [0, 1].
-   static double integrate_psi(double ss, int power)
+   // The derivative of order 0 or 1 of theta at tt, by Horner's rule on the
+   // interval that holds tt.
+   static double get_theta(double tt, int derivative)
    {
-      const mfem::IntegrationRule &rule = mfem::IntRules.Get(mfem::Geometry::SEGMENT, 60);
+      MFEM_VERIFY(!intervals.empty(), "LoadData::read_rotation was not called.");
+      const double tolerance = 1.0e-12 * intervals.back().t_end;
+      MFEM_VERIFY(tt >= intervals.front().t_start - tolerance
+                  && tt <= intervals.back().t_end + tolerance,
+                  "The time " << tt << " is outside the rotation data.");
+      std::size_t index = 0;
+      while (index + 1 < intervals.size() && tt > intervals[index].t_end)
+         index++;
+      const interval &segment = intervals[index];
+      const double tau = tt - segment.t_start;
+
       double out = 0.0;
-      for (int ii = 0; ii < rule.GetNPoints(); ii++)
+      for (int kk = 0; kk < 6; kk++)
       {
-         const double sigma = ss * rule.IntPoint(ii).x;
-         out += rule.IntPoint(ii).weight * std::pow(sigma, power) * psi(sigma);
+         const int power = 5 - kk;
+         if (power < derivative)
+            break;
+         const double factor = (derivative == 1) ? power : 1.0;
+         out = out * tau + factor * segment.coefficients[kk];
       }
-      return ss * out;
+      return out;
    }
 
-   // g(s), from 0 to 1.
-   static double get_g(double ss)
-   {
-      if (ss <= 0.0)
-         return 0.0;
-      if (ss >= 1.0)
-         return 1.0;
-      static const double psi_total = integrate_psi(1.0, 0);
-      return integrate_psi(ss, 0) / psi_total;
-   }
+   // omega(tt) = theta'(tt).
+   static double get_omega(double tt) { return get_theta(tt, 1); }
 
-   // G(s), the integral of g.
-   static double get_G(double ss)
-   {
-      if (ss <= 0.0)
-         return 0.0;
-      if (ss >= 1.0)
-         return ss - 0.5;
-      static const double psi_total = integrate_psi(1.0, 0);
-      return (ss * integrate_psi(ss, 0) - integrate_psi(ss, 1)) / psi_total;
-   }
+   // Omega(tt) = theta(tt) - theta(0).
+   static double get_Omega(double tt) { return get_theta(tt, 0) - theta_0; }
 
-   // omega(tt).
-   static double get_omega(double tt)
-   {
-      return omega_1 * get_g(tt / tau_1) + (omega_2 - omega_1) * get_g((tt - tau_1) / tau_2);
-   }
-
-   // Omega(tt).
-   static double get_Omega(double tt)
-   {
-      return omega_1 * tau_1 * get_G(tt / tau_1)
-             + (omega_2 - omega_1) * tau_2 * get_G((tt - tau_1) / tau_2);
-   }
+   inline static std::vector<interval> intervals;   // the intervals of theta(t)
+   inline static double theta_0 = 0.0;              // theta at the start of the data
 };
 
 #endif

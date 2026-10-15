@@ -1,8 +1,8 @@
 # Input of read_mesh, driver and vtu_writer of sphere_rotation.
 # CMake copies it into sphere_rotation/build/, and the programs read the copy
 # of the directory they run in, or the file given as first argument. Units
-# are SI: meters, seconds. The surface of the ball turns about z as given by
-# LoadData; the body starts at rest.
+# are SI: meters, seconds. The surface of the ball turns about z by the
+# measured angle of LoadData; the body starts at rest.
 
 mesh:
   # Outer radius of the ball, that of the skull, and radius of the gelatin
@@ -49,6 +49,13 @@ space:
   # curved Q2 elements.
   quad_order: 5
 
+# The measured rotation of the surface, read by LoadData::read_rotation: the
+# piecewise quintic angle theta(t) fitted to the measurements, one row per
+# interval (t_start, t_end, c5, ..., c0, in seconds), in the directory the
+# programs run in; CMake copies it into the build folder.
+loading:
+  rotation_file: angle_coefficients.csv
+
 # Time integration method, read into TimeMethod_GenAlpha_2nd_Order.
 time_method:
   # Spectral radius at infinite frequency of generalized-alpha, in [0, 1].
@@ -58,7 +65,7 @@ time_method:
 time:
   # Time step; the last step is shortened to end at final_time.
   dt: 1.0e-4
-  final_time: 0.03
+  final_time: 0.32
 
 # Displacement boundary conditions: the whole surface follows the rotation of
 # LoadData::disp_loading.

@@ -23,6 +23,7 @@ check_header_list(${CMAKE_CURRENT_SOURCE_DIR}/include ${case_headers})
 # config.yaml is copied into the build folder, again whenever it changes;
 # the programs read the copy of the directory they run in.
 configure_file(config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
+configure_file(angle_coefficients.csv ${CMAKE_CURRENT_BINARY_DIR}/angle_coefficients.csv COPYONLY)
 
 add_executable(read_mesh read_mesh.cpp)
 target_include_directories(read_mesh PRIVATE ${MFEM_INCLUDE_DIRS})

@@ -56,6 +56,12 @@ int main(int argc, char *argv[])
                  : std::filesystem::path("config.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
+   // The measured rotation of the surface, which must last to final_time.
+   LoadData::read_rotation(config["loading"]["rotation_file"].as<std::string>());
+   MFEM_VERIFY(config["time"]["final_time"].as<double>() <= LoadData::get_end_time(),
+               "time.final_time is beyond the rotation data, which ends at "
+               << LoadData::get_end_time() << " s.");
+
    // 2. Read the mesh file on every rank and split it among the ranks; the
    //    serial mesh is only needed for the split.
    const std::string mesh_file = config["mesh"]["output"].as<std::string>();
