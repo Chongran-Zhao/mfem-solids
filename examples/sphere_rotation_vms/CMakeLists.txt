@@ -1,7 +1,7 @@
 # ============================================================================
 # sphere_rotation_vms: the gelatin ball in its skull shell of sphere_rotation,
 # in the rate form of the mixed formulation, equal-order elements with the VMS
-# stabilization, solved by MUMPS
+# stabilization, solved by GMRES
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build

@@ -3,7 +3,7 @@
 //
 // The driver of dynamic_mixed_vms for the gelatin ball in its skull shell of
 // sphere_rotation, spun up by its surface: the rate form with equal-order
-// elements stabilized by VMS, the materials of the regions, and MUMPS. The
+// elements stabilized by VMS, the materials of the regions, and GMRES. The
 // VMS term acts in the incompressible regions only; as in PERIGEE, the
 // compressible ones, here the skull, have tau = 0.
 //
@@ -127,12 +127,13 @@ int main(int argc, char *argv[])
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
    // 8. Set up the nonlinear solver, which owns the global assembly and the
-   //    time method and assembles the mass matrix with the density of each
-   //    region, and the time solver, which owns the nonlinear solver.
+   //    time method, assembles the mass matrix with the density of each
+   //    region and the pressure operators of its preconditioner, and the
+   //    time solver, which owns the nonlinear solver.
    auto time_method =
       std::make_unique<TimeMethod_GenAlpha_1st_Order>(config["time_method"]["rho_inf"].as<double>());
    auto nonlinear_solver = std::make_unique<NonlinearSolver>(
-      space_u, std::move(global_assembly), local_assembly_ref, std::move(time_method),
+      space_u, space_p, std::move(global_assembly), local_assembly_ref, std::move(time_method),
       config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver>(

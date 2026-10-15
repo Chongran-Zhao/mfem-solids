@@ -78,7 +78,8 @@ Dirichlet:
 Neumann:
   faces: []
 
-# Newton's method settings; the linear solver is MUMPS. The
+# Newton's method settings; the linear solver is GMRES, with the block
+# preconditioner of include/NonlinearSolver.hpp of this case. The
 # residual of the stiff skull cannot drop below about 1e-9 N, its bulk
 # modulus, about 3e9 Pa, times the round-off of J - 1, so newton_abs_tol is
 # above that. With the skull started from the rotation of its surface, the

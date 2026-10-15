@@ -17,8 +17,7 @@
 // caller. It is also the mfem::Operator that its NewtonSolver solves, through
 // Mult and GetGradient. The fields are ParGridFunctions, the boundary values
 // set on the displacement and the velocity; Newton's method works on the
-// vector of the dofs this rank owns, with the norms over all ranks, and MUMPS
-// solves the tangent, analyzing its sparsity once.
+// vector of the dofs this rank owns, with the norms over all ranks.
 //
 // In sphere_rotation_vms: the solver of dynamic_mixed_vms with the materials
 // of the regions, LocalAssembly_Mixed_VMS_Regions, the mass matrix with the
@@ -28,6 +27,29 @@
 // its surface would move, and the stiff skull would start with a large
 // residual, as in sphere_rotation.
 //
+// The linear systems are solved iteratively, as in sphere_rotation. The
+// tangent with respect to v_{n+1} and p_{n+1},
+//    K = [A  B_up; B_pu  C],   A = s M + alpha_f K_uu,
+//    C = alpha_f K_pp = -alpha_f (tau J L_p + M_p[c_r / kappa]),
+// with s = alpha_m / (gamma dt), c_r = alpha_m / (gamma dt alpha_f) and
+// K_uu of the local assembly, which holds its factor c_u = alpha_f gamma dt
+// / alpha_m, is solved by GMRES, preconditioned by its block lower triangle,
+//    y_u = A^-1 x_u,   y_p = -S^-1 (x_p - B_pu y_u),   S = B_pu A^-1 B_up - C,
+// with BoomerAMG for A. B_pu is not the transpose of B_up, so S is
+// approximated by its Fourier symbol: for waves of number k in a uniform
+// region, with mu_e = alpha_f c_u mu,
+//    S = alpha_f^2 k^2 / (s rho_0 + mu_e k^2) + alpha_f (tau k^2 + c_r / kappa),
+// whose last part is -C, assembled with the tangent. The first part is
+// alpha_f^2 k^2 / (s rho_0), L_p[alpha_f^2 / (s rho_0)], where inertia
+// dominates, mu_e k^2 < s rho_0 at the wave number pi / h of the elements of
+// the region, the gelatin, and alpha_f^2 / mu_e, M_p[alpha_f^2 / mu_e], where
+// viscosity does, the skull; hence
+//    S ~ -C + L_p[alpha_f^2 / (s rho_0)] (inertial) + M_p[alpha_f^2 / mu_e] (viscous),
+// inverted by one V-cycle of BoomerAMG. L_p and M_p are of the reference
+// configuration, and the regime of each region is set again when dt
+// changes. The initial acceleration solves M a_0 = r by CG, preconditioned
+// by the diagonal of M.
+//
 // Author: Chongran Zhao
 // Date: Oct. 15, 2026
 // Email: chongran_zhao@brown.edu
@@ -35,6 +57,7 @@
 #ifndef NONLINEAR_SOLVER_HPP
 #define NONLINEAR_SOLVER_HPP
 
+#include <cmath>
 #include <memory>
 #include <utility>
 
@@ -56,10 +79,12 @@ class NonlinearSolver : public INonlinearSolver
 {
 public:
    // Takes the ownership of the global assembly and of the time method, and
-   // assembles the mass matrix on space_u; the Newton settings come from the
-   // solver section of config.yaml. local_assembly is that of the global
-   // assembly, which owns it.
+   // assembles the mass matrix on space_u and the pressure operators of the
+   // preconditioner on space_p; the Newton settings come from the solver
+   // section of config.yaml. local_assembly is that of the global assembly,
+   // which owns it.
    NonlinearSolver(mfem::ParFiniteElementSpace &space_u,
+                   mfem::ParFiniteElementSpace &input_space_p,
                    std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
                    LocalAssembly_Mixed_VMS_Regions &input_local_assembly,
                    std::unique_ptr<TimeMethod_GenAlpha_1st_Order> input_time_method,
@@ -69,6 +94,9 @@ public:
         local_assembly(input_local_assembly),
         time_method(std::move(input_time_method)),
         mass(assemble_mass(space_u)),
+        space_p(input_space_p),
+        schur_inverse(*this, input_space_p.GetTrueVSize()),
+        preconditioner(global_assembly->get_offsets()),
         linear_solver(global_assembly->get_comm()),
         newton_monitor(global_assembly->get_offsets(), global_assembly->get_comm()),
         sol_n(global_assembly->get_offsets())
@@ -88,7 +116,40 @@ public:
       skull_vdofs.Sort();
       skull_vdofs.Unique();
 
-      set_direct_solver(linear_solver);
+      // The element size h of each region, the cube root of its mean element
+      // volume over all ranks, for the regime of its Schur complement.
+      const int num_regions = static_cast<int>(region_materials.size());
+      mfem::Vector region_volume(num_regions), region_count(num_regions);
+      region_volume = 0.0;
+      region_count = 0.0;
+      mfem::ParMesh &par_mesh = *space_u.GetParMesh();
+      for (int ee = 0; ee < par_mesh.GetNE(); ee++)
+      {
+         region_volume(par_mesh.GetAttribute(ee) - 1) += par_mesh.GetElementVolume(ee);
+         region_count(par_mesh.GetAttribute(ee) - 1) += 1.0;
+      }
+      MPI_Allreduce(MPI_IN_PLACE, region_volume.GetData(), num_regions, MPI_DOUBLE, MPI_SUM,
+                    global_assembly->get_comm());
+      MPI_Allreduce(MPI_IN_PLACE, region_count.GetData(), num_regions, MPI_DOUBLE, MPI_SUM,
+                    global_assembly->get_comm());
+      region_size.SetSize(num_regions);
+      for (int aa = 0; aa < num_regions; aa++)
+         region_size(aa) = std::cbrt(region_volume(aa) / region_count(aa));
+
+      // A is a vector Laplacian-like operator of 3 components per node.
+      amg_u.SetSystemsOptions(3, false);
+      amg_u.SetPrintLevel(0);
+      amg_p.SetPrintLevel(0);
+      preconditioner.SetDiagonalBlock(1, &schur_inverse);
+
+      // GMRES to 1e-8, below the Newton tolerance, so that Newton keeps its
+      // convergence, without restart up to 200 iterations.
+      linear_solver.SetRelTol(1.0e-8);
+      linear_solver.SetAbsTol(0.0);
+      linear_solver.SetMaxIter(200);
+      linear_solver.SetKDim(200);
+      linear_solver.SetPrintLevel(mfem::IterativeSolver::PrintLevel().Warnings().Errors());
+      linear_solver.SetPreconditioner(preconditioner);
       set_newton_solver(solver, linear_solver, newton_monitor);
    }
 
@@ -142,12 +203,17 @@ public:
       mfem::HypreParMatrix constrained_mass(*mass);
       global_assembly->set_essential_bdr(constrained_mass);
 
-      // M has another sparsity than the tangents, whose analysis
-      // linear_solver keeps, so it has a solver of its own.
-      mfem::MUMPSSolver mass_solver(global_assembly->get_comm());
-      mass_solver.SetPrintLevel(0);
+      // M is well conditioned once scaled by its diagonal.
+      mfem::HypreDiagScale mass_jacobi(constrained_mass);
+      mfem::CGSolver mass_solver(global_assembly->get_comm());
+      mass_solver.SetRelTol(1.0e-12);
+      mass_solver.SetAbsTol(0.0);
+      mass_solver.SetMaxIter(1000);
+      mass_solver.SetPrintLevel(mfem::IterativeSolver::PrintLevel().Warnings().Errors());
+      mass_solver.SetPreconditioner(mass_jacobi);
       mass_solver.SetOperator(constrained_mass);
       mfem::Vector acce_owned(rhs.Size());
+      acce_owned = 0.0;
       mass_solver.Mult(rhs, acce_owned);
       acce.SetFromTrueDofs(acce_owned);
    }
@@ -228,15 +294,88 @@ public:
 
    // Required by MFEM: overrides mfem::Operator::GetGradient, which
    // NewtonSolver calls at every iteration for the tangent.
-   // K_eff(v_{n+1},p_{n+1}), the identity on the constrained dofs.
+   // K_eff(v_{n+1},p_{n+1}), the identity on the constrained dofs; also sets
+   // the blocks A and B_pu and the Schur approximation of the
+   // preconditioner.
    mfem::Operator &GetGradient(const mfem::Vector &sol) const override
    {
       tangent = assemble_tangent(sol);
       global_assembly->set_essential_bdr(*tangent);
+
+      // A and B_pu with the velocity constraints: A the identity on them,
+      // B_pu without their columns.
+      const mfem::Array<int> ess_tdof_list = global_assembly->get_dirichlet().get_ess_tdof_list();
+      tangent_uu->EliminateBC(ess_tdof_list, mfem::Operator::DIAG_ONE);
+      delete tangent_pu->EliminateCols(ess_tdof_list);
+      amg_u.SetOperator(*tangent_uu);
+      amg_p.SetOperator(*schur_approx);
+      preconditioner.SetDiagonalBlock(0, &amg_u);
+      preconditioner.SetBlock(1, 0, tangent_pu.get());
       return *tangent;
    }
 
 private:
+   // -S^-1, one V-cycle of BoomerAMG for the Schur approximation, negated.
+   class SchurInverse : public mfem::Solver
+   {
+   public:
+      // size: the pressure dofs this rank owns.
+      SchurInverse(const NonlinearSolver &input_owner, int size)
+         : mfem::Solver(size), owner(input_owner) {}
+
+      void SetOperator(const mfem::Operator &op) override {}
+
+      void Mult(const mfem::Vector &xx, mfem::Vector &yy) const override
+      {
+         owner.amg_p.Mult(xx, yy);
+         yy.Neg();
+      }
+
+   private:
+      const NonlinearSolver &owner;
+   };
+
+   // M_p[w] or, with is_laplace, L_p[w], with w constant by region.
+   std::unique_ptr<mfem::HypreParMatrix> assemble_pres_operator(mfem::Vector &weight,
+                                                                bool is_laplace) const
+   {
+      mfem::PWConstCoefficient coeff(weight);
+      mfem::ParBilinearForm form(&space_p);
+      if (is_laplace)
+         form.AddDomainIntegrator(new mfem::DiffusionIntegrator(coeff));
+      else
+         form.AddDomainIntegrator(new mfem::MassIntegrator(coeff));
+      form.Assemble();
+      form.Finalize();
+      return std::unique_ptr<mfem::HypreParMatrix>(form.ParallelAssemble());
+   }
+
+   // L_p[alpha_f^2 / (s rho_0)] on the inertial regions plus
+   // M_p[alpha_f^2 / mu_e] on the viscous ones, the part of the Schur
+   // approximation that depends on dt only; a region is inertial when
+   // mu_e (pi / h)^2 < s rho_0.
+   void set_pres_dynamic()
+   {
+      const double alpha_f = time_method->get_alpha_f();
+      const double ss = alpha_f * time_method->get_dot_alpha_factor(dt);
+      const int num_regions = static_cast<int>(region_materials.size());
+      mfem::Vector inertial_weight(num_regions), viscous_weight(num_regions);
+      for (int aa = 0; aa < num_regions; aa++)
+      {
+         const double rho_0 = region_materials[aa].density;
+         const double mu_e = alpha_f * time_method->get_disp_alpha_factor(dt) * region_materials[aa].mu;
+         const double wave_number = M_PI / region_size(aa);
+         const bool is_inertial = mu_e * wave_number * wave_number < ss * rho_0;
+         inertial_weight(aa) = is_inertial ? alpha_f * alpha_f / (ss * rho_0) : 0.0;
+         viscous_weight(aa) = is_inertial ? 0.0 : alpha_f * alpha_f / mu_e;
+      }
+      const std::unique_ptr<mfem::HypreParMatrix> pres_inertial =
+         assemble_pres_operator(inertial_weight, true);
+      const std::unique_ptr<mfem::HypreParMatrix> pres_viscous =
+         assemble_pres_operator(viscous_weight, false);
+      pres_dynamic.reset(mfem::Add(1.0, *pres_inertial, 1.0, *pres_viscous));
+   }
+
    // Consistent mass M_ab = int rho_0 N_a N_b dV of the velocity, without
    // constraints, with the density of the region of each element.
    static std::unique_ptr<mfem::HypreParMatrix> assemble_mass(mfem::ParFiniteElementSpace &space_u)
@@ -291,6 +430,13 @@ private:
       local_assembly.set_rates(disp_offset, time_method->get_disp_alpha_factor(dt),
                                dot_velo_offset, dot_pres_offset,
                                time_method->get_dot_alpha_factor(dt));
+
+      // The part of the Schur approximation that depends on dt only.
+      if (dt != pres_dynamic_dt)
+      {
+         set_pres_dynamic();
+         pres_dynamic_dt = dt;
+      }
    }
 
    // R_dyn(v_{n+1},p_{n+1}) = R(v_alpha,p_alpha,t_alpha) + [M dv_alpha; 0] at
@@ -316,7 +462,9 @@ private:
    // on the dofs this rank owns, in a new HypreParMatrix, which the caller
    // owns; K is the tangent of the local assembly with respect to v_alpha and
    // p_alpha. The mass is added to the velocity block, and the blocks are
-   // joined with alpha_f on the other three.
+   // joined with alpha_f on the other three. Keeps A = tangent_uu, B_pu =
+   // tangent_pu and the Schur approximation -C + pres_dynamic for the
+   // preconditioner.
    std::unique_ptr<mfem::HypreParMatrix> assemble_tangent(const mfem::Vector &sol) const
    {
       const double alpha_f = time_method->get_alpha_f();
@@ -324,8 +472,11 @@ private:
 
       mfem::Array2D<const mfem::HypreParMatrix *> blocks =
          global_assembly->assemble_tangent_blocks(sol_alpha);
-      const std::unique_ptr<mfem::HypreParMatrix> tangent_uu(
+      tangent_uu.reset(
          mfem::Add(alpha_f * time_method->get_dot_alpha_factor(dt), *mass, alpha_f, *blocks(0, 0)));
+      tangent_pu = std::make_unique<mfem::HypreParMatrix>(*blocks(1, 0));
+      *tangent_pu *= alpha_f;
+      schur_approx.reset(mfem::Add(1.0, *pres_dynamic, -alpha_f, *blocks(1, 1)));
       blocks(0, 0) = tangent_uu.get();
       mfem::Array2D<mfem::real_t> coefficients(2, 2);
       coefficients = alpha_f;
@@ -339,7 +490,18 @@ private:
    const std::unique_ptr<TimeMethod_GenAlpha_1st_Order> time_method; // alpha_m, alpha_f, gamma
    const std::unique_ptr<mfem::HypreParMatrix> mass;              // M of the velocity, assembled once
    mfem::Array<int> skull_vdofs;                                  // velocity dofs of the skull on this rank
-   mfem::MUMPSSolver linear_solver;                               // parallel direct solver of the tangent
+   mfem::ParFiniteElementSpace &space_p;                          // pressure space, outlives this
+   mfem::Vector region_size;                                      // element size h of each region
+   std::unique_ptr<mfem::HypreParMatrix> pres_dynamic;            // L_p[...] inertial + M_p[...] viscous
+   double pres_dynamic_dt = 0.0;                                  // the dt of pres_dynamic
+   mutable std::unique_ptr<mfem::HypreParMatrix> tangent_uu;      // A, constrained
+   mutable std::unique_ptr<mfem::HypreParMatrix> tangent_pu;      // B_pu, constrained columns removed
+   mutable std::unique_ptr<mfem::HypreParMatrix> schur_approx;    // -C + pres_dynamic
+   mutable mfem::HypreBoomerAMG amg_u;                            // A^-1
+   mutable mfem::HypreBoomerAMG amg_p;                            // schur_approx^-1
+   SchurInverse schur_inverse;                                    // -S^-1
+   mutable mfem::BlockLowerTriangularPreconditioner preconditioner;
+   mfem::GMRESSolver linear_solver;                               // solver of the tangent
    SystemTools::BlockNewtonMonitor newton_monitor;                // prints the residual norms of v and p
    mutable std::unique_ptr<mfem::HypreParMatrix> tangent;         // tangent of Newton's method
 
