@@ -17,13 +17,18 @@
 //            - int tau grad M_c . R_mom dV,
 // with the residual of the momentum equation, per reference volume,
 //    R_mom = rho_0 dv/dt + J F^-T Grad p - Div P_ich,
-// grad M_c = F^-T Grad M_c and, as in PERIGEE and Liu & Marsden (CMAME 337,
-// 2018), tau = tau_factor dx J / (c rho_0): dx the longest diagonal of a
+// grad M_c = F^-T Grad M_c and tau = tau_factor dx J / (c rho_0 k^2): as in
+// PERIGEE and Liu & Marsden (CMAME 337, 2018), dx the longest diagonal of a
 // hexahedron or the diameter of the circumscribed sphere of a tetrahedron, in
 // the reference configuration, and c the largest wave speed, sqrt(mu / rho_0)
 // for an incompressible material and sqrt((kappa + 4/3 mu) / rho_0), kappa =
-// -1 / J'(0), for a compressible one. Div P_ich is kept in R_mom, so that the
-// stabilization vanishes for the exact solution.
+// -1 / J'(0), for a compressible one; k the order of the elements. Div P_ich
+// is kept in R_mom, so that the stabilization vanishes for the exact solution.
+// With it, tau has an upper bound, as for the Laplacian in the residual of
+// the stabilized Stokes problem, smaller for higher orders: with the tau of
+// PERIGEE, Q2/Q2 grows a spurious pressure mode at the vertices of the free
+// edges, which the factor 1 / k^2 removes; for linear elements tau is that of
+// PERIGEE.
 // The tangent is that with respect to v and p, exact for a J(p) linear in p,
 // as are those of the volumetric models of the mixed form; it is not
 // symmetric.
@@ -450,8 +455,9 @@ private:
       return out;
    }
 
-   // tau / J = tau_factor dx / (c rho_0), with dx the size of the element and
-   // c the largest wave speed; constant over the element.
+   // tau / J = tau_factor dx / (c rho_0 k^2), with dx the size of the
+   // element, c the largest wave speed and k the order of the element;
+   // constant over the element.
    double get_tau_per_J(const mfem::FiniteElement &elem,
                         mfem::ElementTransformation &elem_map) const
    {
@@ -459,7 +465,9 @@ private:
       const double dJ_dp = material->get_dJ_dp(0.0);
       const double wave_modulus = (dJ_dp == 0.0) ? shear_modulus
                                                  : -1.0 / dJ_dp + 4.0 / 3.0 * shear_modulus;
-      return tau_factor * get_elem_size(elem, elem_map) / (std::sqrt(wave_modulus / rho_0) * rho_0);
+      const int order = elem.GetOrder();
+      return tau_factor * get_elem_size(elem, elem_map)
+             / (std::sqrt(wave_modulus / rho_0) * rho_0 * order * order);
    }
 
    // dx of PERIGEE in the reference configuration: the longest of the four
@@ -514,7 +522,7 @@ private:
    }
 
    const double shear_modulus;                            // mu of tau
-   const double tau_factor;                               // tau = tau_factor dx J / (c rho_0)
+   const double tau_factor;                               // tau = tau_factor dx J / (c rho_0 k^2)
    const mfem::GridFunction *disp_offset = nullptr;       // u = disp_offset + disp_factor v
    double disp_factor = 0.0;
    const mfem::GridFunction *dot_velo_offset = nullptr;   // dv/dt = dot_velo_offset + dot_factor v

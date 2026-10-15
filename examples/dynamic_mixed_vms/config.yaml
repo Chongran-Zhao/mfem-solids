@@ -32,8 +32,9 @@ space:
   # default rule, 2 x LocalAssemblyTools OrderGrad.
   quad_order: 3
 
-  # Factor of the VMS parameter tau = tau_factor dx J / (c rho_0) of PERIGEE:
-  # dx the longest diagonal of the element, c the largest wave speed. PERIGEE
+  # Factor of the VMS parameter tau = tau_factor dx J / (c rho_0 k^2): dx the
+  # longest diagonal of the element, c the largest wave speed and k the
+  # element order, the tau of PERIGEE for k = 1. PERIGEE
   # takes 0.01 for an incompressible material and 0 for a compressible one,
   # whose mass equation holds dp/dt / kappa and needs no stabilization; 0.01
   # over-smooths the pressure of this compressible beam.
