@@ -104,5 +104,6 @@ solver:
 output:
   vtu: results_vtu
   vtu_interval: 10
-  vtu_refine: 2
+  # 1 for Q1, 2 to show the quadratic fields of Q2.
+  vtu_refine: 1
   gf: results_gf
