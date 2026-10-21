@@ -109,6 +109,7 @@ public:
       mfem::Vector N(num_nodes_u), M(num_nodes_p);
       mfem::DenseMatrix dN_dxi(num_nodes_u, 3), dN_dX(num_nodes_u, 3), d2N_dX2(num_nodes_u, 6);
       mfem::DenseMatrix dM_dxi(num_nodes_p, 3), dM_dX(num_nodes_p, 3);
+      mfem::DenseMatrix d2N_dxi2, d2G_dxi2;   // work matrices of calc_shapes
 
       const double tau_J = get_tau_per_J(elem_u, elem_map);
 
@@ -119,7 +120,7 @@ public:
          const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
          elem_map.SetIntPoint(&quad_pt);
          calc_shapes(elem_u, elem_p, elem_map, quad_pt, N, dN_dxi, dN_dX, d2N_dX2,
-                     M, dM_dxi, dM_dX);
+                     M, dM_dxi, dM_dX, d2N_dxi2, d2G_dxi2);
 
          const QuadPointState state = get_quad_point_state(velo, pres, rates, N, dN_dX,
                                                            d2N_dX2, M, dM_dX);
@@ -196,6 +197,7 @@ public:
       mfem::Vector N(num_nodes_u), M(num_nodes_p);
       mfem::DenseMatrix dN_dxi(num_nodes_u, 3), dN_dX(num_nodes_u, 3), d2N_dX2(num_nodes_u, 6);
       mfem::DenseMatrix dM_dxi(num_nodes_p, 3), dM_dX(num_nodes_p, 3);
+      mfem::DenseMatrix d2N_dxi2, d2G_dxi2;   // work matrices of calc_shapes
 
       const double tau_J = get_tau_per_J(elem_u, elem_map);
       const double rho_0 = material->get_rho_0();
@@ -207,7 +209,7 @@ public:
          const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
          elem_map.SetIntPoint(&quad_pt);
          calc_shapes(elem_u, elem_p, elem_map, quad_pt, N, dN_dxi, dN_dX, d2N_dX2,
-                     M, dM_dxi, dM_dX);
+                     M, dM_dxi, dM_dX, d2N_dxi2, d2G_dxi2);
 
          const QuadPointState state = get_quad_point_state(velo, pres, rates, N, dN_dX,
                                                            d2N_dX2, M, dM_dX);
@@ -215,26 +217,20 @@ public:
          const double J = state.J;
          const double tau = tau_J * J;
 
+         // CC_ich and AA_ich, once for the point.
+         const Tensor4_3D CC_ich = material->get_2nd_elasticity_tensor_ich(state.F);
+         const Tensor4_3D AA_ich = material->get_1st_elasticity_tensor_ich(state.F, CC_ich);
+
          // sum_J dAA_ich[G^J]_kJlL, G^J_mM = u_m,MJ, stored as [l](k, L).
-         std::array<Tensor2_3D, 3> dAA_d2u;
-         for (int JJ = 0; JJ < 3; JJ++)
-         {
-            const std::array<Tensor2_3D, 3> &d2u = state.d2u_dX2;
-            const Tensor2_3D slice_J(d2u[0](0, JJ), d2u[0](1, JJ), d2u[0](2, JJ),
-                                     d2u[1](0, JJ), d2u[1](1, JJ), d2u[1](2, JJ),
-                                     d2u[2](0, JJ), d2u[2](1, JJ), d2u[2](2, JJ));
-            const Tensor4_3D dAA_ich = material->get_d_1st_elasticity_tensor_ich(state.F, slice_J);
-            for (int ll = 0; ll < 3; ll++)
-               for (int kk = 0; kk < 3; kk++)
-                  for (int LL = 0; LL < 3; LL++)
-                     dAA_d2u[ll](kk, LL) += dAA_ich(kk, JJ, ll, LL);
-         }
+         const std::array<Tensor2_3D, 3> dAA_d2u =
+            material->get_d_1st_elasticity_tensor_ich_sum(state.F, CC_ich,
+                                                          get_hessian_slices(state.d2u_dX2));
 
          // dV = w_q * det( dX/dxi )
          const double dV = quad_pt.weight * elem_map.Weight();
 
          // K_uu and K_up of the momentum equation at u.
-         add_momentum_tangent_uu(dN_dX, get_1st_elasticity_tensor(state.F, state.p),
+         add_momentum_tangent_uu(dN_dX, get_1st_elasticity_tensor(state.F, state.p, AA_ich),
                                  disp_factor * dV, K_uu);
          for (int aa = 0; aa < num_nodes_u; aa++)
             for (int kk = 0; kk < 3; kk++)
@@ -265,7 +261,7 @@ public:
                {
                   for (int JJ = 0; JJ < 3; JJ++)
                      for (int LL = 0; LL < 3; LL++)
-                        dDivP(kk, ll) += state.AA_ich(kk, JJ, ll, LL) * d2Nb_dX2(LL, JJ);
+                        dDivP(kk, ll) += AA_ich(kk, JJ, ll, LL) * d2Nb_dX2(LL, JJ);
                   for (int LL = 0; LL < 3; LL++)
                      dDivP(kk, ll) += dAA_d2u[ll](kk, LL) * dN_dX(bb, LL);
                }
@@ -331,7 +327,6 @@ private:
       Vector_3D dp_dx;                     // grad p
       double dot_pres;                     // dp/dt
       double dJ_dp;                        // J'(p)
-      Tensor4_3D AA_ich;                   // dP_ich/dF
       std::array<Tensor2_3D, 3> d2u_dX2;   // u_l,LJ, stored as [l](L, J)
       Vector_3D R_mom;                     // residual of the momentum equation
    };
@@ -350,18 +345,20 @@ private:
       return out;
    }
 
-   // N, N_a,J and N_a,JL of the velocity, M and M_c,J of the pressure.
+   // N, N_a,J and N_a,JL of the velocity, M and M_c,J of the pressure;
+   // d2N_dxi2 and d2G_dxi2 are work matrices.
    static void calc_shapes(const mfem::FiniteElement &elem_u, const mfem::FiniteElement &elem_p,
                            mfem::ElementTransformation &elem_map,
                            const mfem::IntegrationPoint &quad_pt, mfem::Vector &N,
                            mfem::DenseMatrix &dN_dxi, mfem::DenseMatrix &dN_dX,
                            mfem::DenseMatrix &d2N_dX2, mfem::Vector &M,
-                           mfem::DenseMatrix &dM_dxi, mfem::DenseMatrix &dM_dX)
+                           mfem::DenseMatrix &dM_dxi, mfem::DenseMatrix &dM_dX,
+                           mfem::DenseMatrix &d2N_dxi2, mfem::DenseMatrix &d2G_dxi2)
    {
       elem_u.CalcShape(quad_pt, N);
       elem_u.CalcDShape(quad_pt, dN_dxi);
       mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
-      elem_u.CalcPhysHessian(elem_map, d2N_dX2);
+      LocalAssemblyTools::calc_phys_hessian(elem_u, elem_map, dN_dX, d2N_dxi2, d2G_dxi2, d2N_dX2);
       elem_p.CalcShape(quad_pt, M);
       elem_p.CalcDShape(quad_pt, dM_dxi);
       mfem::Mult(dM_dxi, elem_map.InverseJacobian(), dM_dX);
@@ -369,7 +366,8 @@ private:
 
    // The state at the current point, with
    // R_mom_k = rho_0 dv_k/dt + J F^-1_Jk p,J - P_ich_kJ,J and
-   // P_ich_kJ,J = AA_ich_kJlL u_l,LJ.
+   // P_ich_kJ,J = AA_ich_kJlL u_l,LJ = sum_J dP_ich[G^J]_kJ, the derivatives of
+   // P_ich along G^J_lL = u_l,LJ, without AA_ich.
    QuadPointState get_quad_point_state(const mfem::Vector &velo, const mfem::Vector &pres,
                                        const ElementRates &rates, const mfem::Vector &N,
                                        const mfem::DenseMatrix &dN_dX,
@@ -411,18 +409,30 @@ private:
          for (int kk = 0; kk < 3; kk++)
             dot_velo(kk) += N(aa) * rates.dot_velo(aa+kk*num_nodes_u);
 
-      out.AA_ich = material->get_1st_elasticity_tensor_ich(out.F);
       out.d2u_dX2 = get_disp_hessian(rates.disp, d2N_dX2);
 
       const double rho_0 = material->get_rho_0();
       for (int kk = 0; kk < 3; kk++)
-      {
          out.R_mom(kk) = rho_0 * dot_velo(kk) + out.J * out.dp_dx(kk);
-         for (int JJ = 0; JJ < 3; JJ++)
-            for (int ll = 0; ll < 3; ll++)
-               for (int LL = 0; LL < 3; LL++)
-                  out.R_mom(kk) -= out.AA_ich(kk, JJ, ll, LL) * out.d2u_dX2[ll](LL, JJ);
+      const std::array<Tensor2_3D, 3> slices = get_hessian_slices(out.d2u_dX2);
+      for (int JJ = 0; JJ < 3; JJ++)
+      {
+         const Tensor2_3D dP_ich = material->get_d_1st_PK_stress_ich(out.F, slices[JJ]);
+         for (int kk = 0; kk < 3; kk++)
+            out.R_mom(kk) -= dP_ich(kk, JJ);
       }
+      return out;
+   }
+
+   // The slices G^J_lL = u_l,LJ of d2u_dX2 = u_l,LJ stored as [l](L, J).
+   static std::array<Tensor2_3D, 3> get_hessian_slices(const std::array<Tensor2_3D, 3> &d2u_dX2)
+   {
+      const std::array<Tensor2_3D, 3> &d2u = d2u_dX2;
+      std::array<Tensor2_3D, 3> out;
+      for (int JJ = 0; JJ < 3; JJ++)
+         out[JJ] = Tensor2_3D(d2u[0](0, JJ), d2u[0](1, JJ), d2u[0](2, JJ),
+                              d2u[1](0, JJ), d2u[1](1, JJ), d2u[1](2, JJ),
+                              d2u[2](0, JJ), d2u[2](1, JJ), d2u[2](2, JJ));
       return out;
    }
 

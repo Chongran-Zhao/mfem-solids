@@ -11,6 +11,7 @@
 #ifndef MATERIAL_MODEL_HPP
 #define MATERIAL_MODEL_HPP
 
+#include <array>
 #include <memory>
 #include <utility>
 
@@ -82,33 +83,89 @@ public:
       return F * ich_model->get_2nd_PK_stress(F);
    }
 
+   // Derivative of P_ich along dF, dP_ich = dF S_ich + F dS_ich with
+   // dC = dF^T F + F^T dF, without the elasticity tensors.
+   Tensor2_3D get_d_1st_PK_stress_ich(const Tensor2_3D &F, const Tensor2_3D &dF) const
+   {
+      const Tensor2_3D dC = dF.transpose() * F + F.transpose() * dF;
+      return dF * ich_model->get_2nd_PK_stress(F) + F * ich_model->get_d_2nd_PK_stress(F, dC);
+   }
+
+   // Isochoric second elasticity tensor CC_ich = 2 dS_ich/dC.
+   Tensor4_3D get_2nd_elasticity_tensor_ich(const Tensor2_3D &F) const
+   {
+      return ich_model->get_2nd_elasticity_tensor(F);
+   }
+
    // Isochoric first elasticity tensor AA_ich = dP_ich/dF.
    Tensor4_3D get_1st_elasticity_tensor_ich(const Tensor2_3D &F) const
    {
-      return from_CC_to_AA(F, ich_model->get_2nd_PK_stress(F),
-                           ich_model->get_2nd_elasticity_tensor(F));
+      return get_1st_elasticity_tensor_ich(F, ich_model->get_2nd_elasticity_tensor(F));
    }
 
-   // Derivative of AA_ich along dF, dAA_ich = dAA_ich/dF : dF, for the
-   // tangent of the VMS stabilization. From AA_iJkL = F_iM CC_MJNL F_kN
-   // + delta_ik S_JL, with dC = dF^T F + F^T dF and dS = 1/2 CC : dC,
-   // dAA_iJkL = dF_iM CC_MJNL F_kN + F_iM CC_MJNL dF_kN
-   //          + F_iM dCC_MJNL F_kN + delta_ik dS_JL.
-   Tensor4_3D get_d_1st_elasticity_tensor_ich(const Tensor2_3D &F, const Tensor2_3D &dF) const
+   // AA_ich from CC_ich = get_2nd_elasticity_tensor_ich(F), computed once.
+   Tensor4_3D get_1st_elasticity_tensor_ich(const Tensor2_3D &F, const Tensor4_3D &CC) const
    {
-      const Tensor2_3D dC = dF.transpose() * F + F.transpose() * dF;
-      const Tensor4_3D CC = ich_model->get_2nd_elasticity_tensor(F);
+      return from_CC_to_AA(F, ich_model->get_2nd_PK_stress(F), CC);
+   }
 
-      // dS_JL = 1/2 CC_JLMN dC_MN
-      Tensor2_3D dS;
+   // sum_J dAA_ich[G^J]_kJlL, the derivatives of AA_ich along the three
+   // dF = G^J summed over the second index of AA_ich, stored as [l](k, L),
+   // for the tangent of the VMS stabilization, with
+   // CC = get_2nd_elasticity_tensor_ich(F). From AA_iJkL = F_iM CC_MJNL F_kN
+   // + delta_ik S_JL, with dC^J = G^J^T F + F^T G^J and dS^J = 1/2 CC : dC^J,
+   // dAA_ich[G^J]_kJlL = G^J_kM CC_MJNL F_lN + F_kM CC_MJNL G^J_lN
+   //                   + F_kM dCC[dC^J]_MJNL F_lN + delta_kl dS^J_JL;
+   // the sums over J are taken before the products with F.
+   std::array<Tensor2_3D, 3> get_d_1st_elasticity_tensor_ich_sum(
+      const Tensor2_3D &F, const Tensor4_3D &CC, const std::array<Tensor2_3D, 3> &G) const
+   {
+      // sum_J G^J_kM CC_MJNL as (k, N, L), sum_J CC_MJNL G^J_lN as (M, l, L),
+      // sum_J dCC[dC^J]_MJNL as (M, N, L) and sum_J dS^J_JL.
+      double G_CC[3][3][3] = {}, CC_G[3][3][3] = {}, dCC_sum[3][3][3] = {};
+      double dS_sum[3] = {};
       for (int JJ = 0; JJ < 3; JJ++)
+      {
+         const Tensor2_3D &G_J = G[JJ];
+         const Tensor2_3D dC = G_J.transpose() * F + F.transpose() * G_J;
+         const Tensor2_3D dS = ich_model->get_d_2nd_PK_stress(F, dC);
+         const Tensor4_3D dCC = ich_model->get_d_2nd_elasticity_tensor(F, dC);
          for (int LL = 0; LL < 3; LL++)
-            for (int MM = 0; MM < 3; MM++)
-               for (int NN = 0; NN < 3; NN++)
-                  dS(JJ, LL) += 0.5 * CC(JJ, LL, MM, NN) * dC(MM, NN);
+            dS_sum[LL] += dS(JJ, LL);
+         for (int aa = 0; aa < 3; aa++)
+            for (int bb = 0; bb < 3; bb++)
+               for (int LL = 0; LL < 3; LL++)
+                  for (int cc = 0; cc < 3; cc++)
+                  {
+                     G_CC[aa][bb][LL] += G_J(aa, cc) * CC(cc, JJ, bb, LL);
+                     CC_G[aa][bb][LL] += CC(aa, JJ, cc, LL) * G_J(bb, cc);
+                  }
+         for (int MM = 0; MM < 3; MM++)
+            for (int NN = 0; NN < 3; NN++)
+               for (int LL = 0; LL < 3; LL++)
+                  dCC_sum[MM][NN][LL] += dCC(MM, JJ, NN, LL);
+      }
 
-      return get_AA_CC_BB(dF, CC, F) + get_AA_CC_BB(F, CC, dF)
-             + from_CC_to_AA(F, dS, ich_model->get_d_2nd_elasticity_tensor(F, dC));
+      // F_kM sum_J dCC_MJNL as (k, N, L).
+      double F_dCC[3][3][3] = {};
+      for (int kk = 0; kk < 3; kk++)
+         for (int NN = 0; NN < 3; NN++)
+            for (int LL = 0; LL < 3; LL++)
+               for (int MM = 0; MM < 3; MM++)
+                  F_dCC[kk][NN][LL] += F(kk, MM) * dCC_sum[MM][NN][LL];
+
+      std::array<Tensor2_3D, 3> out;
+      for (int ll = 0; ll < 3; ll++)
+         for (int kk = 0; kk < 3; kk++)
+            for (int LL = 0; LL < 3; LL++)
+            {
+               double value = (kk == ll) ? dS_sum[LL] : 0.0;
+               for (int NN = 0; NN < 3; NN++)
+                  value += (G_CC[kk][NN][LL] + F_dCC[kk][NN][LL]) * F(ll, NN)
+                           + F(kk, NN) * CC_G[NN][ll][LL];
+               out[ll](kk, LL) = value;
+            }
+      return out;
    }
 
    // Pressure p(J) of the volumetric model.
@@ -150,30 +207,6 @@ private:
             for (int LL = 0; LL < 3; LL++)
                AA(ii, JJ, ii, LL) += PK2(JJ, LL);
       return AA;
-   }
-
-   // A_iM CC_MJNL B_kN
-   static Tensor4_3D get_AA_CC_BB(const Tensor2_3D &AA, const Tensor4_3D &CC,
-                                  const Tensor2_3D &BB)
-   {
-      // A_iM CC_MJNL
-      Tensor4_3D AA_CC;
-      for (int ii = 0; ii < 3; ii++)
-         for (int JJ = 0; JJ < 3; JJ++)
-            for (int NN = 0; NN < 3; NN++)
-               for (int LL = 0; LL < 3; LL++)
-                  for (int MM = 0; MM < 3; MM++)
-                     AA_CC(ii, JJ, NN, LL) += AA(ii, MM) * CC(MM, JJ, NN, LL);
-
-      // A_iM CC_MJNL B_kN
-      Tensor4_3D out;
-      for (int ii = 0; ii < 3; ii++)
-         for (int JJ = 0; JJ < 3; JJ++)
-            for (int kk = 0; kk < 3; kk++)
-               for (int LL = 0; LL < 3; LL++)
-                  for (int NN = 0; NN < 3; NN++)
-                     out(ii, JJ, kk, LL) += AA_CC(ii, JJ, NN, LL) * BB(kk, NN);
-      return out;
    }
 
    std::unique_ptr<IMaterialModel_vol> vol_model;  // Psi_vol(J)

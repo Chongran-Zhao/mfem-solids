@@ -29,6 +29,11 @@ public:
    // Isochoric second elasticity tensor CC_ich = 2 dS_ich/dC.
    virtual Tensor4_3D get_2nd_elasticity_tensor(const Tensor2_3D &F) const = 0;
 
+   // Derivative of S_ich along a symmetric dC, dS_ich = 1/2 CC_ich : dC,
+   // without CC_ich, for the divergence of the stress in the VMS
+   // stabilization.
+   virtual Tensor2_3D get_d_2nd_PK_stress(const Tensor2_3D &F, const Tensor2_3D &dC) const = 0;
+
    // Derivative of CC_ich along dC, dCC_ich = dCC_ich/dC : dC, for the
    // tangent of the VMS stabilization.
    virtual Tensor4_3D get_d_2nd_elasticity_tensor(const Tensor2_3D &F,

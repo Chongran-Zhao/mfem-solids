@@ -76,9 +76,14 @@ protected:
    // AA_kJlL = AA_ich_kJlL - p J (F^-1_Jk F^-1_Ll - F^-1_Jl F^-1_Lk).
    Tensor4_3D get_1st_elasticity_tensor(const Tensor2_3D &F, double p) const
    {
+      return get_1st_elasticity_tensor(F, p, material->get_1st_elasticity_tensor_ich(F));
+   }
+
+   // AA from AA_ich computed elsewhere.
+   static Tensor4_3D get_1st_elasticity_tensor(const Tensor2_3D &F, double p, Tensor4_3D AA)
+   {
       const double J = F.det();
       const Tensor2_3D F_inv = F.inverse();
-      Tensor4_3D AA = material->get_1st_elasticity_tensor_ich(F);
       for (int kk = 0; kk < 3; kk++)
          for (int JJ = 0; JJ < 3; JJ++)
             for (int ll = 0; ll < 3; ll++)
