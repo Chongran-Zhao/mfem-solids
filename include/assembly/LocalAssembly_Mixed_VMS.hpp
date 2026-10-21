@@ -46,6 +46,7 @@
 #include <cmath>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <mfem.hpp>
 
@@ -106,28 +107,22 @@ public:
       residual_p.SetSize(num_nodes_p);
       residual_p = 0.0;
 
-      mfem::Vector N(num_nodes_u), M(num_nodes_p);
-      mfem::DenseMatrix dN_dxi(num_nodes_u, 3), dN_dX(num_nodes_u, 3), d2N_dX2(num_nodes_u, 6);
-      mfem::DenseMatrix dM_dxi(num_nodes_p, 3), dM_dX(num_nodes_p, 3);
-      mfem::DenseMatrix d2N_dxi2, d2G_dxi2;   // work matrices of calc_shapes
+      const ElementShapes &shapes = get_element_shapes(elem_u, elem_p, elem_map);
+      const double tau_J = shapes.tau_per_J;
 
-      const double tau_J = get_tau_per_J(elem_u, elem_map);
-
-      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem_u, elem_map);
-
-      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
+      for (const PointShapes &point : shapes.points)
       {
-         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
-         elem_map.SetIntPoint(&quad_pt);
-         calc_shapes(elem_u, elem_p, elem_map, quad_pt, N, dN_dxi, dN_dX, d2N_dX2,
-                     M, dM_dxi, dM_dX, d2N_dxi2, d2G_dxi2);
+         const mfem::Vector &N = point.N;
+         const mfem::DenseMatrix &dN_dX = point.dN_dX;
+         const mfem::DenseMatrix &d2N_dX2 = point.d2N_dX2;
+         const mfem::Vector &M = point.M;
+         const mfem::DenseMatrix &dM_dX = point.dM_dX;
 
          const QuadPointState state = get_quad_point_state(velo, pres, rates, N, dN_dX,
                                                            d2N_dX2, M, dM_dX);
          const double tau = tau_J * state.J;
 
-         // dV = w_q * det( dX/dxi )
-         const double dV = quad_pt.weight * elem_map.Weight();
+         const double dV = point.dV;
 
          // R^a_k at u.
          add_momentum_residual(dN_dX, get_1st_PK_stress(state.F, state.p), dV, residual_u);
@@ -194,22 +189,17 @@ public:
       K_pp.SetSize(num_nodes_p, num_nodes_p);
       K_pp = 0.0;
 
-      mfem::Vector N(num_nodes_u), M(num_nodes_p);
-      mfem::DenseMatrix dN_dxi(num_nodes_u, 3), dN_dX(num_nodes_u, 3), d2N_dX2(num_nodes_u, 6);
-      mfem::DenseMatrix dM_dxi(num_nodes_p, 3), dM_dX(num_nodes_p, 3);
-      mfem::DenseMatrix d2N_dxi2, d2G_dxi2;   // work matrices of calc_shapes
-
-      const double tau_J = get_tau_per_J(elem_u, elem_map);
+      const ElementShapes &shapes = get_element_shapes(elem_u, elem_p, elem_map);
+      const double tau_J = shapes.tau_per_J;
       const double rho_0 = material->get_rho_0();
 
-      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem_u, elem_map);
-
-      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
+      for (const PointShapes &point : shapes.points)
       {
-         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
-         elem_map.SetIntPoint(&quad_pt);
-         calc_shapes(elem_u, elem_p, elem_map, quad_pt, N, dN_dxi, dN_dX, d2N_dX2,
-                     M, dM_dxi, dM_dX, d2N_dxi2, d2G_dxi2);
+         const mfem::Vector &N = point.N;
+         const mfem::DenseMatrix &dN_dX = point.dN_dX;
+         const mfem::DenseMatrix &d2N_dX2 = point.d2N_dX2;
+         const mfem::Vector &M = point.M;
+         const mfem::DenseMatrix &dM_dX = point.dM_dX;
 
          const QuadPointState state = get_quad_point_state(velo, pres, rates, N, dN_dX,
                                                            d2N_dX2, M, dM_dX);
@@ -226,12 +216,11 @@ public:
             material->get_d_1st_elasticity_tensor_ich_sum(state.F, CC_ich,
                                                           get_hessian_slices(state.d2u_dX2));
 
-         // dV = w_q * det( dX/dxi )
-         const double dV = quad_pt.weight * elem_map.Weight();
+         const double dV = point.dV;
 
          // K_uu and K_up of the momentum equation at u.
-         LocalAssemblyTools::add_momentum_tangent_uu(dN_dX, get_1st_elasticity_tensor(state.F, state.p, AA_ich),
-                                 disp_factor * dV, K_uu);
+         LocalAssemblyTools::add_momentum_tangent_uu(
+            dN_dX, get_1st_elasticity_tensor(state.F, state.p, AA_ich), disp_factor * dV, K_uu);
          for (int aa = 0; aa < num_nodes_u; aa++)
             for (int kk = 0; kk < 3; kk++)
             {
@@ -306,7 +295,72 @@ public:
       }
    }
 
+   // The quadrature rule of the next assembly; the shapes cached with
+   // another rule are computed again.
+   void set_quad_order(int input_quad_order)
+   {
+      LocalAssembly_Mixed::set_quad_order(input_quad_order);
+      shape_cache.clear();
+   }
+
 private:
+   // The shape functions at a quadrature point, in the reference
+   // configuration, which the Total Lagrangian form keeps for the whole run.
+   struct PointShapes
+   {
+      mfem::Vector N;              // N_a of the velocity
+      mfem::DenseMatrix dN_dX;     // N_a,J
+      mfem::DenseMatrix d2N_dX2;   // N_a,JL as {xx, xy, xz, yy, yz, zz}
+      mfem::Vector M;              // M_c of the pressure
+      mfem::DenseMatrix dM_dX;     // M_c,J
+      double dV;                   // w_q det(dX/dxi)
+   };
+
+   // The shapes at the quadrature points of an element and tau / J.
+   struct ElementShapes
+   {
+      std::vector<PointShapes> points;
+      double tau_per_J = 0.0;
+   };
+
+   // The shapes of the element of elem_map, computed at its first assembly
+   // and kept for the next ones, residuals and tangents.
+   const ElementShapes &get_element_shapes(const mfem::FiniteElement &elem_u,
+                                           const mfem::FiniteElement &elem_p,
+                                           mfem::ElementTransformation &elem_map)
+   {
+      const int element = elem_map.ElementNo;
+      if (element >= static_cast<int>(shape_cache.size()))
+         shape_cache.resize(element + 1);
+      ElementShapes &shapes = shape_cache[element];
+      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem_u, elem_map);
+      if (static_cast<int>(shapes.points.size()) == quad_rule.GetNPoints())
+         return shapes;
+
+      const int num_nodes_u = elem_u.GetDof();
+      const int num_nodes_p = elem_p.GetDof();
+      mfem::DenseMatrix dN_dxi(num_nodes_u, 3), dM_dxi(num_nodes_p, 3);
+      mfem::DenseMatrix d2N_dxi2, d2G_dxi2;   // work matrices of calc_shapes
+      shapes.points.resize(quad_rule.GetNPoints());
+      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
+      {
+         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
+         elem_map.SetIntPoint(&quad_pt);
+         PointShapes &point = shapes.points[qq];
+         point.N.SetSize(num_nodes_u);
+         point.dN_dX.SetSize(num_nodes_u, 3);
+         point.d2N_dX2.SetSize(num_nodes_u, 6);
+         point.M.SetSize(num_nodes_p);
+         point.dM_dX.SetSize(num_nodes_p, 3);
+         calc_shapes(elem_u, elem_p, elem_map, quad_pt, point.N, dN_dxi, point.dN_dX,
+                     point.d2N_dX2, point.M, dM_dxi, point.dM_dX, d2N_dxi2, d2G_dxi2);
+         // dV = w_q * det( dX/dxi )
+         point.dV = quad_pt.weight * elem_map.Weight();
+      }
+      shapes.tau_per_J = get_tau_per_J(elem_u, elem_map);
+      return shapes;
+   }
+
    // The element values of u, dv/dt and dp/dt from v and p.
    struct ElementRates
    {
@@ -559,6 +613,7 @@ private:
    const mfem::GridFunction *dot_velo_offset = nullptr;   // dv/dt = dot_velo_offset + dot_factor v
    const mfem::GridFunction *dot_pres_offset = nullptr;   // dp/dt = dot_pres_offset + dot_factor p
    double dot_factor = 0.0;
+   std::vector<ElementShapes> shape_cache;                // by element number, see get_element_shapes
 };
 
 #endif
