@@ -22,7 +22,6 @@
 #include "MaterialModel.hpp"
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
-#include "Vector_3D.hpp"
 
 class LocalAssembly_Disp : public mfem::NonlinearFormIntegrator
 {
@@ -118,29 +117,7 @@ public:
          // dV = w_q * det( dX/dxi )
          const double dV = quad_pt.weight * elem_map.Weight();
 
-         for (int aa = 0; aa < num_nodes; aa++)
-         {
-            const Vector_3D dNa_dX(dN_dX(aa, 0), dN_dX(aa, 1), dN_dX(aa, 2));
-
-            for (int bb = 0; bb < num_nodes; bb++)
-            {
-               const Vector_3D dNb_dX(dN_dX(bb, 0), dN_dX(bb, 1), dN_dX(bb, 2));
-
-               // N_a,J AA_kJlL N_b,L
-               for (int kk = 0; kk < 3; kk++)
-                  for (int ll = 0; ll < 3; ll++)
-                     tangent(aa+kk*num_nodes, bb+ll*num_nodes) += dV *
-                        ( dNa_dX(0) * (AA(kk, 0, ll, 0) * dNb_dX(0)
-                                    +  AA(kk, 0, ll, 1) * dNb_dX(1)
-                                    +  AA(kk, 0, ll, 2) * dNb_dX(2))
-                        + dNa_dX(1) * (AA(kk, 1, ll, 0) * dNb_dX(0)
-                                    +  AA(kk, 1, ll, 1) * dNb_dX(1)
-                                    +  AA(kk, 1, ll, 2) * dNb_dX(2))
-                        + dNa_dX(2) * (AA(kk, 2, ll, 0) * dNb_dX(0)
-                                    +  AA(kk, 2, ll, 1) * dNb_dX(1)
-                                    +  AA(kk, 2, ll, 2) * dNb_dX(2)));
-            }
-         }
+         LocalAssemblyTools::add_momentum_tangent_uu(dN_dX, AA, dV, tangent);
       }
    }
 

@@ -230,7 +230,7 @@ public:
          const double dV = quad_pt.weight * elem_map.Weight();
 
          // K_uu and K_up of the momentum equation at u.
-         add_momentum_tangent_uu(dN_dX, get_1st_elasticity_tensor(state.F, state.p, AA_ich),
+         LocalAssemblyTools::add_momentum_tangent_uu(dN_dX, get_1st_elasticity_tensor(state.F, state.p, AA_ich),
                                  disp_factor * dV, K_uu);
          for (int aa = 0; aa < num_nodes_u; aa++)
             for (int kk = 0; kk < 3; kk++)

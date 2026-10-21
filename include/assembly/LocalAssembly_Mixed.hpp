@@ -5,7 +5,8 @@
 // displacement-pressure (u/p) form, Total Lagrangian: the momentum equation,
 //    R^a_k = int N_a,J (P_ich_kJ - p J F^-1_Jk) dV,
 // and its tangent, which the formulations share, added at a quadrature point
-// by the functions below; the material, the quadrature rule and the density.
+// by the functions below and LocalAssemblyTools::add_momentum_tangent_uu; the
+// material, the quadrature rule and the density.
 // The derived classes give the mass equation and assemble the element:
 // LocalAssembly_Mixed_TaylorHood, the weak J = J(p) of Taylor-Hood elements,
 // and LocalAssembly_Mixed_VMS, its rate form with the VMS stabilization of
@@ -28,7 +29,6 @@
 #include "MaterialModel.hpp"
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
-#include "Vector_3D.hpp"
 
 class LocalAssembly_Mixed : public mfem::BlockNonlinearFormIntegrator
 {
@@ -112,36 +112,6 @@ protected:
          residual_u(aa+2*num_nodes_u) += dV * (PK1(2, 0) * dN_dX(aa, 0)
                                              + PK1(2, 1) * dN_dX(aa, 1)
                                              + PK1(2, 2) * dN_dX(aa, 2));
-      }
-   }
-
-   // K_uu(a k, b l) += dV N_a,J AA_kJlL N_b,L
-   static void add_momentum_tangent_uu(const mfem::DenseMatrix &dN_dX, const Tensor4_3D &AA,
-                                       double dV, mfem::DenseMatrix &K_uu)
-   {
-      const int num_nodes_u = dN_dX.Height();
-      for (int aa = 0; aa < num_nodes_u; aa++)
-      {
-         const Vector_3D dNa_dX(dN_dX(aa, 0), dN_dX(aa, 1), dN_dX(aa, 2));
-
-         for (int bb = 0; bb < num_nodes_u; bb++)
-         {
-            const Vector_3D dNb_dX(dN_dX(bb, 0), dN_dX(bb, 1), dN_dX(bb, 2));
-
-            // N_a,J AA_kJlL N_b,L
-            for (int kk = 0; kk < 3; kk++)
-               for (int ll = 0; ll < 3; ll++)
-                  K_uu(aa+kk*num_nodes_u, bb+ll*num_nodes_u) += dV *
-                     ( dNa_dX(0) * (AA(kk, 0, ll, 0) * dNb_dX(0)
-                                 +  AA(kk, 0, ll, 1) * dNb_dX(1)
-                                 +  AA(kk, 0, ll, 2) * dNb_dX(2))
-                     + dNa_dX(1) * (AA(kk, 1, ll, 0) * dNb_dX(0)
-                                 +  AA(kk, 1, ll, 1) * dNb_dX(1)
-                                 +  AA(kk, 1, ll, 2) * dNb_dX(2))
-                     + dNa_dX(2) * (AA(kk, 2, ll, 0) * dNb_dX(0)
-                                 +  AA(kk, 2, ll, 1) * dNb_dX(1)
-                                 +  AA(kk, 2, ll, 2) * dNb_dX(2)));
-         }
       }
    }
 

@@ -1,8 +1,9 @@
 // ============================================================================
 // LocalAssemblyTools.hpp
 //
-// Tools shared by the local assemblies: the quadrature rule and the
-// deformation gradient at a quadrature point.
+// Tools shared by the local assemblies: the quadrature rule, the
+// deformation gradient, the Hessian of the shape functions and the tangent
+// of the momentum equation at a quadrature point.
 //
 // Author: Chongran Zhao
 // Date: Sep. 29, 2026
@@ -14,6 +15,7 @@
 #include <mfem.hpp>
 
 #include "Tensor2_3D.hpp"
+#include "Tensor4_3D.hpp"
 
 class LocalAssemblyTools
 {
@@ -48,6 +50,37 @@ public:
          F(2, 2) += disp_z * dN_dX(aa, 2);
       }
       return F;
+   }
+
+   // K_uu(a k, b l) += dV N_a,J AA_kJlL N_b,L, the tangent of
+   // int N_a,J P_kJ dV in every formulation, stored at
+   // K_uu(aa+k*num_nodes, bb+l*num_nodes). dV AA_kJlL N_b,L is taken first,
+   // for each b, so that each pair (a, b) costs 27 products instead of 81.
+   static void add_momentum_tangent_uu(const mfem::DenseMatrix &dN_dX, const Tensor4_3D &AA,
+                                       double dV, mfem::DenseMatrix &K_uu)
+   {
+      const int num_nodes = dN_dX.Height();
+      for (int bb = 0; bb < num_nodes; bb++)
+      {
+         // dV AA_kJlL N_b,L as [k][J][l]
+         double AA_dNb[3][3][3];
+         for (int kk = 0; kk < 3; kk++)
+            for (int JJ = 0; JJ < 3; JJ++)
+               for (int ll = 0; ll < 3; ll++)
+                  AA_dNb[kk][JJ][ll] = dV * (AA(kk, JJ, ll, 0) * dN_dX(bb, 0)
+                                             + AA(kk, JJ, ll, 1) * dN_dX(bb, 1)
+                                             + AA(kk, JJ, ll, 2) * dN_dX(bb, 2));
+
+         for (int aa = 0; aa < num_nodes; aa++)
+         {
+            const double dNa_dX0 = dN_dX(aa, 0), dNa_dX1 = dN_dX(aa, 1), dNa_dX2 = dN_dX(aa, 2);
+            for (int kk = 0; kk < 3; kk++)
+               for (int ll = 0; ll < 3; ll++)
+                  K_uu(aa+kk*num_nodes, bb+ll*num_nodes) += dNa_dX0 * AA_dNb[kk][0][ll]
+                                                            + dNa_dX1 * AA_dNb[kk][1][ll]
+                                                            + dNa_dX2 * AA_dNb[kk][2][ll];
+         }
+      }
    }
 
    // N_a,JL, the Hessian of the shape functions of elem with respect to X at

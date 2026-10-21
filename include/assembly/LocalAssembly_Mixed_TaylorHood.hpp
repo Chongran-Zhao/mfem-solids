@@ -160,7 +160,7 @@ public:
          const double dV = quad_pt.weight * elem_map.Weight();
 
          // K_uu
-         add_momentum_tangent_uu(dN_dX, get_1st_elasticity_tensor(F, p), dV, K_uu);
+         LocalAssemblyTools::add_momentum_tangent_uu(dN_dX, get_1st_elasticity_tensor(F, p), dV, K_uu);
 
          // K_up and K_pu, filled together since one is the transpose of the
          // other.
