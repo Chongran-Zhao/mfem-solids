@@ -12,10 +12,12 @@
 #    pvpython ../scripts/probe_strain.py results_vtu/results_vtu.pvd E_rphi.csv
 #    pvpython ../scripts/plot_strain.py E_rtheta.png E_rphi.csv
 #    pvpython ../scripts/wave_speed.py results_vtu/results_vtu.pvd wave_speed.png
+#    pvpython ../scripts/probe_disp.py results_vtu/results_vtu.pvd U_phi.csv
 # probe_strain.py writes E_r_phi at 20, 40, 60, 80 mm on the measured ray,
 # 60 degrees from x in the equatorial plane; plot_strain.py draws such CSV
 # files, one panel each; wave_speed.py fits the arrival of the first negative
-# peak from 10 to 80 mm, for VTU output every 1 ms or so.
+# peak from 10 to 80 mm, for VTU output every 1 ms or so; probe_disp.py
+# writes u_phi in mm at the measured radii 11.12, 32.31, 53.38 mm on that ray.
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(sphere_rotation_vms LANGUAGES CXX)
