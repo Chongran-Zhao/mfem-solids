@@ -83,12 +83,17 @@ public:
       return F * ich_model->get_2nd_PK_stress(F);
    }
 
-   // Derivative of P_ich along dF, dP_ich = dF S_ich + F dS_ich with
-   // dC = dF^T F + F^T dF, without the elasticity tensors.
-   Tensor2_3D get_d_1st_PK_stress_ich(const Tensor2_3D &F, const Tensor2_3D &dF) const
+   // Derivatives of P_ich along three dF^J, dP_ich^J = dF^J S_ich + F dS_ich^J
+   // with dC^J = dF^J^T F + F^T dF^J, without the elasticity tensors.
+   std::array<Tensor2_3D, 3> get_d_1st_PK_stress_ich(const Tensor2_3D &F,
+                                                     const std::array<Tensor2_3D, 3> &dF) const
    {
-      const Tensor2_3D dC = dF.transpose() * F + F.transpose() * dF;
-      return dF * ich_model->get_2nd_PK_stress(F) + F * ich_model->get_d_2nd_PK_stress(F, dC);
+      const std::array<Tensor2_3D, 3> dS = ich_model->get_d_2nd_PK_stress(F, get_dC(F, dF));
+      const Tensor2_3D S = ich_model->get_2nd_PK_stress(F);
+      std::array<Tensor2_3D, 3> out;
+      for (int JJ = 0; JJ < 3; JJ++)
+         out[JJ] = dF[JJ] * S + F * dS[JJ];
+      return out;
    }
 
    // Isochoric second elasticity tensor CC_ich = 2 dS_ich/dC.
@@ -121,17 +126,17 @@ public:
       const Tensor2_3D &F, const Tensor4_3D &CC, const std::array<Tensor2_3D, 3> &G) const
    {
       // sum_J G^J_kM CC_MJNL as (k, N, L), sum_J CC_MJNL G^J_lN as (M, l, L),
-      // sum_J dCC[dC^J]_MJNL as (M, N, L) and sum_J dS^J_JL.
-      double G_CC[3][3][3] = {}, CC_G[3][3][3] = {}, dCC_sum[3][3][3] = {};
+      // sum_J dCC[dC^J]_MJNL as [M](N, L) and sum_J dS^J_JL.
+      const std::array<Tensor2_3D, 3> dC = get_dC(F, G);
+      const std::array<Tensor2_3D, 3> dS = ich_model->get_d_2nd_PK_stress(F, dC);
+      const std::array<Tensor2_3D, 3> dCC_sum = ich_model->get_d_2nd_elasticity_tensor_sum(F, dC);
+      double G_CC[3][3][3] = {}, CC_G[3][3][3] = {};
       double dS_sum[3] = {};
       for (int JJ = 0; JJ < 3; JJ++)
       {
          const Tensor2_3D &G_J = G[JJ];
-         const Tensor2_3D dC = G_J.transpose() * F + F.transpose() * G_J;
-         const Tensor2_3D dS = ich_model->get_d_2nd_PK_stress(F, dC);
-         const Tensor4_3D dCC = ich_model->get_d_2nd_elasticity_tensor(F, dC);
          for (int LL = 0; LL < 3; LL++)
-            dS_sum[LL] += dS(JJ, LL);
+            dS_sum[LL] += dS[JJ](JJ, LL);
          for (int aa = 0; aa < 3; aa++)
             for (int bb = 0; bb < 3; bb++)
                for (int LL = 0; LL < 3; LL++)
@@ -140,10 +145,6 @@ public:
                      G_CC[aa][bb][LL] += G_J(aa, cc) * CC(cc, JJ, bb, LL);
                      CC_G[aa][bb][LL] += CC(aa, JJ, cc, LL) * G_J(bb, cc);
                   }
-         for (int MM = 0; MM < 3; MM++)
-            for (int NN = 0; NN < 3; NN++)
-               for (int LL = 0; LL < 3; LL++)
-                  dCC_sum[MM][NN][LL] += dCC(MM, JJ, NN, LL);
       }
 
       // F_kM sum_J dCC_MJNL as (k, N, L).
@@ -152,7 +153,7 @@ public:
          for (int NN = 0; NN < 3; NN++)
             for (int LL = 0; LL < 3; LL++)
                for (int MM = 0; MM < 3; MM++)
-                  F_dCC[kk][NN][LL] += F(kk, MM) * dCC_sum[MM][NN][LL];
+                  F_dCC[kk][NN][LL] += F(kk, MM) * dCC_sum[MM](NN, LL);
 
       std::array<Tensor2_3D, 3> out;
       for (int ll = 0; ll < 3; ll++)
@@ -179,6 +180,16 @@ public:
    double get_rho_0() const { return vol_model->get_rho_0(); }
 
 private:
+   // dC^J = dF^J^T F + F^T dF^J
+   static std::array<Tensor2_3D, 3> get_dC(const Tensor2_3D &F,
+                                           const std::array<Tensor2_3D, 3> &dF)
+   {
+      std::array<Tensor2_3D, 3> out;
+      for (int JJ = 0; JJ < 3; JJ++)
+         out[JJ] = dF[JJ].transpose() * F + F.transpose() * dF[JJ];
+      return out;
+   }
+
    // AA from S and CC: AA_iJkL = F_iM CC_MJNL F_kN + delta_ik S_JL.
    static Tensor4_3D from_CC_to_AA(const Tensor2_3D &F, const Tensor2_3D &PK2,
                                    const Tensor4_3D &CC)

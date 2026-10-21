@@ -468,13 +468,11 @@ private:
       const double rho_0 = material->get_rho_0();
       for (int kk = 0; kk < 3; kk++)
          out.R_mom(kk) = rho_0 * dot_velo(kk) + out.J * out.dp_dx(kk);
-      const std::array<Tensor2_3D, 3> slices = get_hessian_slices(out.d2u_dX2);
+      const std::array<Tensor2_3D, 3> dP_ich =
+         material->get_d_1st_PK_stress_ich(out.F, get_hessian_slices(out.d2u_dX2));
       for (int JJ = 0; JJ < 3; JJ++)
-      {
-         const Tensor2_3D dP_ich = material->get_d_1st_PK_stress_ich(out.F, slices[JJ]);
          for (int kk = 0; kk < 3; kk++)
-            out.R_mom(kk) -= dP_ich(kk, JJ);
-      }
+            out.R_mom(kk) -= dP_ich[JJ](kk, JJ);
       return out;
    }
 
