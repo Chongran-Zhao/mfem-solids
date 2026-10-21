@@ -68,9 +68,10 @@ time_method:
 
 # Time steps, read into TimeSolver.
 time:
-  # Time step; the last step is shortened to end at final_time.
+  # Time step; the last step is shortened to end at final_time, at most the
+  # end of the measured rotation of LoadData, 0.153 s.
   dt: 1.0e-4
-  final_time: 0.32
+  final_time: 0.153
 
 # Displacement boundary conditions: the whole surface follows the rotation of
 # LoadData::disp_loading, its velocity that of LoadData::velo_loading.
