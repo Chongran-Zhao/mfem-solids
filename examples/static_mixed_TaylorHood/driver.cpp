@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
    // 7. Set up the nonlinear solver, which owns the global assembly, and the
    //    time solver, which owns the nonlinear solver.
    auto nonlinear_solver = std::make_unique<NonlinearSolver>(
-      std::move(global_assembly), config["solver"]);
+      space_p, std::move(global_assembly), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver>(
       std::move(nonlinear_solver), num_load_steps, results_dir, mesh);

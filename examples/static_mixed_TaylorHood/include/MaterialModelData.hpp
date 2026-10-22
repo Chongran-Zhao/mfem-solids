@@ -25,19 +25,21 @@ inline constexpr double young = 540.0e3;
 inline constexpr double poisson = 0.324;
 inline constexpr double density = 1000.0;
 
-// Volumetric model: quadratic, with kappa from young and poisson, and the
-// density.
+// Shear and bulk moduli from young and poisson, of the material models and
+// of the preconditioner of NonlinearSolver.
+inline constexpr double shear_modulus = young / (2.0 * (1.0 + poisson));
+inline constexpr double bulk_modulus = young / (3.0 * (1.0 - 2.0 * poisson));
+
+// Volumetric model: quadratic, with bulk_modulus and the density.
 inline std::unique_ptr<IMaterialModel_vol> set_vol_model()
 {
-   const double kappa = young / (3.0 * (1.0 - 2.0 * poisson));
-   return std::make_unique<MaterialModel_vol_Quadratic>(density, kappa);
+   return std::make_unique<MaterialModel_vol_Quadratic>(density, bulk_modulus);
 }
 
-// Isochoric model: Neo-Hookean, with mu from young and poisson.
+// Isochoric model: Neo-Hookean, with shear_modulus.
 inline std::unique_ptr<IMaterialModel_ich> set_ich_model()
 {
-   const double mu = young / (2.0 * (1.0 + poisson));
-   return std::make_unique<MaterialModel_ich_NeoHookean>(mu);
+   return std::make_unique<MaterialModel_ich_NeoHookean>(shear_modulus);
 }
 
 // The material: the volumetric and the isochoric model together. It holds no
