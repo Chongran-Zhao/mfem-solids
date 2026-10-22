@@ -7,8 +7,9 @@
 // residual and the tangent through Mult and GetGradient. It holds what they
 // share: the NewtonSolver, its settings from the solver section of
 // config.yaml, the settings of the GMRES solver of the tangents, the CG
-// solver of the mass matrix, and the Newton iterations of a step. Newton's method works on the vector of the dofs this
-// rank owns, with the norms over all ranks.
+// solver of the mass matrix, and the Newton iterations of a step. Newton's
+// method works on the vector of the dofs this rank owns, with the norms over
+// all ranks.
 //
 // Author: Chongran Zhao
 // Date: Oct. 14, 2026
