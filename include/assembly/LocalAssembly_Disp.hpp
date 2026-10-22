@@ -20,6 +20,7 @@
 
 #include "LocalAssemblyTools.hpp"
 #include "MaterialModel.hpp"
+#include "ShapeCache.hpp"
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
 
@@ -41,29 +42,21 @@ public:
                               mfem::Vector &residual) override
    {
       const int num_nodes = elem.GetDof();
-      mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
 
       residual.SetSize(3 * num_nodes);
       residual = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
-
-      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
+      // N_a,J and dV at the points, kept from the first assembly.
+      for (const ShapeCache::PointShapes &point :
+           shape_cache.get(elem, nullptr, elem_map, get_quad_rule(elem, elem_map)))
       {
-         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
-         elem_map.SetIntPoint(&quad_pt);
-
-         // dN/dxi
-         elem.CalcDShape(quad_pt, dN_dxi);
-         // N_a,J = dN/dX = dN/dxi (dX/dxi)^-1.
-         mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
+         const mfem::DenseMatrix &dN_dX = point.dN_dX;
 
          const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
 
          const Tensor2_3D PK1 = material->get_1st_PK_stress(F);
 
-         // dV = w_q * det( dX/dxi )
-         const double dV = quad_pt.weight * elem_map.Weight();
+         const double dV = point.dV;
 
          for (int aa = 0; aa < num_nodes; aa++)
          {
@@ -93,29 +86,21 @@ public:
                             mfem::DenseMatrix &tangent) override
    {
       const int num_nodes = elem.GetDof();
-      mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
 
       tangent.SetSize(3*num_nodes);
       tangent = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
-
-      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
+      // N_a,J and dV at the points, kept from the first assembly.
+      for (const ShapeCache::PointShapes &point :
+           shape_cache.get(elem, nullptr, elem_map, get_quad_rule(elem, elem_map)))
       {
-         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
-         elem_map.SetIntPoint(&quad_pt);
-
-         // dN/dxi
-         elem.CalcDShape(quad_pt, dN_dxi);
-         // N_a,J = dN/dX = dN/dxi (dX/dxi)^-1.
-         mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
+         const mfem::DenseMatrix &dN_dX = point.dN_dX;
 
          const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
 
          const Tensor4_3D AA = material->get_1st_elasticity_tensor(F);
 
-         // dV = w_q * det( dX/dxi )
-         const double dV = quad_pt.weight * elem_map.Weight();
+         const double dV = point.dV;
 
          LocalAssemblyTools::add_momentum_tangent_uu(dN_dX, AA, dV, tangent);
       }
@@ -139,6 +124,7 @@ private:
 
    const std::unique_ptr<const MaterialModel> material;
    int quad_order = 0;   // quadrature order, 0 for that of LocalAssemblyTools
+   ShapeCache shape_cache{false};   // N_a,J and dV of each element
 };
 
 #endif

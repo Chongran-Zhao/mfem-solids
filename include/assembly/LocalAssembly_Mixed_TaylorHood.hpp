@@ -24,6 +24,7 @@
 #include "LocalAssemblyTools.hpp"
 #include "LocalAssembly_Mixed.hpp"
 #include "MaterialModel.hpp"
+#include "ShapeCache.hpp"
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
 
@@ -53,27 +54,18 @@ public:
 
       const int num_nodes_u = elem_u.GetDof();
       const int num_nodes_p = elem_p.GetDof();
-      mfem::DenseMatrix dN_dxi(num_nodes_u, 3), dN_dX(num_nodes_u, 3);
-      mfem::Vector M(num_nodes_p);
 
       residual_u.SetSize(3 * num_nodes_u);
       residual_u = 0.0;
       residual_p.SetSize(num_nodes_p);
       residual_p = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem_u, elem_map);
-
-      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
+      // N_a,J, M_c and dV at the points, kept from the first assembly.
+      for (const ShapeCache::PointShapes &point :
+           shape_cache.get(elem_u, &elem_p, elem_map, get_quad_rule(elem_u, elem_map)))
       {
-         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
-         elem_map.SetIntPoint(&quad_pt);
-
-         // dN/dxi
-         elem_u.CalcDShape(quad_pt, dN_dxi);
-         // N_a,J = dN/dX = dN/dxi (dX/dxi)^-1.
-         mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
-         // M_c, the pressure shape functions.
-         elem_p.CalcShape(quad_pt, M);
+         const mfem::DenseMatrix &dN_dX = point.dN_dX;
+         const mfem::Vector &M = point.M;
 
          // Interpolate the deformation gradient F.
          const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
@@ -83,8 +75,7 @@ public:
          // Vector * Vector is the inner product in MFEM.
          const double p = M * pres;
 
-         // dV = w_q * det( dX/dxi )
-         const double dV = quad_pt.weight * elem_map.Weight();
+         const double dV = point.dV;
 
          add_momentum_residual(dN_dX, get_1st_PK_stress(F, p), dV, residual_u);
 
@@ -119,8 +110,6 @@ public:
 
       const int num_nodes_u = elem_u.GetDof();
       const int num_nodes_p = elem_p.GetDof();
-      mfem::DenseMatrix dN_dxi(num_nodes_u, 3), dN_dX(num_nodes_u, 3);
-      mfem::Vector M(num_nodes_p);
 
       K_uu.SetSize(3 * num_nodes_u, 3 * num_nodes_u);
       K_uu = 0.0;
@@ -131,19 +120,12 @@ public:
       K_pp.SetSize(num_nodes_p, num_nodes_p);
       K_pp = 0.0;
 
-      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem_u, elem_map);
-
-      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
+      // N_a,J, M_c and dV at the points, kept from the first assembly.
+      for (const ShapeCache::PointShapes &point :
+           shape_cache.get(elem_u, &elem_p, elem_map, get_quad_rule(elem_u, elem_map)))
       {
-         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
-         elem_map.SetIntPoint(&quad_pt);
-
-         // dN/dxi
-         elem_u.CalcDShape(quad_pt, dN_dxi);
-         // N_a,J = dN/dX = dN/dxi (dX/dxi)^-1.
-         mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
-         // M_c, the pressure shape functions.
-         elem_p.CalcShape(quad_pt, M);
+         const mfem::DenseMatrix &dN_dX = point.dN_dX;
+         const mfem::Vector &M = point.M;
 
          // Interpolate the deformation gradient F.
          const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
@@ -156,8 +138,7 @@ public:
 
          const double dJ_dp = material->get_dJ_dp(p);
 
-         // dV = w_q * det( dX/dxi )
-         const double dV = quad_pt.weight * elem_map.Weight();
+         const double dV = point.dV;
 
          // K_uu
          LocalAssemblyTools::add_momentum_tangent_uu(dN_dX, get_1st_elasticity_tensor(F, p), dV, K_uu);
@@ -182,6 +163,9 @@ public:
                K_pp(cc, dd) += dV * dJ_dp * M(cc) * M(dd);
       }
    }
+
+private:
+   ShapeCache shape_cache{false};   // N_a,J, M_c and dV of each element
 };
 
 #endif

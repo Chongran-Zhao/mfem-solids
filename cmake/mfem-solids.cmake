@@ -87,6 +87,7 @@ set(shared_headers
   ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS_Regions.hpp
   ${project_dir}/include/assembly/ParBlockNonlinearForm_External.hpp
+  ${project_dir}/include/assembly/ShapeCache.hpp
   ${project_dir}/include/boundary/DirichletBoundary.hpp
   ${project_dir}/include/boundary/NeumannBoundary.hpp
   ${project_dir}/include/material/IMaterialModel_ich.hpp
