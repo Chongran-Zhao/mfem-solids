@@ -14,8 +14,8 @@ if yours are elsewhere.
 | Open MPI | 5.0.10 | parallel runs: the MPI compilers and `mpirun` |
 | gfortran, OpenBLAS, ScaLAPACK | Homebrew `gcc`, `openblas`, `scalapack` | for MUMPS only: it is written in Fortran, and its dense kernels use BLAS, LAPACK and ScaLAPACK |
 | METIS | 5.1.0 | splits the mesh among the ranks (`ParMesh`), and orders the matrix for MUMPS |
-| hypre | 3.2.0, master `5b58261` | the parallel matrices of MFEM (`HypreParMatrix`), and the BoomerAMG preconditioners of `examples/sphere_rotation_TaylorHood/` and `examples/sphere_rotation_vms/` |
-| MUMPS | 5.8.1 | parallel direct solver of the linear systems of the beam cases; MFEM has only its interface |
+| hypre | 3.2.0, master `5b58261` | the parallel matrices of MFEM (`HypreParMatrix`), and the BoomerAMG preconditioners of the GMRES solvers of the linear systems |
+| MUMPS | 5.8.1 | parallel direct solver of the linear systems, instead of GMRES with `linear_solver: mumps` in the `solver` section of `config.yaml`; MFEM has only its interface |
 | yaml-cpp | 0.9.0 | reads `config.yaml` |
 | MFEM | 4.10.1, master `45799eb` | finite element spaces, meshes, assembly and the Krylov solvers |
 

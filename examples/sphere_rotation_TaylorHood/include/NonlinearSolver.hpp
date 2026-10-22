@@ -29,8 +29,9 @@
 //    region it gives alpha_f mu + 1 / (k^2 / (c rho_0) + alpha_f / kappa),
 //    against the exact 1 / (k^2 / (c rho_0 + alpha_f mu k^2) + alpha_f /
 //    kappa): equal without compressibility, and close for the skull. The
-//    first inverse is one Jacobi sweep, the second one V-cycle of
-//    BoomerAMG, set up again when dt changes. The initial acceleration
+//    first inverse is a Chebyshev smoother of order 4 on the diagonal,
+//    with about 35 % fewer GMRES iterations than one Jacobi sweep, the
+//    second one V-cycle of BoomerAMG, set up again when dt changes. The initial acceleration
 //    solves M a_0 = r by CG, preconditioned by the diagonal of M.
 // 3. Newton's method starts the skull, nearly rigid, from the rigid
 //    rotation of its surface, LoadData::disp_loading of the face "outer",
@@ -127,7 +128,10 @@ public:
       pres_viscous = assemble_pres_operator(space_p, viscous_weight, false);
       pres_laplace = assemble_pres_operator(space_p, laplace_weight, true);
       pres_compress = assemble_pres_operator(space_p, compress_weight, false);
-      viscous_jacobi = std::make_unique<mfem::HypreDiagScale>(*pres_viscous);
+      viscous_diag.SetSize(pres_viscous->Height());
+      pres_viscous->GetDiag(viscous_diag);
+      viscous_inverse = std::make_unique<mfem::OperatorChebyshevSmoother>(
+         *pres_viscous, viscous_diag, mfem::Array<int>(), 4, pres_viscous->GetComm());
       amg_p.SetPrintLevel(0);
 
       // A is a vector Laplacian-like operator of 3 components per node.
@@ -135,15 +139,7 @@ public:
       amg_u.SetPrintLevel(0);
       preconditioner.SetDiagonalBlock(1, &schur_inverse);
 
-      // GMRES to 1e-8, below the Newton tolerance, so that Newton keeps its
-      // convergence; it takes 25 to 40 iterations, and at most 200, without
-      // restart.
-      linear_solver.SetRelTol(1.0e-8);
-      linear_solver.SetAbsTol(0.0);
-      linear_solver.SetMaxIter(200);
-      linear_solver.SetKDim(200);
-      linear_solver.SetPrintLevel(mfem::IterativeSolver::PrintLevel().Warnings().Errors());
-      linear_solver.SetPreconditioner(preconditioner);
+      set_linear_solver(linear_solver, preconditioner);
       set_newton_solver(solver, linear_solver, newton_monitor);
    }
 
@@ -181,18 +177,8 @@ public:
       mfem::HypreParMatrix constrained_mass(*mass);
       global_assembly->set_essential_bdr(constrained_mass);
 
-      // M is well conditioned once scaled by its diagonal.
-      mfem::HypreDiagScale mass_jacobi(constrained_mass);
-      mfem::CGSolver mass_solver(global_assembly->get_comm());
-      mass_solver.SetRelTol(1.0e-12);
-      mass_solver.SetAbsTol(0.0);
-      mass_solver.SetMaxIter(1000);
-      mass_solver.SetPrintLevel(mfem::IterativeSolver::PrintLevel().Warnings().Errors());
-      mass_solver.SetPreconditioner(mass_jacobi);
-      mass_solver.SetOperator(constrained_mass);
       mfem::Vector acce_owned(rhs.Size());
-      acce_owned = 0.0;
-      mass_solver.Mult(rhs, acce_owned);
+      solve_mass(constrained_mass, rhs, acce_owned);
       acce.SetFromTrueDofs(acce_owned);
    }
 
@@ -272,14 +258,17 @@ public:
       tangent = assemble_tangent(sol);
       global_assembly->set_essential_bdr(*tangent);
 
-      // A and B with the displacement constraints: A the identity on them,
-      // B without their columns.
-      const mfem::Array<int> ess_tdof_list = global_assembly->get_dirichlet().get_ess_tdof_list();
-      tangent_uu->EliminateBC(ess_tdof_list, mfem::Operator::DIAG_ONE);
-      delete tangent_pu->EliminateCols(ess_tdof_list);
-      amg_u.SetOperator(*tangent_uu);
-      preconditioner.SetDiagonalBlock(0, &amg_u);
-      preconditioner.SetBlock(1, 0, tangent_pu.get());
+      // A and B with the displacement constraints, A the identity on them and
+      // B without their columns; with MUMPS, none.
+      if (!is_direct())
+      {
+         const mfem::Array<int> ess_tdof_list = global_assembly->get_dirichlet().get_ess_tdof_list();
+         tangent_uu->EliminateBC(ess_tdof_list, mfem::Operator::DIAG_ONE);
+         delete tangent_pu->EliminateCols(ess_tdof_list);
+         amg_u.SetOperator(*tangent_uu);
+         preconditioner.SetDiagonalBlock(0, &amg_u);
+         preconditioner.SetBlock(1, 0, tangent_pu.get());
+      }
       return *tangent;
    }
 
@@ -316,7 +305,8 @@ private:
 
    // -S^-1 ~ -(M_p[1 / (alpha_f mu)]^-1
    //          + (L_p[1 / rho_0] / c + M_p[alpha_f / kappa])^-1), with one
-   // Jacobi sweep for the first and one V-cycle of BoomerAMG for the second.
+   // Chebyshev smoother for the first and one V-cycle of BoomerAMG for the
+   // second.
    class SchurInverse : public mfem::Solver
    {
    public:
@@ -328,7 +318,7 @@ private:
 
       void Mult(const mfem::Vector &xx, mfem::Vector &yy) const override
       {
-         owner.viscous_jacobi->Mult(xx, yy);
+         owner.viscous_inverse->Mult(xx, yy);
          owner.amg_p.Mult(xx, work);
          yy += work;
          yy.Neg();
@@ -420,7 +410,8 @@ private:
    std::unique_ptr<mfem::HypreParMatrix> pres_compress;          // M_p[alpha_f / kappa]
    std::unique_ptr<mfem::HypreParMatrix> pres_inertia;           // L_p[1 / rho_0] / c + M_p[alpha_f / kappa]
    double inertia_dt = 0.0;                                      // the dt of pres_inertia
-   std::unique_ptr<mfem::HypreDiagScale> viscous_jacobi;         // diagonal of M_p[1 / (alpha_f mu)], inverted
+   mfem::Vector viscous_diag;                                    // diagonal of pres_viscous
+   std::unique_ptr<mfem::OperatorChebyshevSmoother> viscous_inverse; // pres_viscous^-1, order 4
    mutable std::unique_ptr<mfem::HypreParMatrix> tangent_uu;     // A, constrained
    mutable std::unique_ptr<mfem::HypreParMatrix> tangent_pu;     // B, constrained columns removed
    mutable mfem::HypreBoomerAMG amg_u;                           // A^-1

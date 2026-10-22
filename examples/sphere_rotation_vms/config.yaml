@@ -68,9 +68,10 @@ time_method:
 
 # Time steps, read into TimeSolver.
 time:
-  # Time step; the last step is shortened to end at final_time.
+  # Time step; the last step is shortened to end at final_time, at most the
+  # end of the measured rotation of LoadData, 0.153 s.
   dt: 1.0e-4
-  final_time: 0.32
+  final_time: 0.153
 
 # Displacement boundary conditions: the whole surface follows the rotation of
 # LoadData::disp_loading, its velocity that of LoadData::velo_loading.
@@ -93,6 +94,9 @@ Neumann:
 # residual starts at about 1 N in sphere_rotation_TaylorHood; newton_rel_tol and
 # newton_abs_tol are those of sphere_rotation_TaylorHood.
 solver:
+  # Solver of the tangents: gmres, with the preconditioner of
+  # include/NonlinearSolver.hpp of this case, or mumps, a direct solver.
+  linear_solver: gmres
   newton_rel_tol: 1.0e-5
   newton_abs_tol: 1.0e-8
   newton_max_iter: 20

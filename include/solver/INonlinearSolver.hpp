@@ -6,9 +6,10 @@
 // is the mfem::Operator that its NewtonSolver solves: each case gives the
 // residual and the tangent through Mult and GetGradient. It holds what they
 // share: the NewtonSolver, its settings from the solver section of
-// config.yaml, the MUMPS settings of the direct solvers, and the Newton
-// iterations of a step. Newton's method works on the vector of the dofs this
-// rank owns, with the norms over all ranks.
+// config.yaml, the solver of the tangents, GMRES with the preconditioner of
+// the case or MUMPS by linear_solver of that section, the CG solver of the
+// mass matrix, and the Newton iterations of a step. Newton's method works on
+// the vector of the dofs this rank owns, with the norms over all ranks.
 //
 // Author: Chongran Zhao
 // Date: Oct. 14, 2026
@@ -16,6 +17,9 @@
 // ============================================================================
 #ifndef INONLINEAR_SOLVER_HPP
 #define INONLINEAR_SOLVER_HPP
+
+#include <memory>
+#include <string>
 
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
@@ -31,24 +35,64 @@ protected:
    {
    }
 
-   // MUMPS without output; the tangents keep the sparsity of the first one,
-   // so it orders and analyzes it once and only factorizes the later ones.
-   static void set_direct_solver(mfem::MUMPSSolver &linear_solver)
+   // GMRES to 1e-8, below the Newton tolerances, so that Newton keeps its
+   // convergence, without restart up to 200 iterations, preconditioned by
+   // preconditioner, which must outlive it.
+   static void set_linear_solver(mfem::GMRESSolver &linear_solver, mfem::Solver &preconditioner)
    {
-      linear_solver.SetPrintLevel(0);
-      linear_solver.SetReorderingReuse(true);
+      linear_solver.SetRelTol(1.0e-8);
+      linear_solver.SetAbsTol(0.0);
+      linear_solver.SetMaxIter(200);
+      linear_solver.SetKDim(200);
+      linear_solver.SetPrintLevel(mfem::IterativeSolver::PrintLevel().Warnings().Errors());
+      linear_solver.SetPreconditioner(preconditioner);
    }
 
-   // Newton's method on this operator, with linear_solver for its tangents
-   // and monitor for the residual norms; the tolerances and the maximum of
-   // iterations come from the solver section of config.yaml. It starts from
-   // the vector it is given. linear_solver and monitor must outlive the
-   // Newton iterations; newton_solver only points to them.
-   void set_newton_solver(const YAML::Node &solver, mfem::Solver &linear_solver,
+   // M a = rhs on the dofs this rank owns, by CG preconditioned by the
+   // diagonal of M, a mass matrix, well conditioned once scaled by it.
+   static void solve_mass(const mfem::HypreParMatrix &mass, const mfem::Vector &rhs,
+                          mfem::Vector &acce)
+   {
+      mfem::HypreDiagScale mass_jacobi(const_cast<mfem::HypreParMatrix &>(mass));
+      mfem::CGSolver mass_solver(mass.GetComm());
+      mass_solver.SetRelTol(1.0e-12);
+      mass_solver.SetAbsTol(0.0);
+      mass_solver.SetMaxIter(1000);
+      mass_solver.SetPrintLevel(mfem::IterativeSolver::PrintLevel().Warnings().Errors());
+      mass_solver.SetPreconditioner(mass_jacobi);
+      mass_solver.SetOperator(mass);
+      acce = 0.0;
+      mass_solver.Mult(rhs, acce);
+   }
+
+   // Newton's method on this operator, with monitor for the residual norms;
+   // the tolerances, the maximum of iterations and the solver of the
+   // tangents come from the solver section of config.yaml: linear_solver
+   // gmres, the default, for gmres_solver, set by set_linear_solver with the
+   // preconditioner of the case, or mumps, for MUMPS. It starts from the
+   // vector it is given. gmres_solver and monitor must outlive the Newton
+   // iterations; newton_solver only points to them.
+   void set_newton_solver(const YAML::Node &solver, mfem::GMRESSolver &gmres_solver,
                           mfem::IterativeSolverMonitor &monitor)
    {
+      const std::string name =
+         solver["linear_solver"] ? solver["linear_solver"].as<std::string>() : "gmres";
+      MFEM_VERIFY(name == "gmres" || name == "mumps",
+                  "solver.linear_solver must be gmres or mumps, not " << name << ".");
+      linear_solver = &gmres_solver;
+      if (name == "mumps")
+      {
+         // Without output; the tangents keep the sparsity of the first one,
+         // so it orders and analyzes it once and only factorizes the later
+         // ones.
+         direct_solver = std::make_unique<mfem::MUMPSSolver>(gmres_solver.GetComm());
+         direct_solver->SetPrintLevel(0);
+         direct_solver->SetReorderingReuse(true);
+         linear_solver = direct_solver.get();
+      }
+
       newton_solver.SetOperator(*this);
-      newton_solver.SetSolver(linear_solver);
+      newton_solver.SetSolver(*linear_solver);
       newton_solver.SetRelTol(solver["newton_rel_tol"].as<double>());
       newton_solver.SetAbsTol(solver["newton_abs_tol"].as<double>());
       newton_solver.SetMaxIter(solver["newton_max_iter"].as<int>());
@@ -56,6 +100,13 @@ protected:
       newton_solver.iterative_mode = true;
       newton_solver.SetMonitor(monitor);
    }
+
+   // Whether MUMPS solves the tangents, which then need no preconditioner.
+   bool is_direct() const { return direct_solver != nullptr; }
+
+   // The solver of the tangents, GMRES or MUMPS, for a solve of the case
+   // outside Newton's method; set by set_newton_solver.
+   mfem::Solver &get_linear_solver() const { return *linear_solver; }
 
    // Newton iterations from sol for zero residual, the empty right-hand side
    // meaning zero; aborts unless they converge, tt being the time of the
@@ -69,6 +120,8 @@ protected:
 
 private:
    mfem::NewtonSolver newton_solver;
+   std::unique_ptr<mfem::MUMPSSolver> direct_solver;   // MUMPS, if linear_solver is mumps
+   mfem::Solver *linear_solver = nullptr;               // GMRES of the case or direct_solver
 };
 
 #endif

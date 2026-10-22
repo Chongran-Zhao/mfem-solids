@@ -8,8 +8,11 @@
 // mfem::Operator that its NewtonSolver solves, through Mult and GetGradient.
 // The displacement is a ParGridFunction, on which the boundary values are
 // set; Newton's method works on the vector of the dofs this rank owns, with
-// the norms over all ranks, and MUMPS solves the tangent, analyzing its
-// sparsity once.
+// the norms over all ranks.
+//
+// The linear systems are solved by GMRES, preconditioned by BoomerAMG with
+// the systems options of 3 components per node, or by MUMPS, by
+// linear_solver of the solver section of config.yaml.
 //
 // Author: Chongran Zhao
 // Date: Oct. 1, 2026
@@ -42,7 +45,9 @@ public:
         global_assembly(std::move(input_global_assembly)),
         linear_solver(global_assembly->get_comm())
    {
-      set_direct_solver(linear_solver);
+      amg.SetSystemsOptions(3, false);
+      amg.SetPrintLevel(0);
+      set_linear_solver(linear_solver, amg);
       set_newton_solver(solver, linear_solver, newton_monitor);
    }
 
@@ -87,11 +92,14 @@ public:
 
    // Required by MFEM: overrides mfem::Operator::GetGradient, which
    // NewtonSolver calls at every iteration for the tangent.
-   // K(d), the identity on the constrained dofs.
+   // K(d), the identity on the constrained dofs; also the operator of the
+   // AMG preconditioner, unless MUMPS solves it.
    mfem::Operator &GetGradient(const mfem::Vector &disp) const override
    {
       mfem::HypreParMatrix &tangent = global_assembly->assemble_tangent(disp);
       global_assembly->set_essential_bdr(tangent);
+      if (!is_direct())
+         amg.SetOperator(tangent);
       return tangent;
    }
 
@@ -126,9 +134,12 @@ private:
       mfem::HypreParMatrix &tangent = global_assembly->assemble_tangent(disp_owned);
       global_assembly->set_essential_bdr(tangent, prescribed_increment, rhs);
 
+      if (!is_direct())
+         amg.SetOperator(tangent);
       mfem::Vector predicted_increment(global_assembly->get_num_dofs());
-      linear_solver.SetOperator(tangent);
-      linear_solver.Mult(rhs, predicted_increment);
+      predicted_increment = 0.0;
+      get_linear_solver().SetOperator(tangent);
+      get_linear_solver().Mult(rhs, predicted_increment);
       disp_owned += predicted_increment;
 
       // Set the prescribed values exactly, free of round-off.
@@ -139,7 +150,8 @@ private:
 
    // The tangent is owned by global_assembly.
    const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R and K
-   mfem::MUMPSSolver linear_solver;                              // parallel direct solver of the tangent
+   mutable mfem::HypreBoomerAMG amg;                             // preconditioner of GMRES
+   mfem::GMRESSolver linear_solver;                              // solver of the tangent
    SystemTools::NewtonMonitor newton_monitor;                    // prints the residual norms
 };
 

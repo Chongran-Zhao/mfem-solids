@@ -9,8 +9,10 @@ from paraview import servermanager
 from paraview.simple import PVDReader, ProgrammableSource, ResampleWithDataset, UpdatePipeline
 
 # The components of Green_Lagrange_strain_sph and the other tensors of
-# VTK_Tools_Sphere, theta from the z axis and phi about it.
+# VTK_Tools_Sphere, theta from the z axis and phi about it, and those of
+# displacement_sph and the other vectors.
 tensor_components = ['rr', 'theta_theta', 'phi_phi', 'r_theta', 'theta_phi', 'r_phi']
+vector_components = ['r', 'theta', 'phi']
 
 
 def get_ray_points(radii_mm, angle_deg):
@@ -21,7 +23,8 @@ def get_ray_points(radii_mm, angle_deg):
 
 
 def get_history(pvd_file, points, component, array='Green_Lagrange_strain_sph'):
-    """Times in ms and the component of array at the points, one row per time."""
+    """Times in ms and the component of array, a tensor or a vector of
+    VTK_Tools_Sphere, at the points, one row per time."""
     reader = PVDReader(FileName=pvd_file)
     source = ProgrammableSource(OutputDataSetType='vtkPolyData')
     source.Script = '\n'.join(
@@ -29,7 +32,8 @@ def get_history(pvd_file, points, component, array='Green_Lagrange_strain_sph'):
         + ['points.InsertNextPoint(%r, %r, %r)' % tuple(point) for point in points]
         + ['output = self.GetPolyDataOutput()', 'output.SetPoints(points)'])
     probe = ResampleWithDataset(SourceDataArrays=reader, DestinationMesh=source)
-    index = tensor_components.index(component)
+    components = vector_components if component in vector_components else tensor_components
+    index = components.index(component)
 
     times_ms, values = [], []
     for time in reader.TimestepValues:

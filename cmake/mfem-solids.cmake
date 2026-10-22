@@ -26,7 +26,7 @@ set(lib_dir "${project_dir}/../lib")
 find_package(MFEM REQUIRED HINTS "${lib_dir}/mfem/build")
 message(STATUS "MFEM ${MFEM_VERSION} at ${MFEM_DIR}")
 
-# The programs run on MPI ranks and solve with MUMPS.
+# The programs run on MPI ranks, and solve with MUMPS by linear_solver: mumps.
 if(NOT MFEM_USE_MPI OR NOT MFEM_USE_MUMPS)
   message(FATAL_ERROR "mfem-solids needs MFEM built with MPI and MUMPS.")
 endif()
@@ -87,6 +87,7 @@ set(shared_headers
   ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS_Regions.hpp
   ${project_dir}/include/assembly/ParBlockNonlinearForm_External.hpp
+  ${project_dir}/include/assembly/ShapeCache.hpp
   ${project_dir}/include/boundary/DirichletBoundary.hpp
   ${project_dir}/include/boundary/NeumannBoundary.hpp
   ${project_dir}/include/material/IMaterialModel_ich.hpp
