@@ -150,12 +150,15 @@ private:
 
    // K(u,p) on the dofs this rank owns, without constraints, into tangent,
    // with its blocks A and B, constrained, for the preconditioner: A the
-   // identity on the displacement constraints, B without their columns.
+   // identity on the displacement constraints, B without their columns;
+   // with MUMPS, no preconditioner.
    void set_tangent(const mfem::Vector &sol) const
    {
       mfem::Array2D<const mfem::HypreParMatrix *> blocks =
          global_assembly->assemble_tangent_blocks(sol);
       tangent.reset(mfem::HypreParMatrixFromBlocks(blocks));
+      if (is_direct())
+         return;
       tangent_uu = std::make_unique<mfem::HypreParMatrix>(*blocks(0, 0));
       tangent_pu = std::make_unique<mfem::HypreParMatrix>(*blocks(1, 0));
       const mfem::Array<int> ess_tdof_list = global_assembly->get_dirichlet().get_ess_tdof_list();
@@ -201,8 +204,8 @@ private:
 
       mfem::Vector predicted_increment(global_assembly->get_num_dofs());
       predicted_increment = 0.0;
-      linear_solver.SetOperator(*tangent);
-      linear_solver.Mult(rhs, predicted_increment);
+      get_linear_solver().SetOperator(*tangent);
+      get_linear_solver().Mult(rhs, predicted_increment);
       sol += predicted_increment;
 
       // Set the prescribed values exactly, free of round-off; the

@@ -90,6 +90,9 @@ Neumann:
 # 1e-6 of that, which newton_rel_tol = 1e-5 accepts; the fields then differ
 # from those of 1e-7 by less than 1e-6.
 solver:
+  # Solver of the tangents: gmres, with the preconditioner of
+  # include/NonlinearSolver.hpp of this case, or mumps, a direct solver.
+  linear_solver: gmres
   newton_rel_tol: 1.0e-5
   newton_abs_tol: 1.0e-8
   newton_max_iter: 20

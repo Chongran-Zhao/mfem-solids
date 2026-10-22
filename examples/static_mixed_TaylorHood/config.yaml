@@ -51,9 +51,11 @@ Neumann:
   faces: []
 # faces: [right, top]
 
-# Newton's method settings; the linear solver is GMRES, with the block
-# preconditioner of include/NonlinearSolver.hpp of this case.
+# Newton's method settings.
 solver:
+  # Solver of the tangents: gmres, with the preconditioner of
+  # include/NonlinearSolver.hpp of this case, or mumps, a direct solver.
+  linear_solver: gmres
   newton_rel_tol: 1.0e-8
   newton_abs_tol: 0.0
   newton_max_iter: 20

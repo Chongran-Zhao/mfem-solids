@@ -11,8 +11,13 @@
 // left to its caller. It is also the mfem::Operator that its NewtonSolver
 // solves, through Mult and GetGradient. The fields are ParGridFunctions, the
 // boundary values set on them; Newton's method works on the vector of the
-// dofs this rank owns, with the norms over all ranks, and MUMPS solves the
-// tangent, analyzing its sparsity once.
+// dofs this rank owns, with the norms over all ranks.
+//
+// The linear systems are solved by GMRES, preconditioned by BoomerAMG with
+// the systems options of 3 components per node, or by MUMPS, by
+// linear_solver of the solver section of config.yaml.
+//// The initial acceleration solves M a_0 = r by CG, preconditioned by the
+// diagonal of M.
 //
 // Author: Chongran Zhao
 // Date: Oct. 3, 2026
@@ -50,7 +55,9 @@ public:
         mass(global_assembly->assemble_mass()),
         linear_solver(global_assembly->get_comm())
    {
-      set_direct_solver(linear_solver);
+      amg.SetSystemsOptions(3, false);
+      amg.SetPrintLevel(0);
+      set_linear_solver(linear_solver, amg);
       set_newton_solver(solver, linear_solver, newton_monitor);
    }
 
@@ -87,12 +94,7 @@ public:
       mfem::HypreParMatrix constrained_mass(*mass);
       global_assembly->set_essential_bdr(constrained_mass);
 
-      // M has another sparsity than the tangents, whose analysis
-      // linear_solver keeps, so it has a solver of its own.
-      mfem::MUMPSSolver mass_solver(global_assembly->get_comm());
-      mass_solver.SetPrintLevel(0);
-      mass_solver.SetOperator(constrained_mass);
-      mass_solver.Mult(rhs, acce_owned);
+      solve_mass(constrained_mass, rhs, acce_owned);
       acce.SetFromTrueDofs(acce_owned);
    }
 
@@ -149,11 +151,14 @@ public:
 
    // Required by MFEM: overrides mfem::Operator::GetGradient, which
    // NewtonSolver calls at every iteration for the tangent.
-   // K_eff(u_{n+1}), the identity on the constrained dofs.
+   // K_eff(u_{n+1}), the identity on the constrained dofs; also the
+   // operator of the AMG preconditioner, unless MUMPS solves it.
    mfem::Operator &GetGradient(const mfem::Vector &disp) const override
    {
       tangent = assemble_tangent(disp);
       global_assembly->set_essential_bdr(*tangent);
+      if (!is_direct())
+         amg.SetOperator(*tangent);
       return *tangent;
    }
 
@@ -206,7 +211,8 @@ private:
    const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R, K and M
    const std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> time_method; // alpha_m, alpha_f, gamma, beta
    const std::unique_ptr<mfem::HypreParMatrix> mass;             // M, assembled once
-   mfem::MUMPSSolver linear_solver;                              // parallel direct solver of the tangent
+   mutable mfem::HypreBoomerAMG amg;                             // preconditioner of GMRES
+   mfem::GMRESSolver linear_solver;                              // solver of the tangent
    SystemTools::NewtonMonitor newton_monitor;                    // prints the residual norms
    mutable std::unique_ptr<mfem::HypreParMatrix> tangent;        // tangent of Newton's method
 

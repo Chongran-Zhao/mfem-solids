@@ -285,15 +285,18 @@ public:
       tangent = assemble_tangent(sol);
       global_assembly->set_essential_bdr(*tangent);
 
-      // A and B_pu with the velocity constraints: A the identity on them,
-      // B_pu without their columns.
-      const mfem::Array<int> ess_tdof_list = global_assembly->get_dirichlet().get_ess_tdof_list();
-      tangent_uu->EliminateBC(ess_tdof_list, mfem::Operator::DIAG_ONE);
-      delete tangent_pu->EliminateCols(ess_tdof_list);
-      amg_u.SetOperator(*tangent_uu);
-      amg_p.SetOperator(*schur_approx);
-      preconditioner.SetDiagonalBlock(0, &amg_u);
-      preconditioner.SetBlock(1, 0, tangent_pu.get());
+      // A and B_pu with the velocity constraints, A the identity on them and
+      // B_pu without their columns; with MUMPS, none.
+      if (!is_direct())
+      {
+         const mfem::Array<int> ess_tdof_list = global_assembly->get_dirichlet().get_ess_tdof_list();
+         tangent_uu->EliminateBC(ess_tdof_list, mfem::Operator::DIAG_ONE);
+         delete tangent_pu->EliminateCols(ess_tdof_list);
+         amg_u.SetOperator(*tangent_uu);
+         amg_p.SetOperator(*schur_approx);
+         preconditioner.SetDiagonalBlock(0, &amg_u);
+         preconditioner.SetBlock(1, 0, tangent_pu.get());
+      }
       return *tangent;
    }
 
