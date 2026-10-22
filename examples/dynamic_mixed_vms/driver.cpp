@@ -123,7 +123,8 @@ int main(int argc, char *argv[])
    auto time_method =
       std::make_unique<TimeMethod_GenAlpha_1st_Order>(config["time_method"]["rho_inf"].as<double>());
    auto nonlinear_solver = std::make_unique<NonlinearSolver>(
-      std::move(global_assembly), local_assembly_ref, std::move(time_method), config["solver"]);
+      space_p, std::move(global_assembly), local_assembly_ref, std::move(time_method),
+      config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver>(
       std::move(nonlinear_solver), config["time"]["dt"].as<double>(),

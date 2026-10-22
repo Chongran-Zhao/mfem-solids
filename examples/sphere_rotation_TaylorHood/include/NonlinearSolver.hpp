@@ -135,15 +135,7 @@ public:
       amg_u.SetPrintLevel(0);
       preconditioner.SetDiagonalBlock(1, &schur_inverse);
 
-      // GMRES to 1e-8, below the Newton tolerance, so that Newton keeps its
-      // convergence; it takes 25 to 40 iterations, and at most 200, without
-      // restart.
-      linear_solver.SetRelTol(1.0e-8);
-      linear_solver.SetAbsTol(0.0);
-      linear_solver.SetMaxIter(200);
-      linear_solver.SetKDim(200);
-      linear_solver.SetPrintLevel(mfem::IterativeSolver::PrintLevel().Warnings().Errors());
-      linear_solver.SetPreconditioner(preconditioner);
+      set_linear_solver(linear_solver, preconditioner);
       set_newton_solver(solver, linear_solver, newton_monitor);
    }
 
@@ -181,18 +173,8 @@ public:
       mfem::HypreParMatrix constrained_mass(*mass);
       global_assembly->set_essential_bdr(constrained_mass);
 
-      // M is well conditioned once scaled by its diagonal.
-      mfem::HypreDiagScale mass_jacobi(constrained_mass);
-      mfem::CGSolver mass_solver(global_assembly->get_comm());
-      mass_solver.SetRelTol(1.0e-12);
-      mass_solver.SetAbsTol(0.0);
-      mass_solver.SetMaxIter(1000);
-      mass_solver.SetPrintLevel(mfem::IterativeSolver::PrintLevel().Warnings().Errors());
-      mass_solver.SetPreconditioner(mass_jacobi);
-      mass_solver.SetOperator(constrained_mass);
       mfem::Vector acce_owned(rhs.Size());
-      acce_owned = 0.0;
-      mass_solver.Mult(rhs, acce_owned);
+      solve_mass(constrained_mass, rhs, acce_owned);
       acce.SetFromTrueDofs(acce_owned);
    }
 

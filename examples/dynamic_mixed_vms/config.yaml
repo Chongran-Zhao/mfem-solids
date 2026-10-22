@@ -67,8 +67,8 @@ Dirichlet:
 Neumann:
   faces: []
 
-# Newton's method settings.
-# The linear solver is MUMPS.
+# Newton's method settings; the linear solver is GMRES, with the block
+# preconditioner of include/NonlinearSolver.hpp of this case.
 solver:
   newton_rel_tol: 1.0e-8
   newton_abs_tol: 1.0e-10

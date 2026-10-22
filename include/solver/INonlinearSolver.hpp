@@ -6,8 +6,8 @@
 // is the mfem::Operator that its NewtonSolver solves: each case gives the
 // residual and the tangent through Mult and GetGradient. It holds what they
 // share: the NewtonSolver, its settings from the solver section of
-// config.yaml, the MUMPS settings of the direct solvers, and the Newton
-// iterations of a step. Newton's method works on the vector of the dofs this
+// config.yaml, the settings of the GMRES solver of the tangents, the CG
+// solver of the mass matrix, and the Newton iterations of a step. Newton's method works on the vector of the dofs this
 // rank owns, with the norms over all ranks.
 //
 // Author: Chongran Zhao
@@ -33,10 +33,41 @@ protected:
 
    // MUMPS without output; the tangents keep the sparsity of the first one,
    // so it orders and analyzes it once and only factorizes the later ones.
+   // Left for the cases not yet on GMRES.
    static void set_direct_solver(mfem::MUMPSSolver &linear_solver)
    {
       linear_solver.SetPrintLevel(0);
       linear_solver.SetReorderingReuse(true);
+   }
+
+   // GMRES to 1e-8, below the Newton tolerances, so that Newton keeps its
+   // convergence, without restart up to 200 iterations, preconditioned by
+   // preconditioner, which must outlive it.
+   static void set_linear_solver(mfem::GMRESSolver &linear_solver, mfem::Solver &preconditioner)
+   {
+      linear_solver.SetRelTol(1.0e-8);
+      linear_solver.SetAbsTol(0.0);
+      linear_solver.SetMaxIter(200);
+      linear_solver.SetKDim(200);
+      linear_solver.SetPrintLevel(mfem::IterativeSolver::PrintLevel().Warnings().Errors());
+      linear_solver.SetPreconditioner(preconditioner);
+   }
+
+   // M a = rhs on the dofs this rank owns, by CG preconditioned by the
+   // diagonal of M, a mass matrix, well conditioned once scaled by it.
+   static void solve_mass(const mfem::HypreParMatrix &mass, const mfem::Vector &rhs,
+                          mfem::Vector &acce)
+   {
+      mfem::HypreDiagScale mass_jacobi(const_cast<mfem::HypreParMatrix &>(mass));
+      mfem::CGSolver mass_solver(mass.GetComm());
+      mass_solver.SetRelTol(1.0e-12);
+      mass_solver.SetAbsTol(0.0);
+      mass_solver.SetMaxIter(1000);
+      mass_solver.SetPrintLevel(mfem::IterativeSolver::PrintLevel().Warnings().Errors());
+      mass_solver.SetPreconditioner(mass_jacobi);
+      mass_solver.SetOperator(mass);
+      acce = 0.0;
+      mass_solver.Mult(rhs, acce);
    }
 
    // Newton's method on this operator, with linear_solver for its tangents
