@@ -2,25 +2,29 @@
 // vtu_writer.cpp
 //
 // Writes the displacement, the pressure, the Cauchy and the second
-// Piola-Kirchhoff stresses and the Green-Lagrange strain of each saved load
-// step
+// Piola-Kirchhoff stresses and the Green-Lagrange strain of each saved step
 // for ParaView, from the displacement saved by the driver, sampled within
 // each element by VTK_Tools, which cuts it into vtu_refine^3 hexahedra. The
 // stress is computed at the sampling points with the material of
 // MaterialModelData, which must be the one the driver ran with, and the
-// pressure is p = -tr(sigma) / 3. It is serial and reads the results on
-// results/mesh.mesh, the mesh the driver gathered them onto.
+// pressure is p = -tr(sigma) / 3. It runs on MPI ranks, each writing every
+// num_ranks-th step, and rank 0 the PVD file once all are written; every rank
+// reads the results on results/mesh.mesh, the mesh the driver gathered them
+// onto.
 //
 // Author: Chongran Zhao
 // Date: Sep. 26, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
@@ -33,6 +37,10 @@
 
 int main(int argc, char *argv[])
 {
+   mfem::Mpi::Init(argc, argv);
+   if (!mfem::Mpi::Root())
+      mfem::out.Disable();
+
    // 1. Read config.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
@@ -72,17 +80,27 @@ int main(int argc, char *argv[])
    VTK_Tools output(config["output"]["vtu"].as<std::string>(),
                     config["output"]["vtu_refine"].as<int>());
 
+   // The saved load steps, with their load factors t = n / N, each rank
+   // writing every num_ranks-th of them.
+   std::vector<std::pair<int, double>> saved_steps;   // step and load factor
    for (int step = 0; step <= load_steps; step++)
+      if (SystemTools::is_saved_step(step, load_steps, gf_interval))
+         saved_steps.emplace_back(step, static_cast<double>(step) / load_steps);
+   for (std::size_t ss = mfem::Mpi::WorldRank(); ss < saved_steps.size();
+        ss += mfem::Mpi::WorldSize())
    {
-      if (!SystemTools::is_saved_step(step, load_steps, gf_interval))
-         continue;
+      const int step = saved_steps[ss].first;
       const std::unique_ptr<mfem::GridFunction> disp = read_gf("disp", step);
       if (step == 0)
          SystemTools::print_space(*disp->FESpace());
 
-      const double time = static_cast<double>(step) / load_steps;
-      output.save(step, time, *disp, nullptr, nullptr, nullptr, first_PK_stress);
+      output.save(step, *disp, nullptr, nullptr, nullptr, first_PK_stress);
    }
+
+   // The PVD file, once every rank has written its steps.
+   MPI_Barrier(MPI_COMM_WORLD);
+   if (mfem::Mpi::Root())
+      output.write_pvd(saved_steps);
 
    mfem::out << '\n';
    SystemTools::print_saved(output.get_pvd_path());

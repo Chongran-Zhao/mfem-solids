@@ -2,8 +2,7 @@
 // csv_writer.cpp
 //
 // Writes mean displacement, mean pressure and reaction force on the faces and
-// directions of the csv_writer section of config.yaml at each saved load
-// step, one
+// directions of the csv_writer section of config.yaml at each saved step, one
 // CSV file per face. The reaction is the displacement part of the residual
 // R(u,p) = F_int(u,p) - F_ext at the saved displacement and pressure, on the
 // constrained dofs: the force the supports exert; it is computed with the

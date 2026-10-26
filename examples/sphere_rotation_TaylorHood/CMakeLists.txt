@@ -4,7 +4,7 @@
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
-#    cd build && ./read_mesh && mpirun -np 4 ./driver && ./vtu_writer
+#    cd build && ./read_mesh && mpirun -np 4 ./driver && mpirun -np 4 ./vtu_writer
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(sphere_rotation_TaylorHood LANGUAGES CXX)
