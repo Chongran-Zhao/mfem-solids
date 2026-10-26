@@ -5,7 +5,7 @@
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
-#    cd build && ./read_mesh && mpirun -np 4 ./driver && ./vtu_writer
+#    cd build && ./read_mesh && mpirun -np 4 ./driver && mpirun -np 4 ./vtu_writer
 #
 # Post-processing of the VTU series, by the pvpython of ParaView, in build/
 # (scripts/ describes the options in each file):

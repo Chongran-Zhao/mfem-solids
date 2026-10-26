@@ -12,8 +12,9 @@
 // steps and the fields are those the driver saved; the stresses take the
 // material of the region of the element from MaterialModelData, which must
 // be the one the driver ran with.
-// It is serial and reads the results on results/mesh.mesh, the mesh the
-// driver gathered them onto.
+// It runs on MPI ranks, each writing every num_ranks-th step, and rank 0 the
+// PVD file once all are written; every rank reads the results on
+// results/mesh.mesh, the mesh the driver gathered them onto.
 //
 // Author: Chongran Zhao
 // Date: Oct. 11, 2026
@@ -40,6 +41,10 @@
 
 int main(int argc, char *argv[])
 {
+   mfem::Mpi::Init(argc, argv);
+   if (!mfem::Mpi::Root())
+      mfem::out.Disable();
+
    // 1. Read config.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
@@ -97,12 +102,16 @@ int main(int argc, char *argv[])
    VTK_Tools_Sphere output(config["output"]["vtu"].as<std::string>(),
                            config["output"]["vtu_refine"].as<int>());
 
-   // 4. Write every vtu_interval-th saved step, and the last one.
+   // 4. Write every vtu_interval-th saved step, and the last one, each rank
+   //    every num_ranks-th of them.
+   std::vector<std::pair<int, double>> written_steps;   // step and time
    for (std::size_t ss = 0; ss < saved_steps.size(); ss++)
+      if (ss % vtu_interval == 0 || ss + 1 == saved_steps.size())
+         written_steps.push_back(saved_steps[ss]);
+   for (std::size_t ss = mfem::Mpi::WorldRank(); ss < written_steps.size();
+        ss += mfem::Mpi::WorldSize())
    {
-      if (ss % vtu_interval != 0 && ss + 1 != saved_steps.size())
-         continue;
-      const auto &[step, time] = saved_steps[ss];
+      const int step = written_steps[ss].first;
       const std::unique_ptr<mfem::GridFunction> disp = read_gf("disp", step);
       const std::unique_ptr<mfem::GridFunction> velo = read_gf("velo", step);
       const std::unique_ptr<mfem::GridFunction> acce = read_gf("acce", step);
@@ -113,8 +122,13 @@ int main(int argc, char *argv[])
          SystemTools::print_space(*pres->FESpace());
       }
 
-      output.save(step, time, *disp, velo.get(), acce.get(), pres.get(), first_PK_stress);
+      output.save(step, *disp, velo.get(), acce.get(), pres.get(), first_PK_stress);
    }
+
+   // The PVD file, once every rank has written its steps.
+   MPI_Barrier(MPI_COMM_WORLD);
+   if (mfem::Mpi::Root())
+      output.write_pvd(written_steps);
 
    mfem::out << '\n';
    SystemTools::print_saved(output.get_pvd_path());

@@ -121,7 +121,8 @@ int main(int argc, char *argv[])
       space_p, std::move(global_assembly), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver>(
-      std::move(nonlinear_solver), num_load_steps, results_dir, mesh);
+      std::move(nonlinear_solver), num_load_steps, results_dir, mesh,
+      config["output"]["gf_interval"].as<int>());
 
    // 8. Solve the load steps.
    time_solver->run(disp, pres);

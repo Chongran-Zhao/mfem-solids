@@ -106,3 +106,6 @@ output:
   vtu_interval: 10
   vtu_refine: 2
   gf: results_gf
+  # The fields are saved every gf_interval-th time step, and at the last;
+  # vtu_interval counts the saved steps.
+  gf_interval: 1

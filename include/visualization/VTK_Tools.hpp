@@ -2,7 +2,8 @@
 // VTK_Tools.hpp
 //
 // Writes one VTU file per load or time step on the deformed mesh, and a PVD
-// file listing them, for ParaView. Each element is cut into refine^3 linear
+// file listing them, for ParaView; the PVD file is written once, by
+// write_pvd, so that the steps may be written by several MPI ranks. Each element is cut into refine^3 linear
 // hexahedra at (refine + 1)^3 evenly spaced points of its reference cube, as
 // the visualization of MixPERIGEE does, so that the curved geometry and the
 // fields of the higher-order elements show within it; the points of an
@@ -63,13 +64,13 @@ public:
 
    virtual ~VTK_Tools() = default;
 
-   // Write step_XXXX.vtu and update the PVD file. velo and acce, of the
+   // Write step_XXXX.vtu. velo and acce, of the
    // dynamics, are in the space of disp, and pres, of the mixed form, is
    // nodal in H1; each may be null. first_PK_stress(attribute, F, p) gives
    // P of the material of the element attribute, at the pressure p of pres,
    // zero without it.
    template <typename Stress>
-   void save(int step, double time, const mfem::GridFunction &disp,
+   void save(int step, const mfem::GridFunction &disp,
              const mfem::GridFunction *velo, const mfem::GridFunction *acce,
              const mfem::GridFunction *pres, const Stress &first_PK_stress)
    {
@@ -160,10 +161,7 @@ public:
          }
       }
 
-      std::ostringstream file_name;
-      file_name << "step_" << std::setw(4) << std::setfill('0') << step << ".vtu";
-
-      std::ofstream out(dir / file_name.str());
+      std::ofstream out(dir / get_vtu_name(step));
       out << "<?xml version=\"1.0\"?>\n"
           << "<VTKFile type=\"UnstructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\""
           << " header_type=\"UInt32\">\n"
@@ -201,9 +199,19 @@ public:
       write_array(out, "Int32", "offsets", {}, offsets);
       write_array(out, "UInt8", "types", {}, types);
       out << "</Cells>\n</Piece>\n</UnstructuredGrid>\n</VTKFile>\n";
+   }
 
-      steps.emplace_back(time, file_name.str());
-      write_pvd();
+   // Write the PVD file, listing step_XXXX.vtu of each step with its time.
+   void write_pvd(const std::vector<std::pair<int, double>> &steps) const
+   {
+      std::ofstream out(get_pvd_path());
+      out << std::setprecision(10)
+          << "<?xml version=\"1.0\"?>\n"
+          << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
+          << "<Collection>\n";
+      for (const auto &[step, time] : steps)
+         out << "<DataSet timestep=\"" << time << "\" file=\"" << get_vtu_name(step) << "\"/>\n";
+      out << "</Collection>\n</VTKFile>\n";
    }
 
    // Path of the PVD file, the one to open in ParaView.
@@ -232,7 +240,6 @@ protected:
 private:
    std::filesystem::path dir;
    const int refine;                                   // hexahedra per edge of an element
-   std::vector<std::pair<double, std::string>> steps;  // time and file of each step
 
    // The components Q^T v of a vector in the basis Q.
    static void append_vector(std::vector<float> &data, const Tensor2_3D &Q,
@@ -295,17 +302,12 @@ private:
       return out;
    }
 
-   // List every step with its time.
-   void write_pvd() const
+   // Name of the VTU file of a step, step_XXXX.vtu.
+   static std::string get_vtu_name(int step)
    {
-      std::ofstream out(get_pvd_path());
-      out << std::setprecision(10)
-          << "<?xml version=\"1.0\"?>\n"
-          << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n"
-          << "<Collection>\n";
-      for (const auto &[time, file] : steps)
-         out << "<DataSet timestep=\"" << time << "\" file=\"" << file << "\"/>\n";
-      out << "</Collection>\n</VTKFile>\n";
+      std::ostringstream name;
+      name << "step_" << std::setw(4) << std::setfill('0') << step << ".vtu";
+      return name.str();
    }
 };
 
