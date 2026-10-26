@@ -3,7 +3,7 @@
 //
 // The materials of sphere_rotation_TaylorHood, one per region of the mesh, by element
 // attribute: 1 the gelatin, incompressible Neo-Hookean, with shear modulus
-// mu = 2.764 kPa and density rho_0 = 1000 kg/m^3; 2 the skull, of acrylic
+// mu = 2.8 kPa and density rho_0 = 1000 kg/m^3; 2 the skull, of acrylic
 // (PMMA), linearly elastic at small strains, with E = 2.75 GPa, nu = 0.35
 // and rho_0 = 1170 kg/m^3, taken as compressible Neo-Hookean, which keeps E
 // and nu at small strains and stays stable at large ones,
@@ -47,7 +47,7 @@ inline constexpr double skull_poisson = 0.35;
 
 // The regions, element attribute 1 and 2.
 inline const std::array<region_material, 2> region_materials = {{
-   {"gelatin", 2764.0, std::numeric_limits<double>::infinity(), 1000.0},
+   {"gelatin", 2800.0, std::numeric_limits<double>::infinity(), 1000.0},
    {"skull", skull_young / (2.0 * (1.0 + skull_poisson)),
     skull_young / (3.0 * (1.0 - 2.0 * skull_poisson)), 1170.0}}};
 
