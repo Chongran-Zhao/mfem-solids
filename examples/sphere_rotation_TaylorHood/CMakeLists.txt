@@ -37,3 +37,7 @@ target_link_libraries(driver PRIVATE mfem_solids)
 add_executable(vtu_writer vtu_writer.cpp ${case_headers})
 target_include_directories(vtu_writer PRIVATE include)
 target_link_libraries(vtu_writer PRIVATE mfem_solids)
+
+# probe_disp writes u_phi of material points, from the fields the driver saved.
+add_executable(probe_disp probe_disp.cpp)
+target_link_libraries(probe_disp PRIVATE mfem_solids)
