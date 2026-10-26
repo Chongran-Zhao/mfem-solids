@@ -199,6 +199,14 @@ public:
       gf.Save(gf_file);
    }
 
+   // Whether the fields of step, of the steps 0, ..., num_steps, are saved:
+   // step 0, every save_interval-th step and the last, the rule of the time
+   // solvers and of the programs that read their results.
+   static bool is_saved_step(int step, int num_steps, int save_interval)
+   {
+      return step % save_interval == 0 || step == num_steps;
+   }
+
    // Present local time in a strftime format.
    static std::string format_now(const char *format)
    {

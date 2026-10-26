@@ -111,3 +111,6 @@ output:
   # 1 for Q1, 2 to show the quadratic fields of Q2.
   vtu_refine: 1
   gf: results_gf
+  # The fields are saved every gf_interval-th time step, and at the last;
+  # vtu_interval counts the saved steps.
+  gf_interval: 1

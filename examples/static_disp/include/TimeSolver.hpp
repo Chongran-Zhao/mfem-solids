@@ -3,7 +3,8 @@
 //
 // The loop over the load steps of the static displacement form: step
 // n = 1, ..., N is solved by the nonlinear solver from the converged state of
-// step n - 1, and the displacement of every step is saved as
+// step n - 1, and the displacement of step 0, of every save_interval-th
+// step and of the last is saved as
 // <results>/disp_XXXX.gf. Rank 0 gathers it from all ranks onto the serial
 // mesh of ParMesh::GetSerialMesh, saved as <results>/mesh.mesh; its element
 // order is that of the ranks, not that of the mesh file read by the driver.
@@ -31,19 +32,20 @@ class TimeSolver : public ITimeSolver
 public:
    // Takes the ownership of the nonlinear solver; the results go to
    // results_dir, which rank 0 empties first and where it saves the serial
-   // mesh of mesh, with its named faces.
+   // mesh of mesh, with its named faces; the fields are saved every
+   // input_save_interval-th step.
    TimeSolver(std::unique_ptr<NonlinearSolver> input_nonlinear_solver,
               int input_num_load_steps,
               const std::filesystem::path &input_results_dir,
-              mfem::ParMesh &mesh)
-      : ITimeSolver(input_results_dir, mesh),
+              mfem::ParMesh &mesh, int input_save_interval)
+      : ITimeSolver(input_results_dir, mesh, input_save_interval),
         nonlinear_solver(std::move(input_nonlinear_solver)),
         num_load_steps(input_num_load_steps)
    {
    }
 
    // Solves the load steps 1, ..., N from disp, the state of step 0, and
-   // saves disp at every step, step 0 included.
+   // saves disp at step 0, every save_interval-th step and the last.
    void run(mfem::ParGridFunction &disp)
    {
       save_fields(0, {{"disp", &disp}});
@@ -62,7 +64,8 @@ public:
          const int iterations = nonlinear_solver->solve(load_factor, disp);
          print_converged(iterations, step_timer);
 
-         save_fields(step, {{"disp", &disp}});
+         if (is_saved(step, num_load_steps))
+            save_fields(step, {{"disp", &disp}});
       }
    }
 

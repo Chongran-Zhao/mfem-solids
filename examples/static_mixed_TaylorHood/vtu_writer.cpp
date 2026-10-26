@@ -2,7 +2,8 @@
 // vtu_writer.cpp
 //
 // Writes the displacement, the pressure, the Cauchy and the second
-// Piola-Kirchhoff stresses and the Green-Lagrange strain of each load step
+// Piola-Kirchhoff stresses and the Green-Lagrange strain of each saved load
+// step
 // for ParaView, from the displacement and nodal pressure saved by the mixed
 // driver, sampled within each element by VTK_Tools, which cuts it into
 // vtu_refine^3 hexahedra. The stresses are computed at the sampling points
@@ -46,6 +47,7 @@ int main(int argc, char *argv[])
 
    // 3. Read the results of each step and write them.
    const int load_steps = config["loading"]["load_steps"].as<int>();
+   const int gf_interval = config["output"]["gf_interval"].as<int>();
 
    // Reads <results>/<prefix>_XXXX.gf of a step, with its own space.
    auto read_gf = [&](const std::string &prefix, int step)
@@ -73,6 +75,8 @@ int main(int argc, char *argv[])
 
    for (int step = 0; step <= load_steps; step++)
    {
+      if (!SystemTools::is_saved_step(step, load_steps, gf_interval))
+         continue;
       const std::unique_ptr<mfem::GridFunction> disp = read_gf("disp", step);
       const std::unique_ptr<mfem::GridFunction> pres = read_gf("pres", step);
       if (step == 0)

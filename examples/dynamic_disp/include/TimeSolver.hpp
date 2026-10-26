@@ -5,8 +5,9 @@
 // state is completed by the nonlinear solver, and step n = 1, ..., N is
 // solved from the state of step n - 1, in steps of dt up to the final time,
 // the last one shortened to end there. The displacement, the velocity and
-// the acceleration of every step are saved as <results>/disp_XXXX.gf,
-// velo_XXXX.gf and acce_XXXX.gf, and the time of each step in
+// the acceleration of step 0, of every save_interval-th step and of the
+// last are saved as <results>/disp_XXXX.gf,
+// velo_XXXX.gf and acce_XXXX.gf, and the time of each saved step in
 // <results>/time.csv. Rank 0 gathers the fields from all ranks onto the
 // serial mesh of ParMesh::GetSerialMesh, saved as <results>/mesh.mesh; its
 // element order is that of the ranks, not that of the mesh file read by the
@@ -35,12 +36,13 @@ class TimeSolver : public ITimeSolver
 public:
    // Takes the ownership of the nonlinear solver; the results go to
    // results_dir, which rank 0 empties first and where it saves the serial
-   // mesh of mesh, with its named faces.
+   // mesh of mesh, with its named faces; the fields are saved every
+   // input_save_interval-th step.
    TimeSolver(std::unique_ptr<NonlinearSolver> input_nonlinear_solver,
               double input_nominal_dt, double input_final_time,
               const std::filesystem::path &input_results_dir,
-              mfem::ParMesh &mesh)
-      : ITimeSolver(input_results_dir, mesh),
+              mfem::ParMesh &mesh, int input_save_interval)
+      : ITimeSolver(input_results_dir, mesh, input_save_interval),
         nonlinear_solver(std::move(input_nonlinear_solver)),
         nominal_dt(input_nominal_dt),
         final_time(input_final_time)
@@ -48,7 +50,8 @@ public:
    }
 
    // Completes disp, velo and acce, the initial state at t = 0, solves the
-   // time steps, and saves the state at every step, step 0 included.
+   // time steps, and saves the state of step 0, of every save_interval-th
+   // step and of the last.
    void run(mfem::ParGridFunction &disp, mfem::ParGridFunction &velo,
             mfem::ParGridFunction &acce)
    {
@@ -76,8 +79,11 @@ public:
          const int iterations = nonlinear_solver->solve(time_n, dt, disp, velo, acce);
          print_converged(iterations, step_timer);
 
-         save_fields(step, {{"disp", &disp}, {"velo", &velo}, {"acce", &acce}});
-         write_time(time_file, step, time, dt, iterations);
+         if (is_saved(step, num_steps))
+         {
+            save_fields(step, {{"disp", &disp}, {"velo", &velo}, {"acce", &acce}});
+            write_time(time_file, step, time, dt, iterations);
+         }
 
          time_n = time;
       }

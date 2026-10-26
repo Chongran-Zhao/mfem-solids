@@ -72,4 +72,6 @@ output:
   # Q1, whose fields are linear in each direction.
   vtu_refine: 1
   gf: results_gf
+  # The fields are saved every gf_interval-th load step, and at the last.
+  gf_interval: 1
   csv: results_csv

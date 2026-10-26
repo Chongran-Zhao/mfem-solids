@@ -2,7 +2,8 @@
 // csv_writer.cpp
 //
 // Writes mean displacement, mean pressure and reaction force on the faces and
-// directions of the csv_writer section of config.yaml at each load step, one
+// directions of the csv_writer section of config.yaml at each saved load
+// step, one
 // CSV file per face. The reaction is the residual R(d) = F_int(d) - F_ext at
 // the saved displacement, on the constrained dofs: the force the supports
 // exert; it is computed with the material of MaterialModelData, which must be
@@ -102,6 +103,7 @@ int main(int argc, char *argv[])
 
    // 4. Collect the faces and directions of the csv_writer section.
    const int load_steps = config["loading"]["load_steps"].as<int>();
+   const int gf_interval = config["output"]["gf_interval"].as<int>();
    const std::filesystem::path output_dir = config["output"]["csv"].as<std::string>();
    if (is_root)
       std::filesystem::create_directories(output_dir);
@@ -256,6 +258,8 @@ int main(int argc, char *argv[])
    //    constrained faces.
    for (int step = 0; step <= load_steps; step++)
    {
+      if (!SystemTools::is_saved_step(step, load_steps, gf_interval))
+         continue;
       read_gf("disp", step, disp);
 
       const double factor = static_cast<double>(step) / load_steps;

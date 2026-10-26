@@ -6,9 +6,10 @@
 // what they share: the results folder, which rank 0 empties first, with the
 // serial mesh of ParMesh::GetSerialMesh saved as <results>/mesh.mesh, whose
 // element order is that of the ranks, not that of the mesh file read by the
-// driver; the saving of the fields of a step onto that mesh; the line
-// printed when a step converges; and, for the dynamics, the number of time
-// steps and <results>/time.csv.
+// driver; the saving of the fields of a step onto that mesh, of step 0, of
+// every save_interval-th step and of the last; the line printed when a step
+// converges; and, for the dynamics, the number of time steps and
+// <results>/time.csv, which lists the saved steps.
 //
 // Author: Chongran Zhao
 // Date: Oct. 14, 2026
@@ -36,11 +37,15 @@ public:
 
 protected:
    // The results go to results_dir, which rank 0 empties first and where it
-   // saves the serial mesh of mesh, with its named faces.
-   ITimeSolver(const std::filesystem::path &input_results_dir, mfem::ParMesh &mesh)
+   // saves the serial mesh of mesh, with its named faces; the fields are
+   // saved every input_save_interval-th step.
+   ITimeSolver(const std::filesystem::path &input_results_dir, mfem::ParMesh &mesh,
+               int input_save_interval)
       : results_dir(input_results_dir),
-        serial_mesh(mesh.GetSerialMesh(0))
+        serial_mesh(mesh.GetSerialMesh(0)),
+        save_interval(input_save_interval)
    {
+      MFEM_VERIFY(save_interval >= 1, "output.gf_interval must be at least 1.");
       if (mfem::Mpi::Root())
       {
          SystemTools::make_empty_dir(results_dir);
@@ -63,6 +68,13 @@ protected:
          if (mfem::Mpi::Root())
             SystemTools::save_gf(results_dir, name, step, serial_field);
       }
+   }
+
+   // Whether the fields of step, of num_steps, are saved: step 0, every
+   // save_interval-th step and the last.
+   bool is_saved(int step, int num_steps) const
+   {
+      return SystemTools::is_saved_step(step, num_steps, save_interval);
    }
 
    // Prints the Newton iterations of a converged step and its wall-clock
@@ -106,6 +118,7 @@ protected:
 
    const std::filesystem::path results_dir;   // folder of the results
    mfem::Mesh serial_mesh;                    // all elements on rank 0, empty elsewhere
+   const int save_interval;                   // the fields of every save_interval-th step are saved
 };
 
 #endif
