@@ -101,6 +101,7 @@ set(shared_headers
   ${project_dir}/include/solver/ITimeSolver.hpp
   ${project_dir}/include/solver/TimeMethod_GenAlpha_2nd_Order.hpp
   ${project_dir}/include/solver/TimeMethod_GenAlpha_1st_Order.hpp
+  ${project_dir}/include/solver/TimeSteps.hpp
   ${project_dir}/include/system/SystemTools.hpp
   ${project_dir}/include/system/Tensor2_3D.hpp
   ${project_dir}/include/system/Tensor4_3D.hpp

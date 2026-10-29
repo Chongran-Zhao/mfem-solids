@@ -30,6 +30,7 @@
 
 #include "ITimeSolver.hpp"
 #include "NonlinearSolver.hpp"
+#include "TimeSteps.hpp"
 
 class TimeSolver : public ITimeSolver
 {
@@ -39,13 +40,12 @@ public:
    // mesh of mesh, with its named faces; the fields are saved every
    // input_save_interval-th step.
    TimeSolver(std::unique_ptr<NonlinearSolver> input_nonlinear_solver,
-              double input_nominal_dt, double input_final_time,
+              const TimeSteps &input_time_steps,
               const std::filesystem::path &input_results_dir,
               mfem::ParMesh &mesh, int input_save_interval)
       : ITimeSolver(input_results_dir, mesh, input_save_interval),
         nonlinear_solver(std::move(input_nonlinear_solver)),
-        nominal_dt(input_nominal_dt),
-        final_time(input_final_time)
+        time_steps(input_time_steps)
    {
    }
 
@@ -59,7 +59,7 @@ public:
       save_fields(0, {{"disp", &disp}, {"velo", &velo}, {"acce", &acce}});
       std::ofstream time_file = open_time_file();
 
-      const int num_steps = get_num_steps(final_time, nominal_dt);
+      const int num_steps = time_steps.get_num_steps();
 
       mfem::StopWatch step_timer;
       double time_n = 0.0;
@@ -68,8 +68,7 @@ public:
          // Wall-clock time of the step, up to the convergence.
          step_timer.Restart();
 
-         // t_{n+1} = step dt, the last one the final time.
-         const double time = (step == num_steps) ? final_time : step * nominal_dt;
+         const double time = time_steps.get_time(step);
          const double dt = time - time_n;
 
          mfem::out << std::string(74, '=') << '\n'
@@ -91,8 +90,7 @@ public:
 
 private:
    const std::unique_ptr<NonlinearSolver> nonlinear_solver;   // one time step
-   const double nominal_dt;                                   // dt of config.yaml
-   const double final_time;                                   // end of the time steps
+   const TimeSteps time_steps;                                // t_n of the steps
 };
 
 #endif

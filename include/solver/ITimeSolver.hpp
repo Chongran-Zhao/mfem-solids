@@ -8,8 +8,8 @@
 // element order is that of the ranks, not that of the mesh file read by the
 // driver; the saving of the fields of a step onto that mesh, of step 0, of
 // every save_interval-th step and of the last; the line printed when a step
-// converges; and, for the dynamics, the number of time steps and
-// <results>/time.csv, which lists the saved steps.
+// converges; and, for the dynamics, <results>/time.csv, which lists the
+// saved steps.
 //
 // Author: Chongran Zhao
 // Date: Oct. 14, 2026
@@ -18,7 +18,6 @@
 #ifndef ITIME_SOLVER_HPP
 #define ITIME_SOLVER_HPP
 
-#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
@@ -85,13 +84,6 @@ protected:
                 << " iterations. Time taken: " << std::fixed << std::setprecision(2)
                 << step_timer.RealTime() << " sec. " << SystemTools::get_time()
                 << std::defaultfloat << std::setprecision(6) << '\n';
-   }
-
-   // Number of the time steps of nominal_dt up to final_time, the last one
-   // shortened to end there; a last step shorter than 1e-12 dt is left out.
-   static int get_num_steps(double final_time, double nominal_dt)
-   {
-      return static_cast<int>(std::ceil(final_time / nominal_dt - 1.0e-12));
    }
 
    // <results>/time.csv on rank 0, with its header and step 0; not open
