@@ -1,11 +1,12 @@
 // ============================================================================
-// vtu_writer.cpp
+// vtu_writer.cpp of hyperelasticity_disp
 //
-// Writes the displacement, the pressure, the Cauchy and the second
-// Piola-Kirchhoff stresses and the Green-Lagrange strain of each saved step
-// for ParaView, from the displacement saved by the driver, sampled within
-// each element by VTK_Tools, which cuts it into vtu_refine^3 hexahedra. The
-// stress is computed at the sampling points with the material of
+// Writes the displacement, in the dynamics the velocity and the
+// acceleration, the pressure, the Cauchy and the second Piola-Kirchhoff
+// stresses and the Green-Lagrange strain of each saved time step for
+// ParaView, at the times of time.csv, sampled within each element by VTK_Tools, which cuts it into
+// vtu_refine^3 hexahedra. The steps and the fields are those the driver
+// saved; the stress is computed at the sampling points with the material of
 // MaterialModelData, which must be the one the driver ran with, and the
 // pressure is p = -tr(sigma) / 3. It runs on MPI ranks, each writing every
 // num_ranks-th step, and rank 0 the PVD file once all are written; every rank
@@ -13,7 +14,7 @@
 // onto.
 //
 // Author: Chongran Zhao
-// Date: Sep. 26, 2026
+// Date: Oct. 3, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #include <cstddef>
@@ -53,9 +54,22 @@ int main(int argc, char *argv[])
    mfem::Mesh mesh(mesh_file);
    SystemTools::print_mesh(mesh_file, mesh);
 
-   // 3. Read the results of each step and write them.
-   const int load_steps = config["loading"]["load_steps"].as<int>();
-   const int gf_interval = config["output"]["gf_interval"].as<int>();
+   // 3. Read the steps and their physical times from time.csv, whose
+   //    columns are step,time,dt,iterations.
+   std::ifstream time_file(results_dir / "time.csv");
+   MFEM_VERIFY(time_file, "Cannot open " << (results_dir / "time.csv").string()
+               << "; run the driver first.");
+   std::vector<std::pair<int, double>> saved_steps;   // step and time
+   std::string line;
+   std::getline(time_file, line);
+   while (std::getline(time_file, line))
+   {
+      std::istringstream row(line);
+      std::string step_entry, time_entry;
+      std::getline(row, step_entry, ',');
+      std::getline(row, time_entry, ',');
+      saved_steps.emplace_back(std::stoi(step_entry), std::stod(time_entry));
+   }
 
    // Reads <results>/<prefix>_XXXX.gf of a step, with its own space.
    auto read_gf = [&](const std::string &prefix, int step)
@@ -67,6 +81,9 @@ int main(int argc, char *argv[])
                   << "; run the driver first.");
       return std::make_unique<mfem::GridFunction>(&mesh, gf_file);
    };
+
+   // The driver saved the velocity and the acceleration in the dynamics.
+   const bool is_dynamic = config["time_method"]["type"].as<std::string>() == "gen_alpha";
 
    // The material; it holds no state, so this program creates its own.
    const std::unique_ptr<const MaterialModel> material = set_material_model();
@@ -80,21 +97,18 @@ int main(int argc, char *argv[])
    VTK_Tools output(config["output"]["vtu"].as<std::string>(),
                     config["output"]["vtu_refine"].as<int>());
 
-   // The saved load steps, with their load factors t = n / N, each rank
-   // writing every num_ranks-th of them.
-   std::vector<std::pair<int, double>> saved_steps;   // step and load factor
-   for (int step = 0; step <= load_steps; step++)
-      if (SystemTools::is_saved_step(step, load_steps, gf_interval))
-         saved_steps.emplace_back(step, static_cast<double>(step) / load_steps);
+   // 4. Write each saved step, each rank every num_ranks-th of them.
    for (std::size_t ss = mfem::Mpi::WorldRank(); ss < saved_steps.size();
         ss += mfem::Mpi::WorldSize())
    {
       const int step = saved_steps[ss].first;
       const std::unique_ptr<mfem::GridFunction> disp = read_gf("disp", step);
+      const std::unique_ptr<mfem::GridFunction> velo = is_dynamic ? read_gf("velo", step) : nullptr;
+      const std::unique_ptr<mfem::GridFunction> acce = is_dynamic ? read_gf("acce", step) : nullptr;
       if (step == 0)
          SystemTools::print_space(*disp->FESpace());
 
-      output.save(step, *disp, nullptr, nullptr, nullptr, first_PK_stress);
+      output.save(step, *disp, velo.get(), acce.get(), nullptr, first_PK_stress);
    }
 
    // The PVD file, once every rank has written its steps.

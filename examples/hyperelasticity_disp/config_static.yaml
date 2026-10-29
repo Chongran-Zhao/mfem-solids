@@ -1,11 +1,10 @@
-# Input of read_mesh, driver, vtu_writer and csv_writer of dynamic_disp.
-# CMake copies it into dynamic_disp/build/, and the programs read the copy of
-# the directory they run in, or the file given as first argument. mesh.file is
-# relative to the project directory. Times are physical, in seconds; the
-# loading functions of LoadData receive the physical time. The initial
-# velocity is LoadData::initial_velo, and the initial displacement zero.
-# The default case is the beam fixed on its left face, set swinging along z
-# by the initial velocity, without load.
+# Static input of read_mesh, driver, vtu_writer and csv_writer of
+# hyperelasticity_disp, the file given as their first argument; CMake copies
+# it into hyperelasticity_disp/build/. mesh.file is relative to the project
+# directory. The loading functions of LoadData receive the time, here the
+# load factor in [0, 1].
+# The case is the beam fixed on its left face, its right face moved along z
+# by LoadData::disp_loading.
 
 mesh:
   # Mesh file in MFEM format.
@@ -19,7 +18,7 @@ mesh:
 
   # Web page showing the named faces in 3D, and whether to open it.
   output_html: beam_boundary.html
-  open_html: false
+  open_html: true
 
 space:
   # Order of the continuous shape functions.
@@ -30,17 +29,17 @@ space:
   # default rule, 2 x LocalAssemblyTools OrderGrad, 3 x 3 x 3 points here.
   quad_order: 3
 
-# Time integration method, read into TimeMethod_GenAlpha_2nd_Order.
+# Time integration method: static, without inertia, or gen_alpha, the
+# generalized-alpha method, read into TimeMethod_GenAlpha_2nd_Order.
 time_method:
-  # Spectral radius at infinite frequency of generalized-alpha, in [0, 1];
-  # 1 is the midpoint rule, without numerical damping.
-  rho_inf: 1.0
+  type: static
 
-# Time steps, read into TimeSolver.
+# Time steps, read into TimeSteps.
 time:
-  # Time step; the last step is shortened to end at final_time.
-  dt: 0.01
-  final_time: 5.0
+  # num_steps equal steps up to final_time, or a time step dt; with
+  # final_time 1 the time of step n is the load factor n / num_steps.
+  num_steps: 25
+  final_time: 1.0
 
 # Displacement boundary conditions, one entry per face and direction.
 Dirichlet:
@@ -50,11 +49,13 @@ Dirichlet:
     - { face: left, dir: y }
     - { face: left, dir: z }
   # Prescribed displacement, given by LoadData::disp_loading.
-  disp_bc: []
+  disp_bc:
+    - { face: right, dir: z }
 
 # Traction faces; the traction is given by LoadData::surface_traction.
 Neumann:
   faces: []
+# faces: [right, top]
 
 # Newton's method settings.
 solver:
@@ -62,11 +63,11 @@ solver:
   # include/NonlinearSolver.hpp of this case, or mumps, a direct solver.
   linear_solver: gmres
   newton_rel_tol: 1.0e-8
-  newton_abs_tol: 1.0e-10
+  newton_abs_tol: 0.0
   newton_max_iter: 20
 
 # Faces and directions reported by csv_writer, one entry per face and
-# direction; csv_writer also writes the energies of the whole body.
+# direction; csv_writer also writes the strain energy of the whole body.
 csv_writer:
   - { face: left, dir: z }
   - { face: right, dir: z }

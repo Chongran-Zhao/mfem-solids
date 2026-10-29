@@ -1,5 +1,5 @@
 // ============================================================================
-// NonlinearSolver.hpp
+// NonlinearSolver_Dynamic.hpp
 //
 // Solves one time step of the displacement dynamics,
 //    M a + F_int(u) = F_ext(t),
@@ -23,8 +23,8 @@
 // Date: Oct. 3, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef NONLINEAR_SOLVER_HPP
-#define NONLINEAR_SOLVER_HPP
+#ifndef NONLINEAR_SOLVER_DYNAMIC_HPP
+#define NONLINEAR_SOLVER_DYNAMIC_HPP
 
 #include <memory>
 #include <utility>
@@ -34,22 +34,22 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Disp.hpp"
-#include "INonlinearSolver.hpp"
 #include "LoadData.hpp"
 #include "NeumannBoundary.hpp"
+#include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha_2nd_Order.hpp"
 
-class NonlinearSolver : public INonlinearSolver
+class NonlinearSolver_Dynamic : public NonlinearSolver
 {
 public:
    // Takes the ownership of the global assembly and of the time method, and
    // assembles the mass matrix; the Newton settings come from the solver
    // section of config.yaml.
-   NonlinearSolver(std::unique_ptr<GlobalAssembly_Disp> input_global_assembly,
-                   std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> input_time_method,
-                   const YAML::Node &solver)
-      : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
+   NonlinearSolver_Dynamic(std::unique_ptr<GlobalAssembly_Disp> input_global_assembly,
+                           std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> input_time_method,
+                           const YAML::Node &solver)
+      : NonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
         time_method(std::move(input_time_method)),
         mass(global_assembly->assemble_mass()),
@@ -68,7 +68,7 @@ public:
    // wrong a_0 there only makes their acceleration alternate about its
    // value, whereas a wrong v_0 would disturb the whole solution.
    void initialize(double tt, mfem::ParGridFunction &disp, mfem::ParGridFunction &velo,
-                   mfem::ParGridFunction &acce)
+                   mfem::ParGridFunction &acce) override
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       const NeumannBoundary &neumann = global_assembly->get_neumann();
@@ -98,12 +98,13 @@ public:
       acce.SetFromTrueDofs(acce_owned);
    }
 
-   // Solves the step from time_n to time_n + input_dt: disp, velo and acce,
-   // the state of time_n, become that of time_n + input_dt. Returns the
+   // Solves the step from time_n to time, of input_dt = time - time_n: disp,
+   // velo and acce, the state of time_n, become that of time. Returns the
    // number of Newton iterations.
-   int solve(double time_n, double input_dt, mfem::ParGridFunction &disp,
-             mfem::ParGridFunction &velo, mfem::ParGridFunction &acce)
+   int solve(double time_n, double time, mfem::ParGridFunction &disp,
+             mfem::ParGridFunction &velo, mfem::ParGridFunction &acce) override
    {
+      const double input_dt = time - time_n;
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
 
       // The values on the dofs this rank owns, those of time_n first.
@@ -139,6 +140,8 @@ public:
       acce.SetFromTrueDofs(acce_owned);
       return iterations;
    }
+
+   bool is_dynamic() const override { return true; }
 
    // Required by MFEM: overrides mfem::Operator::Mult, which NewtonSolver
    // calls at every iteration for the residual.

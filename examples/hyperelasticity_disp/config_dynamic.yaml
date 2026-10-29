@@ -1,7 +1,11 @@
-# Input of read_mesh, driver, vtu_writer and csv_writer of static_disp.
-# CMake copies it into static_disp/build/, and the programs read the copy of
-# the directory they run in, or the file given as first argument. mesh.file is
-# relative to the project directory.
+# Dynamic input of read_mesh, driver, vtu_writer and csv_writer of
+# hyperelasticity_disp, the file given as their first argument; CMake copies
+# it into hyperelasticity_disp/build/. mesh.file is relative to the project
+# directory. Times are physical, in seconds; the loading functions of
+# LoadData receive the physical time. The initial velocity is
+# LoadData::initial_velo, and the initial displacement zero.
+# The case is the beam fixed on its left face, set swinging along z by the
+# initial velocity, without load.
 
 mesh:
   # Mesh file in MFEM format.
@@ -15,7 +19,7 @@ mesh:
 
   # Web page showing the named faces in 3D, and whether to open it.
   output_html: beam_boundary.html
-  open_html: true
+  open_html: false
 
 space:
   # Order of the continuous shape functions.
@@ -26,12 +30,20 @@ space:
   # default rule, 2 x LocalAssemblyTools OrderGrad, 3 x 3 x 3 points here.
   quad_order: 3
 
-# Loading settings.
-loading:
-  # Number of load steps; the final load is reached in equal steps.
-  load_steps: 25
-  # Loading type, displacement or traction.
-  type: displacement
+# Time integration method: static, without inertia, or gen_alpha, the
+# generalized-alpha method, read into TimeMethod_GenAlpha_2nd_Order.
+time_method:
+  type: gen_alpha
+  # Spectral radius at infinite frequency of generalized-alpha, in [0, 1];
+  # 1 is the midpoint rule, without numerical damping.
+  rho_inf: 1.0
+
+# Time steps, read into TimeSteps.
+time:
+  # Time step, or num_steps equal steps; the last step is shortened to end
+  # at final_time.
+  dt: 0.01
+  final_time: 5.0
 
 # Displacement boundary conditions, one entry per face and direction.
 Dirichlet:
@@ -41,13 +53,11 @@ Dirichlet:
     - { face: left, dir: y }
     - { face: left, dir: z }
   # Prescribed displacement, given by LoadData::disp_loading.
-  disp_bc:
-    - { face: right, dir: z }
+  disp_bc: []
 
 # Traction faces; the traction is given by LoadData::surface_traction.
 Neumann:
   faces: []
-# faces: [right, top]
 
 # Newton's method settings.
 solver:
@@ -55,11 +65,11 @@ solver:
   # include/NonlinearSolver.hpp of this case, or mumps, a direct solver.
   linear_solver: gmres
   newton_rel_tol: 1.0e-8
-  newton_abs_tol: 0.0
+  newton_abs_tol: 1.0e-10
   newton_max_iter: 20
 
 # Faces and directions reported by csv_writer, one entry per face and
-# direction.
+# direction; csv_writer also writes the energies of the whole body.
 csv_writer:
   - { face: left, dir: z }
   - { face: right, dir: z }
@@ -72,6 +82,6 @@ output:
   # Q1, whose fields are linear in each direction.
   vtu_refine: 1
   gf: results_gf
-  # The fields are saved every gf_interval-th load step, and at the last.
+  # The fields are saved every gf_interval-th time step, and at the last.
   gf_interval: 1
   csv: results_csv
