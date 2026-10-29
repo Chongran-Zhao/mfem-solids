@@ -4,7 +4,8 @@
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
-#    cd build && ./read_mesh && mpirun -np 2 ./driver && mpirun -np 2 ./vtu_writer && mpirun -np 2 ./csv_writer
+#    cd build && ./read_mesh config_dynamic.yaml && mpirun -np 2 ./driver config_dynamic.yaml
+#    mpirun -np 2 ./vtu_writer config_dynamic.yaml && mpirun -np 2 ./csv_writer config_dynamic.yaml
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(hyperelasticity_mixed_vms LANGUAGES CXX)
@@ -20,9 +21,9 @@ set(case_headers
   include/TimeSolver.hpp)
 check_header_list(${CMAKE_CURRENT_SOURCE_DIR}/include ${case_headers})
 
-# config.yaml is copied into the build folder, again whenever it changes;
-# the programs read the copy of the directory they run in.
-configure_file(config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
+# The input is copied into the build folder, again whenever it changes; the
+# programs read the file given as their first argument.
+configure_file(config_dynamic.yaml ${CMAKE_CURRENT_BINARY_DIR}/config_dynamic.yaml COPYONLY)
 
 # The mesh preparation of hyperelasticity_mixed_TaylorHood, with its HTML template.
 add_executable(read_mesh ../hyperelasticity_mixed_TaylorHood/read_mesh.cpp)
