@@ -1,7 +1,7 @@
 // ============================================================================
-// csv_writer.cpp of dynamic_mixed_vms
+// csv_writer.cpp of hyperelasticity_mixed_vms
 //
-// The csv_writer of dynamic_mixed_TaylorHood for the results of the VMS
+// The csv_writer of hyperelasticity_mixed_TaylorHood for the results of the VMS
 // driver, whose pressure has the order of the displacement; the acceleration
 // a is the rate dv/dt of the rate form. The reaction takes the momentum
 // equation of LocalAssembly_Mixed_TaylorHood, which is that of

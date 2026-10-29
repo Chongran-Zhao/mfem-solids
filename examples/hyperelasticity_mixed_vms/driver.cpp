@@ -1,5 +1,5 @@
 // ============================================================================
-// driver.cpp of dynamic_mixed_vms
+// driver.cpp of hyperelasticity_mixed_vms
 //
 // Hyperelastodynamics in the rate form of the mixed displacement-pressure
 // (u/p) formulation, as in PERIGEE solids: the velocity and the pressure are

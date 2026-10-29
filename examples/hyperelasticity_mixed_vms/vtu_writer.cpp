@@ -1,7 +1,7 @@
 // ============================================================================
-// vtu_writer.cpp of dynamic_mixed_vms
+// vtu_writer.cpp of hyperelasticity_mixed_vms
 //
-// The vtu_writer of dynamic_mixed_TaylorHood for the results of the VMS
+// The vtu_writer of hyperelasticity_mixed_TaylorHood for the results of the VMS
 // driver, whose pressure has the order of the displacement; the acceleration
 // is the rate dv/dt of the rate form. Writes the displacement, the velocity, the acceleration, the pressure, the
 // Cauchy and the second Piola-Kirchhoff stresses and the Green-Lagrange

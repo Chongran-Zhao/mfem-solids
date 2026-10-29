@@ -1,5 +1,5 @@
 # ============================================================================
-# dynamic_mixed_vms: hyperelastodynamics in the mixed displacement-pressure
+# hyperelasticity_mixed_vms: hyperelastodynamics in the mixed displacement-pressure
 # form, equal-order elements with the VMS stabilization
 #
 # Build and run in this folder:
@@ -7,7 +7,7 @@
 #    cd build && ./read_mesh && mpirun -np 2 ./driver && mpirun -np 2 ./vtu_writer && mpirun -np 2 ./csv_writer
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
-project(dynamic_mixed_vms LANGUAGES CXX)
+project(hyperelasticity_mixed_vms LANGUAGES CXX)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/mfem-solids.cmake)
 

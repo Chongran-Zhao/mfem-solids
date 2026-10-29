@@ -1,7 +1,7 @@
 // ============================================================================
 // driver.cpp of sphere_rotation_TaylorHood
 //
-// The driver of dynamic_mixed_TaylorHood for the gelatin ball in its skull shell, spun
+// The driver of hyperelasticity_mixed_TaylorHood for the gelatin ball in its skull shell, spun
 // up by its surface: the same steps, with the loading, the materials of the
 // regions and the nonlinear solver of its include/, which solves the linear
 // systems by GMRES.

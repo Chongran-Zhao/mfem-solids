@@ -1,5 +1,5 @@
-# Input of read_mesh, driver, vtu_writer and csv_writer of dynamic_mixed_vms.
-# CMake copies it into dynamic_mixed_vms/build/, and the programs read the copy of
+# Input of read_mesh, driver, vtu_writer and csv_writer of hyperelasticity_mixed_vms.
+# CMake copies it into hyperelasticity_mixed_vms/build/, and the programs read the copy of
 # the directory they run in, or the file given as first argument. mesh.file is
 # relative to the project directory. Times are physical, in seconds; the
 # loading functions of LoadData receive the physical time. The initial

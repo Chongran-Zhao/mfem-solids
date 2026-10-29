@@ -19,7 +19,7 @@
 // set on the displacement and the velocity; Newton's method works on the
 // vector of the dofs this rank owns, with the norms over all ranks.
 //
-// In sphere_rotation_vms: the solver of dynamic_mixed_vms with the materials
+// In sphere_rotation_vms: the solver of hyperelasticity_mixed_vms with the materials
 // of the regions, LocalAssembly_Mixed_VMS_Regions, the mass matrix with the
 // density of each region, and the skull, nearly rigid, starting Newton's
 // method from the velocity of the rotation of its surface,
