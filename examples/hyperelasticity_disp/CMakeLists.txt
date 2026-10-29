@@ -1,11 +1,13 @@
 # ============================================================================
-# hyperelasticity_disp: hyperelasticity in the displacement form, static or
-# dynamic by config_static.yaml or config_dynamic.yaml
+# hyperelasticity_disp: hyperelasticity in the displacement form, static by
+# driver_static and config_static.yaml, dynamic by driver_dynamic and
+# config_dynamic.yaml
 #
-# Build and run in this folder, with config_static.yaml or config_dynamic.yaml:
+# Build and run in this folder, the statics:
 #    cmake -B build && cmake --build build
-#    cd build && ./read_mesh config_static.yaml && mpirun -np 2 ./driver config_static.yaml
+#    cd build && ./read_mesh config_static.yaml && mpirun -np 2 ./driver_static
 #    mpirun -np 2 ./vtu_writer config_static.yaml && mpirun -np 2 ./csv_writer config_static.yaml
+# and the dynamics with driver_dynamic and config_dynamic.yaml.
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(hyperelasticity_disp LANGUAGES CXX)
@@ -36,9 +38,13 @@ target_link_libraries(read_mesh PRIVATE ${mfem_libraries})
 target_compile_definitions(read_mesh PRIVATE PROJECT_DIR="${project_dir}"
                                              SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
-add_executable(driver driver.cpp ${case_headers})
-target_include_directories(driver PRIVATE include)
-target_link_libraries(driver PRIVATE mfem_solids)
+add_executable(driver_static driver_static.cpp ${case_headers})
+target_include_directories(driver_static PRIVATE include)
+target_link_libraries(driver_static PRIVATE mfem_solids)
+
+add_executable(driver_dynamic driver_dynamic.cpp ${case_headers})
+target_include_directories(driver_dynamic PRIVATE include)
+target_link_libraries(driver_dynamic PRIVATE mfem_solids)
 
 add_executable(vtu_writer vtu_writer.cpp ${case_headers})
 target_include_directories(vtu_writer PRIVATE include)
