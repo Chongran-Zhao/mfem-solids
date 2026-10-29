@@ -1,21 +1,21 @@
 // ============================================================================
-// vtu_writer.cpp of hyperelasticity_mixed_vms
+// vtu_writer.cpp of hyperelasticity_mixed
 //
-// The vtu_writer of hyperelasticity_mixed_TaylorHood for the results of the VMS
-// driver, whose pressure has the order of the displacement; the acceleration
-// is the rate dv/dt of the rate form. Writes the displacement, the velocity, the acceleration, the pressure, the
-// Cauchy and the second Piola-Kirchhoff stresses and the Green-Lagrange
-// strain of each saved time step for ParaView, at the physical times of
-// time.csv, sampled within each element by VTK_Tools, which cuts it into
-// vtu_refine^3 hexahedra. The steps and the fields are those the driver
-// saved, the pressure nodal; the stresses are computed at the sampling
+// Writes the displacement, in the dynamics the velocity and the
+// acceleration, the pressure, the Cauchy and the second Piola-Kirchhoff
+// stresses and the Green-Lagrange strain of each saved time step for
+// ParaView, at the times of time.csv, sampled within each element by
+// VTK_Tools, which cuts it into vtu_refine^3 hexahedra. The steps and the
+// fields are those the driver saved, each read with its own space: the
+// pressure nodal, one order below the displacement for Taylor-Hood and of
+// its order with VMS, whose acceleration is the rate dv/dt of the rate form; the stresses are computed at the sampling
 // points with the material of MaterialModelData, which must be the one the
 // driver ran with. It runs on MPI ranks, each writing every num_ranks-th step,
 // and rank 0 the PVD file once all are written; every rank reads the results
 // on results/mesh.mesh, the mesh the driver gathered them onto.
 //
 // Author: Chongran Zhao
-// Date: Oct. 15, 2026
+// Date: Oct. 3, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #include <cstddef>
@@ -83,6 +83,10 @@ int main(int argc, char *argv[])
       return std::make_unique<mfem::GridFunction>(&mesh, gf_file);
    };
 
+   // The dynamic drivers saved the velocity and the acceleration with the
+   // displacement and the pressure, driver_TaylorHood_static these two only.
+   const bool is_dynamic = std::filesystem::exists(results_dir / "velo_0000.gf");
+
    // The material; it holds no state, so this program creates its own.
    const std::unique_ptr<const MaterialModel> material = set_material_model();
 
@@ -102,8 +106,8 @@ int main(int argc, char *argv[])
    {
       const int step = saved_steps[ss].first;
       const std::unique_ptr<mfem::GridFunction> disp = read_gf("disp", step);
-      const std::unique_ptr<mfem::GridFunction> velo = read_gf("velo", step);
-      const std::unique_ptr<mfem::GridFunction> acce = read_gf("acce", step);
+      const std::unique_ptr<mfem::GridFunction> velo = is_dynamic ? read_gf("velo", step) : nullptr;
+      const std::unique_ptr<mfem::GridFunction> acce = is_dynamic ? read_gf("acce", step) : nullptr;
       const std::unique_ptr<mfem::GridFunction> pres = read_gf("pres", step);
       if (step == 0)
       {

@@ -1,12 +1,18 @@
 // ============================================================================
 // NonlinearSolver.hpp
 //
-// Interface of the two nonlinear solvers of hyperelasticity_mixed_TaylorHood,
-// that of driver_static and that of driver_dynamic, which TimeSolver calls:
-//    NonlinearSolver_Static    static, no inertia: R(u_{n+1}, p_{n+1}, t_{n+1}) = 0;
-//    NonlinearSolver_Dynamic   dynamics by the generalized-alpha method of
-//                              second order.
-// Both solve one step from the state of time_n to that of time, on disp,
+// Interface of the three nonlinear solvers of hyperelasticity_mixed, one per
+// driver, which TimeSolver calls:
+//    NonlinearSolver_TaylorHood_Static    driver_TaylorHood_static: Taylor-Hood
+//                                         elements, no inertia,
+//                                         R(u_{n+1}, p_{n+1}, t_{n+1}) = 0;
+//    NonlinearSolver_TaylorHood_Dynamic   driver_TaylorHood_dynamic: Taylor-Hood
+//                                         elements, generalized-alpha of second
+//                                         order;
+//    NonlinearSolver_VMS_Dynamic          driver_vms_dynamic: equal-order
+//                                         elements with VMS, the rate form by
+//                                         generalized-alpha of first order.
+// Each solves one step from the state of time_n to that of time, on disp,
 // velo, acce and pres; the static one leaves velo and acce untouched, and
 // only the displacement and the pressure are saved.
 //

@@ -1,12 +1,11 @@
-# Dynamic input of read_mesh, driver, vtu_writer and csv_writer of
-# hyperelasticity_mixed_vms, the file given as their first argument; CMake
-# copies it into hyperelasticity_mixed_vms/build/. mesh.file is relative to
-# the project directory. Times are physical, in seconds; the
-# loading functions of LoadData receive the physical time. The initial
-# velocity is LoadData::initial_velo, and the initial displacement and
-# pressure zero.
-# The default case is the beam fixed on its left face, set swinging along z
-# by the initial velocity, without load.
+# Input of driver_TaylorHood_dynamic, which reads it by default, and of
+# read_mesh, vtu_writer and csv_writer of hyperelasticity_mixed, given as
+# their first argument; CMake copies it into hyperelasticity_mixed/build/.
+# mesh.file is relative to the project directory. Times are physical, in seconds; the loading functions of
+# LoadData receive the physical time. The initial velocity is
+# LoadData::initial_velo, and the initial displacement and pressure zero.
+# The case is the beam fixed on its left face, set swinging along z by the
+# initial velocity, without load.
 
 mesh:
   # Mesh file in MFEM format.
@@ -23,33 +22,28 @@ mesh:
   open_html: false
 
 space:
-  # Order of the continuous shape functions of the displacement and of the
-  # pressure, equal (Q1/Q1, Q2/Q2), stabilized by VMS.
-  elem_order: 1
+  # Order of the continuous shape functions of the displacement, at least 2;
+  # the pressure is one order lower (Taylor-Hood).
+  elem_order: 2
 
   # Quadrature order of the elements, 2 x elem_order + 1: the
-  # (elem_order + 1)^3 Gauss rule, 2 x 2 x 2 points for Q1 here; 0 keeps the
-  # default rule, 2 x LocalAssemblyTools OrderGrad.
-  quad_order: 3
+  # (elem_order + 1)^3 Gauss rule, 3 x 3 x 3 points for Q2 here; 0 keeps the
+  # default rule, 2 x LocalAssemblyTools OrderGrad, 4 x 4 x 4 points here,
+  # about 1.5 times slower on this beam, which changes its displacement by
+  # about 1e-5 and its pressure by about 1e-3.
+  quad_order: 5
 
-  # Factor of the VMS parameter tau = tau_factor dx J / (c rho_0 k^2): dx the
-  # longest diagonal of the element, c the largest wave speed and k the
-  # element order, the tau of PERIGEE for k = 1. PERIGEE
-  # takes 0.01 for an incompressible material and 0 for a compressible one,
-  # whose mass equation holds dp/dt / kappa and needs no stabilization; 0.01
-  # over-smooths the pressure of this compressible beam.
-  tau_factor: 0.0
-
-# Time integration method, read into TimeMethod_GenAlpha_1st_Order.
+# Time integration method, read into TimeMethod_GenAlpha_2nd_Order.
 time_method:
   # Spectral radius at infinite frequency of generalized-alpha, in [0, 1];
   # 1 is the midpoint rule, without numerical damping. 0.5 damps the high
   # frequencies of Q2, unresolved by dt, which make the pressure oscillate.
   rho_inf: 0.5
 
-# Time steps, read into TimeSolver.
+# Time steps, read into TimeSteps.
 time:
-  # Time step; the last step is shortened to end at final_time.
+  # Time step, or num_steps equal steps; the last step is shortened to end
+  # at final_time.
   dt: 0.01
   final_time: 5.0
 
@@ -84,12 +78,12 @@ csv_writer:
 
 # Output folders, in the directory the programs run in.
 output:
-  vtu: results_vtu
+  vtu: results_TaylorHood_dynamic_vtu
   # vtu_writer cuts each element into vtu_refine^3 hexahedra at its
-  # (vtu_refine + 1)^3 sampling points; 1 for Q1, 2 to show the quadratic
-  # fields of Q2. The files grow as (vtu_refine + 1)^3.
-  vtu_refine: 1
-  gf: results_gf
+  # (vtu_refine + 1)^3 sampling points, so that the curved elements and the
+  # quadratic fields of Q2 show; the files grow as (vtu_refine + 1)^3.
+  vtu_refine: 2
+  gf: results_TaylorHood_dynamic_gf
   # The fields are saved every gf_interval-th time step, and at the last.
   gf_interval: 1
-  csv: results_csv
+  csv: results_TaylorHood_dynamic_csv

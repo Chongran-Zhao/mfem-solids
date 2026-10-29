@@ -1,13 +1,13 @@
 // ============================================================================
-// driver.cpp of hyperelasticity_mixed_vms
+// driver_vms_dynamic.cpp of hyperelasticity_mixed
 //
 // Hyperelastodynamics in the rate form of the mixed displacement-pressure
 // (u/p) formulation, as in PERIGEE solids: the velocity and the pressure are
 // the unknowns, of equal order, stabilized by the VMS term of
 // LocalAssembly_Mixed_VMS, with the first-order generalized-alpha method in
 // physical time. The
-// time steps and the boundary conditions are read from config.yaml, the
-// latter referring to faces by name; the material is given by
+// time steps and the boundary conditions are read from
+// config_vms_dynamic.yaml, the latter referring to faces by name; the material is given by
 // MaterialModelData, whose volumetric model decides whether it is
 // compressible or fully incompressible, and the initial velocity and the
 // loading by LoadData. The initial displacement and pressure are zero.
@@ -33,7 +33,7 @@
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
-#include "NonlinearSolver.hpp"
+#include "NonlinearSolver_VMS_Dynamic.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha_1st_Order.hpp"
 #include "TimeSolver.hpp"
@@ -53,10 +53,11 @@ int main(int argc, char *argv[])
    mfem::out << "\nJob started on " << SystemTools::get_time() << ' '
              << SystemTools::get_date() << '\n';
 
-   // 1. Read config.yaml.
+   // 1. Read the input, the file given as first argument, else
+   //    config_vms_dynamic.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
-                 : std::filesystem::path("config.yaml");
+                 : std::filesystem::path("config_vms_dynamic.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
    // 2. Read the mesh file on every rank and split it among the ranks; the
@@ -122,7 +123,7 @@ int main(int argc, char *argv[])
    //    time method, and the time solver, which owns the nonlinear solver.
    auto time_method =
       std::make_unique<TimeMethod_GenAlpha_1st_Order>(config["time_method"]["rho_inf"].as<double>());
-   auto nonlinear_solver = std::make_unique<NonlinearSolver>(
+   auto nonlinear_solver = std::make_unique<NonlinearSolver_VMS_Dynamic>(
       space_p, std::move(global_assembly), local_assembly_ref, std::move(time_method),
       config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();

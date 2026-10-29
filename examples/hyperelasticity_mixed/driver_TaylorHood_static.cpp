@@ -1,11 +1,11 @@
 // ============================================================================
-// driver_static.cpp of hyperelasticity_mixed_TaylorHood
+// driver_TaylorHood_static.cpp of hyperelasticity_mixed
 //
 // Hyperelastostatics in the mixed displacement-pressure (u/p) form, with
 // Taylor-Hood elements, without inertia: the load steps are the time steps of
-// config_static.yaml, the loading functions of LoadData receiving their
-// times, the load factors with final_time 1. The boundary conditions are read
-// from config_static.yaml and refer to faces by name; the material is given
+// config_TaylorHood_static.yaml, the loading functions of LoadData receiving
+// their times, the load factors with final_time 1. The boundary conditions
+// are read from config_TaylorHood_static.yaml and refer to faces by name; the material is given
 // by MaterialModelData, whose volumetric model decides whether it is
 // compressible or fully incompressible. The initial displacement and pressure
 // are zero.
@@ -31,7 +31,7 @@
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
-#include "NonlinearSolver_Static.hpp"
+#include "NonlinearSolver_TaylorHood_Static.hpp"
 #include "SystemTools.hpp"
 #include "TimeSolver.hpp"
 
@@ -50,10 +50,10 @@ int main(int argc, char *argv[])
              << SystemTools::get_date() << '\n';
 
    // 1. Read the input, the file given as first argument, else
-   //    config_static.yaml.
+   //    config_TaylorHood_static.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
-                 : std::filesystem::path("config_static.yaml");
+                 : std::filesystem::path("config_TaylorHood_static.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
    // 2. Read the mesh file on every rank and split it among the ranks; the
@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
 
    // 8. Set up the nonlinear solver, which owns the global assembly, and the
    //    time solver, which owns the nonlinear solver.
-   auto nonlinear_solver = std::make_unique<NonlinearSolver_Static>(
+   auto nonlinear_solver = std::make_unique<NonlinearSolver_TaylorHood_Static>(
       space_p, std::move(global_assembly), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver>(

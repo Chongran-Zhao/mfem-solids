@@ -1,5 +1,5 @@
 // ============================================================================
-// NonlinearSolver_Dynamic.hpp
+// NonlinearSolver_TaylorHood_Dynamic.hpp
 //
 // Solves one time step of the mixed displacement-pressure dynamics,
 //    M a + F_int(u,p) = F_ext(t),   J(u) = J(p) weakly,
@@ -40,8 +40,8 @@
 // Date: Oct. 3, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef NONLINEAR_SOLVER_DYNAMIC_HPP
-#define NONLINEAR_SOLVER_DYNAMIC_HPP
+#ifndef NONLINEAR_SOLVER_TAYLOR_HOOD_DYNAMIC_HPP
+#define NONLINEAR_SOLVER_TAYLOR_HOOD_DYNAMIC_HPP
 
 #include <memory>
 #include <utility>
@@ -58,17 +58,17 @@
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha_2nd_Order.hpp"
 
-class NonlinearSolver_Dynamic : public NonlinearSolver
+class NonlinearSolver_TaylorHood_Dynamic : public NonlinearSolver
 {
 public:
    // Takes the ownership of the global assembly and of the time method, and
    // assembles the mass matrix and, on space_p, the pressure operators of the
    // preconditioner; the Newton settings come from the solver
    // section of config.yaml.
-   NonlinearSolver_Dynamic(mfem::ParFiniteElementSpace &space_p,
-                           std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
-                           std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> input_time_method,
-                           const YAML::Node &solver)
+   NonlinearSolver_TaylorHood_Dynamic(mfem::ParFiniteElementSpace &space_p,
+                                      std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
+                                      std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> input_time_method,
+                                      const YAML::Node &solver)
       : NonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
         time_method(std::move(input_time_method)),
@@ -243,7 +243,7 @@ private:
    {
    public:
       // size: the pressure dofs this rank owns.
-      SchurInverse(const NonlinearSolver_Dynamic &input_owner, int size)
+      SchurInverse(const NonlinearSolver_TaylorHood_Dynamic &input_owner, int size)
          : mfem::Solver(size), owner(input_owner), work(size) {}
 
       void SetOperator(const mfem::Operator &op) override {}
@@ -257,7 +257,7 @@ private:
       }
 
    private:
-      const NonlinearSolver_Dynamic &owner;
+      const NonlinearSolver_TaylorHood_Dynamic &owner;
       mutable mfem::Vector work;
    };
 

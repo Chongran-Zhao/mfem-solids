@@ -25,8 +25,9 @@ inline constexpr double young = 540.0e3;
 inline constexpr double poisson = 0.324;
 inline constexpr double density = 1000.0;
 
-// Shear and bulk moduli from young and poisson, of the material models and
-// of the preconditioner of NonlinearSolver.
+// Shear and bulk moduli from young and poisson, of the material models, of
+// the preconditioners of the Taylor-Hood solvers and, mu, of tau of the VMS
+// stabilization.
 inline constexpr double shear_modulus = young / (2.0 * (1.0 + poisson));
 inline constexpr double bulk_modulus = young / (3.0 * (1.0 - 2.0 * poisson));
 

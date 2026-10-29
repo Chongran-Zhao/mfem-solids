@@ -1,5 +1,5 @@
 // ============================================================================
-// csv_writer.cpp of hyperelasticity_mixed_TaylorHood
+// csv_writer.cpp of hyperelasticity_mixed
 //
 // Writes, at each saved time step of time.csv,
 //    mean displacement, mean pressure and reaction force on the faces and
@@ -12,6 +12,12 @@
 //    1/2 v^T M v, zero in the statics, the strain energy of the mixed form
 //    int Psi_vol(J(p)) + Psi_ich(F) dV, and their sum, which stays constant
 //    without loads and prescribed motion.
+// The pressure space is that of the saved pressure, one order below the
+// displacement for Taylor-Hood and of its order with VMS, whose acceleration
+// a is the rate dv/dt of the rate form. The reaction takes the momentum
+// equation of LocalAssembly_Mixed_TaylorHood, which is that of
+// LocalAssembly_Mixed_VMS, both from LocalAssembly_Mixed; its mass equation
+// is not used.
 // Everything is computed with the material of MaterialModelData, which must
 // be the one the driver ran with. It runs on MPI ranks like the driver: the
 // saved fields are split among the ranks, each rank integrates over its
@@ -86,11 +92,17 @@ int main(int argc, char *argv[])
       serial_mesh.GeneratePartitioning(mfem::Mpi::WorldSize()));
    mfem::ParMesh mesh(MPI_COMM_WORLD, serial_mesh, partitioning.get());
 
-   // 3. Set up the displacement and pressure spaces of the mixed driver.
+   // 3. Set up the displacement and pressure spaces of the driver, the
+   //    pressure of the order of the saved one: one below the displacement
+   //    for Taylor-Hood, equal with VMS.
    const int dim = mesh.Dimension();
    const int elem_order = config["space"]["elem_order"].as<int>();
-   MFEM_VERIFY(elem_order >= 2, "The mixed csv_writer needs space.elem_order >= 2.");
-   mfem::H1_FECollection fec_u(elem_order, dim), fec_p(elem_order - 1, dim);
+   std::ifstream pres_file(results_dir / "pres_0000.gf");
+   MFEM_VERIFY(pres_file, "Cannot open " << (results_dir / "pres_0000.gf").string()
+               << "; run the driver first.");
+   const int pres_order =
+      mfem::GridFunction(&serial_mesh, pres_file).FESpace()->GetMaxElementOrder();
+   mfem::H1_FECollection fec_u(elem_order, dim), fec_p(pres_order, dim);
    mfem::ParFiniteElementSpace space_u(&mesh, &fec_u, dim, mfem::Ordering::byVDIM);
    mfem::ParFiniteElementSpace space_p(&mesh, &fec_p);
    mfem::ParGridFunction disp(&space_u), velo(&space_u), acce(&space_u), pres(&space_p);
@@ -111,8 +123,8 @@ int main(int argc, char *argv[])
    const std::unique_ptr<mfem::HypreParMatrix> mass = global_assembly->assemble_mass();
    const std::unique_ptr<const MaterialModel> material = set_material_model();
 
-   // driver_dynamic saved the velocity and the acceleration with the
-   // displacement and the pressure, driver_static these two only.
+   // The dynamic drivers saved the velocity and the acceleration with the
+   // displacement and the pressure, driver_TaylorHood_static these two only.
    const bool is_dynamic = std::filesystem::exists(results_dir / "velo_0000.gf");
 
    // sol = [u; p], the input of the residual, and residual its blocks; the

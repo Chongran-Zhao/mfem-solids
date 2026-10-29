@@ -1,5 +1,5 @@
 // ============================================================================
-// NonlinearSolver_Static.hpp
+// NonlinearSolver_TaylorHood_Static.hpp
 //
 // Solves one step of the static mixed form, R(u,p) = 0 at the time of the
 // step, without inertia: sets the load of the step, makes the consistent
@@ -26,8 +26,8 @@
 // Date: Oct. 1, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef NONLINEAR_SOLVER_STATIC_HPP
-#define NONLINEAR_SOLVER_STATIC_HPP
+#ifndef NONLINEAR_SOLVER_TAYLOR_HOOD_STATIC_HPP
+#define NONLINEAR_SOLVER_TAYLOR_HOOD_STATIC_HPP
 
 #include <memory>
 #include <utility>
@@ -43,15 +43,15 @@
 #include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 
-class NonlinearSolver_Static : public NonlinearSolver
+class NonlinearSolver_TaylorHood_Static : public NonlinearSolver
 {
 public:
    // Takes the ownership of the global assembly, and assembles on space_p
    // the pressure mass of the preconditioner; the Newton settings come from
    // the solver section of config.yaml.
-   NonlinearSolver_Static(mfem::ParFiniteElementSpace &space_p,
-                          std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
-                          const YAML::Node &solver)
+   NonlinearSolver_TaylorHood_Static(mfem::ParFiniteElementSpace &space_p,
+                                     std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
+                                     const YAML::Node &solver)
       : NonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
         schur_inverse(*this, space_p.GetTrueVSize()),
@@ -150,7 +150,7 @@ private:
    {
    public:
       // size: the pressure dofs this rank owns.
-      SchurInverse(const NonlinearSolver_Static &input_owner, int size)
+      SchurInverse(const NonlinearSolver_TaylorHood_Static &input_owner, int size)
          : mfem::Solver(size), owner(input_owner) {}
 
       void SetOperator(const mfem::Operator &op) override {}
@@ -162,7 +162,7 @@ private:
       }
 
    private:
-      const NonlinearSolver_Static &owner;
+      const NonlinearSolver_TaylorHood_Static &owner;
    };
 
    // K(u,p) on the dofs this rank owns, without constraints, into tangent,

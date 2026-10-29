@@ -1,10 +1,10 @@
 // ============================================================================
-// driver_dynamic.cpp of hyperelasticity_mixed_TaylorHood
+// driver_TaylorHood_dynamic.cpp of hyperelasticity_mixed
 //
 // Hyperelastodynamics in the mixed displacement-pressure (u/p) form, with
 // Taylor-Hood elements and the generalized-alpha method in physical time. The
-// time steps and the boundary conditions are read from config_dynamic.yaml,
-// the latter referring to faces by name; the material is given by
+// time steps and the boundary conditions are read from
+// config_TaylorHood_dynamic.yaml, the latter referring to faces by name; the material is given by
 // MaterialModelData, whose volumetric model decides whether it is
 // compressible or fully incompressible, and the initial velocity and the
 // loading by LoadData. The initial displacement and pressure are zero.
@@ -30,7 +30,7 @@
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
-#include "NonlinearSolver_Dynamic.hpp"
+#include "NonlinearSolver_TaylorHood_Dynamic.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha_2nd_Order.hpp"
 #include "TimeSolver.hpp"
@@ -51,10 +51,10 @@ int main(int argc, char *argv[])
              << SystemTools::get_date() << '\n';
 
    // 1. Read the input, the file given as first argument, else
-   //    config_dynamic.yaml.
+   //    config_TaylorHood_dynamic.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
-                 : std::filesystem::path("config_dynamic.yaml");
+                 : std::filesystem::path("config_TaylorHood_dynamic.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
    // 2. Read the mesh file on every rank and split it among the ranks; the
@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
    //    time method, and the time solver, which owns the nonlinear solver.
    auto time_method =
       std::make_unique<TimeMethod_GenAlpha_2nd_Order>(config["time_method"]["rho_inf"].as<double>());
-   auto nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic>(
+   auto nonlinear_solver = std::make_unique<NonlinearSolver_TaylorHood_Dynamic>(
       space_p, std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver>(
