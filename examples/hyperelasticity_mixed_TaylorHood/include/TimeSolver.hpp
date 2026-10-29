@@ -8,8 +8,8 @@
 // displacement and the pressure of step 0, of every save_interval-th step
 // and of the last are saved as <results>/disp_XXXX.gf and pres_XXXX.gf, in
 // the dynamics with the velocity and the acceleration, velo_XXXX.gf and
-// acce_XXXX.gf, and the time of each saved step in <results>/time.csv. Rank 0 gathers the fields from
-// all ranks onto the serial mesh of ParMesh::GetSerialMesh, saved as
+// acce_XXXX.gf, and the time of each saved step in <results>/time.csv.
+// Rank 0 gathers the fields from all ranks onto the serial mesh of ParMesh::GetSerialMesh, saved as
 // <results>/mesh.mesh; its element order is that of the ranks, not that of
 // the mesh file read by the driver. It owns the nonlinear solver.
 //

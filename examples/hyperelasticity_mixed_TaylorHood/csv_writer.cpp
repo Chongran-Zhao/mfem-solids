@@ -111,8 +111,9 @@ int main(int argc, char *argv[])
    const std::unique_ptr<mfem::HypreParMatrix> mass = global_assembly->assemble_mass();
    const std::unique_ptr<const MaterialModel> material = set_material_model();
 
-   // The driver saved the velocity and the acceleration in the dynamics.
-   const bool is_dynamic = config["time_method"]["type"].as<std::string>() == "gen_alpha";
+   // driver_dynamic saved the velocity and the acceleration with the
+   // displacement and the pressure, driver_static these two only.
+   const bool is_dynamic = std::filesystem::exists(results_dir / "velo_0000.gf");
 
    // sol = [u; p], the input of the residual, and residual its blocks; the
    // reaction is the displacement block.

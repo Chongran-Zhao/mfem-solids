@@ -2,7 +2,7 @@
 // NonlinearSolver.hpp
 //
 // Interface of the two nonlinear solvers of hyperelasticity_mixed_TaylorHood,
-// one per time_method type of config.yaml, which TimeSolver calls:
+// that of driver_static and that of driver_dynamic, which TimeSolver calls:
 //    NonlinearSolver_Static    static, no inertia: R(u_{n+1}, p_{n+1}, t_{n+1}) = 0;
 //    NonlinearSolver_Dynamic   dynamics by the generalized-alpha method of
 //                              second order.
