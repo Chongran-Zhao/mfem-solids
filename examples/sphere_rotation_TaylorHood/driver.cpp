@@ -1,7 +1,7 @@
 // ============================================================================
 // driver.cpp of sphere_rotation_TaylorHood
 //
-// The driver of dynamic_mixed_TaylorHood for the gelatin ball in its skull shell, spun
+// The driver of hyperelasticity_mixed_TaylorHood for the gelatin ball in its skull shell, spun
 // up by its surface: the same steps, with the loading, the materials of the
 // regions and the nonlinear solver of its include/, which solves the linear
 // systems by GMRES.
@@ -129,8 +129,7 @@ int main(int argc, char *argv[])
       space_u, space_p, std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver>(
-      std::move(nonlinear_solver), config["time"]["dt"].as<double>(),
-      config["time"]["final_time"].as<double>(), results_dir, mesh,
+      std::move(nonlinear_solver), TimeSteps(config["time"]), results_dir, mesh,
       config["output"]["gf_interval"].as<int>());
 
    // 9. Solve the time steps.

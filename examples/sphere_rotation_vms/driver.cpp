@@ -1,7 +1,7 @@
 // ============================================================================
 // driver.cpp of sphere_rotation_vms
 //
-// The driver of dynamic_mixed_vms for the gelatin ball in its skull shell of
+// The driver of hyperelasticity_mixed_vms for the gelatin ball in its skull shell of
 // sphere_rotation_TaylorHood, spun up by its surface: the rate form with equal-order
 // elements stabilized by VMS, the materials of the regions, and GMRES. The
 // VMS term acts in the incompressible regions only; as in PERIGEE, the
@@ -143,8 +143,7 @@ int main(int argc, char *argv[])
       config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver>(
-      std::move(nonlinear_solver), config["time"]["dt"].as<double>(),
-      config["time"]["final_time"].as<double>(), results_dir, mesh,
+      std::move(nonlinear_solver), TimeSteps(config["time"]), results_dir, mesh,
       config["output"]["gf_interval"].as<int>());
 
    // 9. Solve the time steps.
