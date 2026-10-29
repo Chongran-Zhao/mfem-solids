@@ -1,15 +1,13 @@
 // ============================================================================
-// driver.cpp of hyperelasticity_mixed_TaylorHood
+// driver_dynamic.cpp of hyperelasticity_mixed_TaylorHood
 //
-// Hyperelasticity in the mixed displacement-pressure (u/p) form, with
-// Taylor-Hood elements, static or dynamic by the type of time_method in
-// config.yaml: static, without inertia, or gen_alpha, the generalized-alpha
-// method in physical time. The time steps and the boundary conditions are
-// read from config.yaml, the latter referring to faces by name; the material
-// is given by MaterialModelData, whose volumetric model decides whether it is
-// compressible or fully incompressible, and the initial velocity of the
-// dynamics and the loading by LoadData. The initial displacement and
-// pressure are zero.
+// Hyperelastodynamics in the mixed displacement-pressure (u/p) form, with
+// Taylor-Hood elements and the generalized-alpha method in physical time. The
+// time steps and the boundary conditions are read from config_dynamic.yaml,
+// the latter referring to faces by name; the material is given by
+// MaterialModelData, whose volumetric model decides whether it is
+// compressible or fully incompressible, and the initial velocity and the
+// loading by LoadData. The initial displacement and pressure are zero.
 //
 // Author: Chongran Zhao
 // Date: Oct. 3, 2026
@@ -33,7 +31,6 @@
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "NonlinearSolver_Dynamic.hpp"
-#include "NonlinearSolver_Static.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha_2nd_Order.hpp"
 #include "TimeSolver.hpp"
@@ -53,10 +50,11 @@ int main(int argc, char *argv[])
    mfem::out << "\nJob started on " << SystemTools::get_time() << ' '
              << SystemTools::get_date() << '\n';
 
-   // 1. Read config.yaml.
+   // 1. Read the input, the file given as first argument, else
+   //    config_dynamic.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
-                 : std::filesystem::path("config.yaml");
+                 : std::filesystem::path("config_dynamic.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
    // 2. Read the mesh file on every rank and split it among the ranks; the
@@ -79,12 +77,8 @@ int main(int argc, char *argv[])
    SystemTools::print_space(space_u);
    SystemTools::print_space(space_p);
 
-   // 4. Set the initial state: zero displacement and pressure, and in the
-   //    dynamics the velocity LoadData::initial_velo at the nodes.
-   const std::string time_method_type = config["time_method"]["type"].as<std::string>();
-   MFEM_VERIFY(time_method_type == "static" || time_method_type == "gen_alpha",
-               "Unknown time_method type \"" << time_method_type << "\".");
-   const bool is_dynamic = time_method_type == "gen_alpha";
+   // 4. Set the initial state: zero displacement and pressure, and the
+   //    velocity LoadData::initial_velo at the nodes.
    mfem::VectorFunctionCoefficient initial_velo_value(dim,
       [](const mfem::Vector &pt, mfem::Vector &value)
    {
@@ -94,9 +88,7 @@ int main(int argc, char *argv[])
    });
    mfem::ParGridFunction disp(&space_u), velo(&space_u), acce(&space_u), pres(&space_p);
    disp = 0.0;
-   velo = 0.0;
-   if (is_dynamic)
-      velo.ProjectCoefficient(initial_velo_value);
+   velo.ProjectCoefficient(initial_velo_value);
    acce = 0.0;
    pres = 0.0;
 
@@ -122,20 +114,12 @@ int main(int argc, char *argv[])
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
-   // 8. Set up the nonlinear solver of the time method, which owns the global
-   //    assembly and, in the dynamics, the generalized-alpha parameters, and
-   //    the time solver, which owns the nonlinear solver.
-   std::unique_ptr<NonlinearSolver> nonlinear_solver;
-   if (is_dynamic)
-   {
-      auto time_method = std::make_unique<TimeMethod_GenAlpha_2nd_Order>(
-         config["time_method"]["rho_inf"].as<double>());
-      nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic>(
-         space_p, std::move(global_assembly), std::move(time_method), config["solver"]);
-   }
-   else
-      nonlinear_solver = std::make_unique<NonlinearSolver_Static>(
-         space_p, std::move(global_assembly), config["solver"]);
+   // 8. Set up the nonlinear solver, which owns the global assembly and the
+   //    time method, and the time solver, which owns the nonlinear solver.
+   auto time_method =
+      std::make_unique<TimeMethod_GenAlpha_2nd_Order>(config["time_method"]["rho_inf"].as<double>());
+   auto nonlinear_solver = std::make_unique<NonlinearSolver_Dynamic>(
+      space_p, std::move(global_assembly), std::move(time_method), config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver>(
       std::move(nonlinear_solver), TimeSteps(config["time"]), results_dir, mesh,

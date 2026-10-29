@@ -1,9 +1,9 @@
-# Dynamic input of read_mesh, driver, vtu_writer and csv_writer of
-# hyperelasticity_disp, the file given as their first argument; CMake copies
-# it into hyperelasticity_disp/build/. mesh.file is relative to the project
-# directory. Times are physical, in seconds; the loading functions of
-# LoadData receive the physical time. The initial velocity is
-# LoadData::initial_velo, and the initial displacement zero.
+# Input of driver_dynamic, which reads it by default, and of read_mesh,
+# vtu_writer and csv_writer of hyperelasticity_disp, given as their first
+# argument; CMake copies it into hyperelasticity_disp/build/. mesh.file is
+# relative to the project directory. Times are physical, in seconds; the
+# loading functions of LoadData receive the physical time. The initial
+# velocity is LoadData::initial_velo, and the initial displacement zero.
 # The case is the beam fixed on its left face, set swinging along z by the
 # initial velocity, without load.
 
@@ -30,10 +30,8 @@ space:
   # default rule, 2 x LocalAssemblyTools OrderGrad, 3 x 3 x 3 points here.
   quad_order: 3
 
-# Time integration method: static, without inertia, or gen_alpha, the
-# generalized-alpha method, read into TimeMethod_GenAlpha_2nd_Order.
+# Time integration method, read into TimeMethod_GenAlpha_2nd_Order.
 time_method:
-  type: gen_alpha
   # Spectral radius at infinite frequency of generalized-alpha, in [0, 1];
   # 1 is the midpoint rule, without numerical damping.
   rho_inf: 1.0
@@ -76,12 +74,12 @@ csv_writer:
 
 # Output folders, in the directory the programs run in.
 output:
-  vtu: results_vtu
+  vtu: results_dynamic_vtu
   # vtu_writer cuts each element into vtu_refine^3 hexahedra at its
   # (vtu_refine + 1)^3 sampling points; 1, the element itself, suffices for
   # Q1, whose fields are linear in each direction.
   vtu_refine: 1
-  gf: results_gf
+  gf: results_dynamic_gf
   # The fields are saved every gf_interval-th time step, and at the last.
   gf_interval: 1
-  csv: results_csv
+  csv: results_dynamic_csv

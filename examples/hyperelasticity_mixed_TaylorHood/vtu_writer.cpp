@@ -81,8 +81,9 @@ int main(int argc, char *argv[])
       return std::make_unique<mfem::GridFunction>(&mesh, gf_file);
    };
 
-   // The driver saved the velocity and the acceleration in the dynamics.
-   const bool is_dynamic = config["time_method"]["type"].as<std::string>() == "gen_alpha";
+   // driver_dynamic saved the velocity and the acceleration with the
+   // displacement and the pressure, driver_static these two only.
+   const bool is_dynamic = std::filesystem::exists(results_dir / "velo_0000.gf");
 
    // The material; it holds no state, so this program creates its own.
    const std::unique_ptr<const MaterialModel> material = set_material_model();

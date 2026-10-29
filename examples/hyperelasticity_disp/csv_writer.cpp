@@ -110,8 +110,9 @@ int main(int argc, char *argv[])
    mfem::Vector residual(num_dofs), momentum(num_dofs);
    const std::unique_ptr<const MaterialModel> material = set_material_model();
 
-   // The driver saved the velocity and the acceleration in the dynamics.
-   const bool is_dynamic = config["time_method"]["type"].as<std::string>() == "gen_alpha";
+   // driver_dynamic saved the velocity and the acceleration with the
+   // displacement, driver_static the displacement only.
+   const bool is_dynamic = std::filesystem::exists(results_dir / "velo_0000.gf");
 
    // 4. Read the steps and their physical times from time.csv, whose
    //    columns are step,time,dt,iterations, and collect the faces and
