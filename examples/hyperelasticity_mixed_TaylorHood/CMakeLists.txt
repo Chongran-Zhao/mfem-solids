@@ -1,12 +1,15 @@
 # ============================================================================
-# dynamic_mixed_TaylorHood: hyperelastodynamics in the mixed displacement-pressure form
+# hyperelasticity_mixed_TaylorHood: hyperelasticity in the mixed
+# displacement-pressure form, static or dynamic by config_static.yaml or
+# config_dynamic.yaml
 #
-# Build and run in this folder:
+# Build and run in this folder, with config_static.yaml or config_dynamic.yaml:
 #    cmake -B build && cmake --build build
-#    cd build && ./read_mesh && mpirun -np 2 ./driver && mpirun -np 2 ./vtu_writer && mpirun -np 2 ./csv_writer
+#    cd build && ./read_mesh config_static.yaml && mpirun -np 2 ./driver config_static.yaml
+#    mpirun -np 2 ./vtu_writer config_static.yaml && mpirun -np 2 ./csv_writer config_static.yaml
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
-project(dynamic_mixed_TaylorHood LANGUAGES CXX)
+project(hyperelasticity_mixed_TaylorHood LANGUAGES CXX)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/mfem-solids.cmake)
 
@@ -16,12 +19,15 @@ set(case_headers
   include/LoadData.hpp
   include/MaterialModelData.hpp
   include/NonlinearSolver.hpp
+  include/NonlinearSolver_Dynamic.hpp
+  include/NonlinearSolver_Static.hpp
   include/TimeSolver.hpp)
 check_header_list(${CMAKE_CURRENT_SOURCE_DIR}/include ${case_headers})
 
-# config.yaml is copied into the build folder, again whenever it changes;
-# the programs read the copy of the directory they run in.
-configure_file(config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
+# The two inputs are copied into the build folder, again whenever they
+# change; the programs read the one given as their first argument.
+configure_file(config_static.yaml ${CMAKE_CURRENT_BINARY_DIR}/config_static.yaml COPYONLY)
+configure_file(config_dynamic.yaml ${CMAKE_CURRENT_BINARY_DIR}/config_dynamic.yaml COPYONLY)
 
 add_executable(read_mesh read_mesh.cpp)
 target_include_directories(read_mesh PRIVATE ${MFEM_INCLUDE_DIRS})

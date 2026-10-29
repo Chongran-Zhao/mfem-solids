@@ -1,14 +1,15 @@
 // ============================================================================
-// csv_writer.cpp of dynamic_mixed_TaylorHood
+// csv_writer.cpp of hyperelasticity_mixed_TaylorHood
 //
 // Writes, at each saved time step of time.csv,
 //    mean displacement, mean pressure and reaction force on the faces and
 //    directions of the csv_writer section of config.yaml, one CSV file per
 //    face. The reaction is the displacement part of the residual of the
 //    equation of motion, M a + F_int(u,p) - F_ext(t), at the saved state, on
-//    the constrained dofs: the force the supports exert, inertia included;
+//    the constrained dofs: the force the supports exert, inertia included; in
+//    the statics, without inertia, that of R(u,p) = F_int(u,p) - F_ext(t);
 //    the energies of the whole body, energy.csv: the kinetic energy
-//    1/2 v^T M v, the strain energy of the mixed form
+//    1/2 v^T M v, zero in the statics, the strain energy of the mixed form
 //    int Psi_vol(J(p)) + Psi_ich(F) dV, and their sum, which stays constant
 //    without loads and prescribed motion.
 // Everything is computed with the material of MaterialModelData, which must
@@ -109,6 +110,9 @@ int main(int argc, char *argv[])
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
    const std::unique_ptr<mfem::HypreParMatrix> mass = global_assembly->assemble_mass();
    const std::unique_ptr<const MaterialModel> material = set_material_model();
+
+   // The driver saved the velocity and the acceleration in the dynamics.
+   const bool is_dynamic = config["time_method"]["type"].as<std::string>() == "gen_alpha";
 
    // sol = [u; p], the input of the residual, and residual its blocks; the
    // reaction is the displacement block.
@@ -322,28 +326,34 @@ int main(int argc, char *argv[])
    //       strain   = int Psi_vol(J(p)) + Psi_ich(F) dV
    //       total    = kinetic + strain.
    //    F is the force the supports exert on a constrained face, inertia
-   //    included. On a free face it is small but not zero: the equation of
-   //    motion holds at the intermediate states of generalized-alpha, not at
-   //    the saved ones.
+   //    included. On a free face it is small but not zero in the dynamics:
+   //    the equation of motion holds at the intermediate states of
+   //    generalized-alpha, not at the saved ones; in the statics it is the
+   //    residual of Newton's method, zero up to its tolerance, except for the
+   //    dofs it shares with constrained faces.
    for (const auto &[step, time] : saved_steps)
    {
       read_gf("disp", step, disp);
-      read_gf("velo", step, velo);
-      read_gf("acce", step, acce);
       read_gf("pres", step, pres);
       disp.GetTrueDofs(sol.GetBlock(0));
       pres.GetTrueDofs(sol.GetBlock(1));
-      velo.GetTrueDofs(velo_owned);
-      acce.GetTrueDofs(acce_owned);
 
       if (is_traction_load)
          global_assembly->set_traction_load(time);
       global_assembly->assemble_residual(sol, residual);
-      mass->AddMult(acce_owned, residual.GetBlock(0));
 
-      mass->Mult(velo_owned, momentum);
-      const double kinetic_energy =
-         0.5 * mfem::InnerProduct(MPI_COMM_WORLD, velo_owned, momentum);
+      double kinetic_energy = 0.0;
+      if (is_dynamic)
+      {
+         read_gf("velo", step, velo);
+         read_gf("acce", step, acce);
+         velo.GetTrueDofs(velo_owned);
+         acce.GetTrueDofs(acce_owned);
+         mass->AddMult(acce_owned, residual.GetBlock(0));
+
+         mass->Mult(velo_owned, momentum);
+         kinetic_energy = 0.5 * mfem::InnerProduct(MPI_COMM_WORLD, velo_owned, momentum);
+      }
       const double strain_energy = get_strain_energy();
       if (is_root)
          energy_csv << step << ',' << time << ',' << kinetic_energy << ',' << strain_energy

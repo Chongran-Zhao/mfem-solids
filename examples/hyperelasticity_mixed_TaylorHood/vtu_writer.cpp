@@ -1,10 +1,10 @@
 // ============================================================================
-// vtu_writer.cpp of dynamic_mixed_TaylorHood
+// vtu_writer.cpp of hyperelasticity_mixed_TaylorHood
 //
-// Writes the displacement, the velocity, the acceleration, the pressure, the
-// Cauchy and the second Piola-Kirchhoff stresses and the Green-Lagrange
-// strain of each saved time step for ParaView, at the physical times of
-// time.csv, sampled within each element by VTK_Tools, which cuts it into
+// Writes the displacement, in the dynamics the velocity and the
+// acceleration, the pressure, the Cauchy and the second Piola-Kirchhoff
+// stresses and the Green-Lagrange strain of each saved time step for
+// ParaView, at the times of time.csv, sampled within each element by VTK_Tools, which cuts it into
 // vtu_refine^3 hexahedra. The steps and the fields are those the driver
 // saved, the pressure nodal; the stresses are computed at the sampling
 // points with the material of MaterialModelData, which must be the one the
@@ -81,6 +81,9 @@ int main(int argc, char *argv[])
       return std::make_unique<mfem::GridFunction>(&mesh, gf_file);
    };
 
+   // The driver saved the velocity and the acceleration in the dynamics.
+   const bool is_dynamic = config["time_method"]["type"].as<std::string>() == "gen_alpha";
+
    // The material; it holds no state, so this program creates its own.
    const std::unique_ptr<const MaterialModel> material = set_material_model();
 
@@ -100,8 +103,8 @@ int main(int argc, char *argv[])
    {
       const int step = saved_steps[ss].first;
       const std::unique_ptr<mfem::GridFunction> disp = read_gf("disp", step);
-      const std::unique_ptr<mfem::GridFunction> velo = read_gf("velo", step);
-      const std::unique_ptr<mfem::GridFunction> acce = read_gf("acce", step);
+      const std::unique_ptr<mfem::GridFunction> velo = is_dynamic ? read_gf("velo", step) : nullptr;
+      const std::unique_ptr<mfem::GridFunction> acce = is_dynamic ? read_gf("acce", step) : nullptr;
       const std::unique_ptr<mfem::GridFunction> pres = read_gf("pres", step);
       if (step == 0)
       {

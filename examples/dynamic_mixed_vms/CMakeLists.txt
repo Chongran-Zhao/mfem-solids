@@ -24,14 +24,14 @@ check_header_list(${CMAKE_CURRENT_SOURCE_DIR}/include ${case_headers})
 # the programs read the copy of the directory they run in.
 configure_file(config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
 
-# The mesh preparation of dynamic_mixed_TaylorHood, with its HTML template.
-add_executable(read_mesh ../dynamic_mixed_TaylorHood/read_mesh.cpp)
+# The mesh preparation of hyperelasticity_mixed_TaylorHood, with its HTML template.
+add_executable(read_mesh ../hyperelasticity_mixed_TaylorHood/read_mesh.cpp)
 target_include_directories(read_mesh PRIVATE ${MFEM_INCLUDE_DIRS})
 target_link_libraries(read_mesh PRIVATE ${mfem_libraries})
 # The mesh file is found from the project directory, the HTML template from
-# dynamic_mixed_TaylorHood.
+# hyperelasticity_mixed_TaylorHood.
 target_compile_definitions(read_mesh PRIVATE PROJECT_DIR="${project_dir}"
-                                             SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../dynamic_mixed_TaylorHood")
+                                             SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../hyperelasticity_mixed_TaylorHood")
 
 add_executable(driver driver.cpp ${case_headers})
 target_include_directories(driver PRIVATE include)

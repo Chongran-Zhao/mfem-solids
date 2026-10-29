@@ -1,10 +1,11 @@
 // ============================================================================
-// NonlinearSolver.hpp
+// NonlinearSolver_Static.hpp
 //
-// Solves one load step of the static mixed form, R(u,p) = 0: sets the load of
-// the step, makes the consistent predictor the initial guess, and runs
-// Newton's method from it. It owns the global assembly and the solvers; the
-// loop over the load steps is left to its caller. It is also the
+// Solves one step of the static mixed form, R(u,p) = 0 at the time of the
+// step, without inertia: sets the load of the step, makes the consistent
+// predictor the initial guess, and runs Newton's method from it. It owns the
+// global assembly and the solvers; the loop over the steps is left to its
+// caller. It is also the
 // mfem::Operator that its NewtonSolver solves, through Mult and GetGradient.
 // The displacement and the pressure are ParGridFunctions, the boundary values
 // set on the displacement; Newton's method works on the vector of their dofs
@@ -25,8 +26,8 @@
 // Date: Oct. 1, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef NONLINEAR_SOLVER_HPP
-#define NONLINEAR_SOLVER_HPP
+#ifndef NONLINEAR_SOLVER_STATIC_HPP
+#define NONLINEAR_SOLVER_STATIC_HPP
 
 #include <memory>
 #include <utility>
@@ -36,22 +37,22 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
-#include "INonlinearSolver.hpp"
 #include "LoadData.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
+#include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 
-class NonlinearSolver : public INonlinearSolver
+class NonlinearSolver_Static : public NonlinearSolver
 {
 public:
    // Takes the ownership of the global assembly, and assembles on space_p
    // the pressure mass of the preconditioner; the Newton settings come from
    // the solver section of config.yaml.
-   NonlinearSolver(mfem::ParFiniteElementSpace &space_p,
-                   std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
-                   const YAML::Node &solver)
-      : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
+   NonlinearSolver_Static(mfem::ParFiniteElementSpace &space_p,
+                          std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
+                          const YAML::Node &solver)
+      : NonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
         schur_inverse(*this, space_p.GetTrueVSize()),
         preconditioner(global_assembly->get_offsets()),
@@ -79,15 +80,24 @@ public:
       set_newton_solver(solver, linear_solver, newton_monitor);
    }
 
-   // Solves the load at time tt from the converged disp and pres of the
-   // previous step, and returns the number of Newton iterations.
-   int solve(double tt, mfem::ParGridFunction &disp, mfem::ParGridFunction &pres)
+   // The initial state is that of the driver, zero displacement and
+   // pressure.
+   void initialize(double, mfem::ParGridFunction &, mfem::ParGridFunction &,
+                   mfem::ParGridFunction &, mfem::ParGridFunction &) override
+   {
+   }
+
+   // Solves the load at time from the converged disp and pres of time_n,
+   // and returns the number of Newton iterations; velo and acce are not
+   // used.
+   int solve(double, double time, mfem::ParGridFunction &disp, mfem::ParGridFunction &,
+             mfem::ParGridFunction &, mfem::ParGridFunction &pres) override
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       const NeumannBoundary &neumann = global_assembly->get_neumann();
 
       if (neumann.is_traction_load())
-         global_assembly->set_traction_load(tt);
+         global_assembly->set_traction_load(time);
 
       // Newton's method works on one vector of both fields, sol = [u; p],
       // their values on the dofs this rank owns.
@@ -95,7 +105,7 @@ public:
       disp.GetTrueDofs(sol.GetBlock(0));
       pres.GetTrueDofs(sol.GetBlock(1));
 
-      initial_guess(tt, disp, sol);
+      initial_guess(time, disp, sol);
 
       // The load value: the prescribed displacement, or the traction faces.
       if (dirichlet.is_disp_load())
@@ -105,12 +115,14 @@ public:
       SystemTools::print_block_newton_header();
 
       // Newton iterations for R(u,p) = 0.
-      const int iterations = solve_newton(tt, sol);
+      const int iterations = solve_newton(time, sol);
 
       disp.SetFromTrueDofs(sol.GetBlock(0));
       pres.SetFromTrueDofs(sol.GetBlock(1));
       return iterations;
    }
+
+   bool is_dynamic() const override { return false; }
 
    // Required by MFEM: overrides mfem::Operator::Mult, which NewtonSolver
    // calls at every iteration for the residual.
@@ -138,7 +150,7 @@ private:
    {
    public:
       // size: the pressure dofs this rank owns.
-      SchurInverse(const NonlinearSolver &input_owner, int size)
+      SchurInverse(const NonlinearSolver_Static &input_owner, int size)
          : mfem::Solver(size), owner(input_owner) {}
 
       void SetOperator(const mfem::Operator &op) override {}
@@ -150,7 +162,7 @@ private:
       }
 
    private:
-      const NonlinearSolver &owner;
+      const NonlinearSolver_Static &owner;
    };
 
    // K(u,p) on the dofs this rank owns, without constraints, into tangent,

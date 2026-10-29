@@ -1,14 +1,14 @@
 // ============================================================================
 // TimeSolver.hpp
 //
-// The loop over the time steps of the mixed displacement-pressure dynamics:
-// the initial state is completed by the nonlinear solver, and step
-// n = 1, ..., N is solved from the state of step n - 1, in steps of dt up to
-// the final time, the last one shortened to end there. The displacement, the
-// velocity, the acceleration and the pressure of step 0, of every
-// save_interval-th step and of the last are saved as
-// <results>/disp_XXXX.gf, velo_XXXX.gf, acce_XXXX.gf and pres_XXXX.gf, and the
-// time of each saved step in <results>/time.csv. Rank 0 gathers the fields from
+// The loop over the time steps of hyperelasticity in the mixed
+// displacement-pressure form, static or dynamic by the nonlinear solver: the
+// initial state is completed by the nonlinear solver, and step n = 1, ..., N
+// is solved from the state of step n - 1, at the times of TimeSteps. The
+// displacement and the pressure of step 0, of every save_interval-th step
+// and of the last are saved as <results>/disp_XXXX.gf and pres_XXXX.gf, in
+// the dynamics with the velocity and the acceleration, velo_XXXX.gf and
+// acce_XXXX.gf, and the time of each saved step in <results>/time.csv. Rank 0 gathers the fields from
 // all ranks onto the serial mesh of ParMesh::GetSerialMesh, saved as
 // <results>/mesh.mesh; its element order is that of the ranks, not that of
 // the mesh file read by the driver. It owns the nonlinear solver.
@@ -55,8 +55,18 @@ public:
    void run(mfem::ParGridFunction &disp, mfem::ParGridFunction &velo,
             mfem::ParGridFunction &acce, mfem::ParGridFunction &pres)
    {
+      // The fields of a step: the displacement and the pressure, in the
+      // dynamics with the velocity and the acceleration.
+      auto save_state = [&](int step)
+      {
+         if (nonlinear_solver->is_dynamic())
+            save_fields(step, {{"disp", &disp}, {"velo", &velo}, {"acce", &acce}, {"pres", &pres}});
+         else
+            save_fields(step, {{"disp", &disp}, {"pres", &pres}});
+      };
+
       nonlinear_solver->initialize(0.0, disp, velo, acce, pres);
-      save_fields(0, {{"disp", &disp}, {"velo", &velo}, {"acce", &acce}, {"pres", &pres}});
+      save_state(0);
       std::ofstream time_file = open_time_file();
 
       const int num_steps = time_steps.get_num_steps();
@@ -75,12 +85,12 @@ public:
                    << "Time step " << step << " / " << num_steps << ", t = " << time
                    << ", dt = " << dt << '\n';
 
-         const int iterations = nonlinear_solver->solve(time_n, dt, disp, velo, acce, pres);
+         const int iterations = nonlinear_solver->solve(time_n, time, disp, velo, acce, pres);
          print_converged(iterations, step_timer);
 
          if (is_saved(step, num_steps))
          {
-            save_fields(step, {{"disp", &disp}, {"velo", &velo}, {"acce", &acce}, {"pres", &pres}});
+            save_state(step);
             write_time(time_file, step, time, dt, iterations);
          }
 

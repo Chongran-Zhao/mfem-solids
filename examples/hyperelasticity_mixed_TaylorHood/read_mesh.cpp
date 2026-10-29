@@ -33,9 +33,10 @@
 int main(int argc, char *argv[])
 {
    // 1. The mesh section of config.yaml gives the mesh file, the number of
-   //    uniform refinements and the output file. By default the config.yaml
-   //    of the directory the program runs in is read, the copy CMake puts in
-   //    static_mixed_TaylorHood/build/. The mesh file is relative to the project
+   //    uniform refinements and the output file. The file given as first
+   //    argument is read, else the config.yaml of the directory the program
+   //    runs in, the copies CMake puts in the build folder. The mesh file is
+   //    relative to the project
    //    directory; output paths are relative to the directory the program
    //    runs in.
    const std::filesystem::path yaml_file =

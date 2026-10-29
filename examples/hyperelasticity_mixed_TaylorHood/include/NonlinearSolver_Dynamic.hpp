@@ -1,5 +1,5 @@
 // ============================================================================
-// NonlinearSolver.hpp
+// NonlinearSolver_Dynamic.hpp
 //
 // Solves one time step of the mixed displacement-pressure dynamics,
 //    M a + F_int(u,p) = F_ext(t),   J(u) = J(p) weakly,
@@ -40,8 +40,8 @@
 // Date: Oct. 3, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef NONLINEAR_SOLVER_HPP
-#define NONLINEAR_SOLVER_HPP
+#ifndef NONLINEAR_SOLVER_DYNAMIC_HPP
+#define NONLINEAR_SOLVER_DYNAMIC_HPP
 
 #include <memory>
 #include <utility>
@@ -51,25 +51,25 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
-#include "INonlinearSolver.hpp"
 #include "LoadData.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
+#include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha_2nd_Order.hpp"
 
-class NonlinearSolver : public INonlinearSolver
+class NonlinearSolver_Dynamic : public NonlinearSolver
 {
 public:
    // Takes the ownership of the global assembly and of the time method, and
    // assembles the mass matrix and, on space_p, the pressure operators of the
    // preconditioner; the Newton settings come from the solver
    // section of config.yaml.
-   NonlinearSolver(mfem::ParFiniteElementSpace &space_p,
-                   std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
-                   std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> input_time_method,
-                   const YAML::Node &solver)
-      : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
+   NonlinearSolver_Dynamic(mfem::ParFiniteElementSpace &space_p,
+                           std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
+                           std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> input_time_method,
+                           const YAML::Node &solver)
+      : NonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
         time_method(std::move(input_time_method)),
         mass(global_assembly->assemble_mass()),
@@ -106,7 +106,7 @@ public:
    // on the free dofs; on the constrained ones a_0 = 0, as in MixPERIGEE.
    // pres is p_0, given with u_0.
    void initialize(double tt, mfem::ParGridFunction &disp, mfem::ParGridFunction &velo,
-                   mfem::ParGridFunction &acce, const mfem::ParGridFunction &pres)
+                   mfem::ParGridFunction &acce, mfem::ParGridFunction &pres) override
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       const NeumannBoundary &neumann = global_assembly->get_neumann();
@@ -139,13 +139,14 @@ public:
       acce.SetFromTrueDofs(acce_owned);
    }
 
-   // Solves the step from time_n to time_n + input_dt: disp, velo, acce and
-   // pres, the state of time_n, become that of time_n + input_dt. Returns
+   // Solves the step from time_n to time, of input_dt = time - time_n: disp,
+   // velo, acce and pres, the state of time_n, become that of time. Returns
    // the number of Newton iterations.
-   int solve(double time_n, double input_dt, mfem::ParGridFunction &disp,
+   int solve(double time_n, double time, mfem::ParGridFunction &disp,
              mfem::ParGridFunction &velo, mfem::ParGridFunction &acce,
-             mfem::ParGridFunction &pres)
+             mfem::ParGridFunction &pres) override
    {
+      const double input_dt = time - time_n;
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
 
       // The values on the dofs this rank owns, those of time_n first;
@@ -183,6 +184,8 @@ public:
       acce.SetFromTrueDofs(acce_owned);
       return iterations;
    }
+
+   bool is_dynamic() const override { return true; }
 
    // Required by MFEM: overrides mfem::Operator::Mult, which NewtonSolver
    // calls at every iteration for the residual.
@@ -240,7 +243,7 @@ private:
    {
    public:
       // size: the pressure dofs this rank owns.
-      SchurInverse(const NonlinearSolver &input_owner, int size)
+      SchurInverse(const NonlinearSolver_Dynamic &input_owner, int size)
          : mfem::Solver(size), owner(input_owner), work(size) {}
 
       void SetOperator(const mfem::Operator &op) override {}
@@ -254,7 +257,7 @@ private:
       }
 
    private:
-      const NonlinearSolver &owner;
+      const NonlinearSolver_Dynamic &owner;
       mutable mfem::Vector work;
    };
 
