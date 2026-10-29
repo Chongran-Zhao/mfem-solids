@@ -1,7 +1,7 @@
 // ============================================================================
 // MaterialModelData.hpp
 //
-// The materials of sphere_rotation_TaylorHood, one per region of the mesh, by element
+// The materials of sphere_rotation, one per region of the mesh, by element
 // attribute: 1 the gelatin, incompressible Neo-Hookean, with shear modulus
 // mu = 2.8 kPa and density rho_0 = 1000 kg/m^3; 2 the skull, of acrylic
 // (PMMA), linearly elastic at small strains, with E = 2.75 GPa, nu = 0.35

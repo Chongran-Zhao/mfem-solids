@@ -70,7 +70,7 @@ Neumann:
 # Newton's method settings.
 solver:
   # Solver of the tangents: gmres, with the preconditioner of
-  # include/NonlinearSolver.hpp of this case, or mumps, a direct solver.
+  # include/NonlinearSolver_VMS_Dynamic.hpp, or mumps, a direct solver.
   linear_solver: gmres
   newton_rel_tol: 1.0e-8
   newton_abs_tol: 1.0e-10

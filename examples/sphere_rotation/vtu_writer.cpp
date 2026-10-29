@@ -1,11 +1,11 @@
 // ============================================================================
-// vtu_writer.cpp of sphere_rotation_vms
+// vtu_writer.cpp of sphere_rotation
 //
-// The vtu_writer of sphere_rotation_TaylorHood for the results of the VMS
-// driver, whose pressure has the order of the displacement; the acceleration
-// is the rate dv/dt of the rate form. As there, the fields are sampled within
-// each element by
-// VTK_Tools_Sphere, in spherical components. Writes the
+// The vtu_writer of hyperelasticity_mixed, sampled within each element by
+// VTK_Tools_Sphere, in spherical components, for the results of both
+// drivers, each field read with its own space: the pressure one order below
+// the displacement for Taylor-Hood and of its order with VMS, whose
+// acceleration is the rate dv/dt of the rate form. Writes the
 // displacement, the velocity, the acceleration, the Cauchy and the second
 // Piola-Kirchhoff stresses and the Green-Lagrange strain E = 1/2 (F^T F - I)
 // in spherical components, the displacement also in Cartesian ones, and the
@@ -20,7 +20,7 @@
 // results/mesh.mesh, the mesh the driver gathered them onto.
 //
 // Author: Chongran Zhao
-// Date: Oct. 15, 2026
+// Date: Oct. 11, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #include <cstddef>

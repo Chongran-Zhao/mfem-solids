@@ -1,7 +1,7 @@
 // ============================================================================
 // LoadData.hpp
 //
-// The loading of sphere_rotation_vms: the surface of the ball, the face "outer",
+// The loading of sphere_rotation: the surface of the ball, the face "outer",
 // turns rigidly about the z axis through the origin by the measured angle,
 // while the body starts at rest, without body force or traction. The angle
 // theta(t) is a piecewise quintic polynomial fitted to the measurements,

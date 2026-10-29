@@ -1,8 +1,9 @@
 // ============================================================================
-// NonlinearSolver.hpp
+// NonlinearSolver_TaylorHood_Dynamic.hpp
 //
-// Nonlinear solver of sphere_rotation_TaylorHood. Compared with NonlinearSolver_TaylorHood_Dynamic of hyperelasticity_mixed, it
-// uses material regions, an iterative block solver and a rigid-rotation
+// Nonlinear solver of driver_TaylorHood_dynamic of sphere_rotation. Compared
+// with NonlinearSolver_TaylorHood_Dynamic of hyperelasticity_mixed, it uses
+// material regions, an iterative block solver and a rigid-rotation
 // initial guess, as detailed below.
 //
 // 1. The mesh has regions of their own materials, from MaterialModelData,
@@ -57,8 +58,8 @@
 // Date: Oct. 13, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef NONLINEAR_SOLVER_HPP
-#define NONLINEAR_SOLVER_HPP
+#ifndef NONLINEAR_SOLVER_TAYLOR_HOOD_DYNAMIC_HPP
+#define NONLINEAR_SOLVER_TAYLOR_HOOD_DYNAMIC_HPP
 
 #include <memory>
 #include <utility>
@@ -68,27 +69,27 @@
 
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
-#include "INonlinearSolver.hpp"
 #include "LoadData.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
+#include "NonlinearSolver.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha_2nd_Order.hpp"
 #include "Vector_3D.hpp"
 
-class NonlinearSolver : public INonlinearSolver
+class NonlinearSolver_TaylorHood_Dynamic : public NonlinearSolver
 {
 public:
    // Takes the ownership of the global assembly and of the time method, and
    // assembles the mass matrix on space_u and the pressure operators of the
    // preconditioner on space_p; the Newton settings come from the solver
    // section of config.yaml.
-   NonlinearSolver(mfem::ParFiniteElementSpace &space_u,
-                   mfem::ParFiniteElementSpace &space_p,
-                   std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
-                   std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> input_time_method,
-                   const YAML::Node &solver)
-      : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
+   NonlinearSolver_TaylorHood_Dynamic(mfem::ParFiniteElementSpace &space_u,
+                                      mfem::ParFiniteElementSpace &space_p,
+                                      std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
+                                      std::unique_ptr<TimeMethod_GenAlpha_2nd_Order> input_time_method,
+                                      const YAML::Node &solver)
+      : NonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
         time_method(std::move(input_time_method)),
         mass(assemble_mass(space_u)),
@@ -149,7 +150,7 @@ public:
    // on the free dofs; on the constrained ones a_0 = 0, as in MixPERIGEE.
    // pres is p_0, given with u_0.
    void initialize(double tt, mfem::ParGridFunction &disp, mfem::ParGridFunction &velo,
-                   mfem::ParGridFunction &acce, const mfem::ParGridFunction &pres)
+                   mfem::ParGridFunction &acce, mfem::ParGridFunction &pres) override
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       const NeumannBoundary &neumann = global_assembly->get_neumann();
@@ -182,13 +183,14 @@ public:
       acce.SetFromTrueDofs(acce_owned);
    }
 
-   // Solves the step from time_n to time_n + input_dt: disp, velo, acce and
-   // pres, the state of time_n, become that of time_n + input_dt. Returns
+   // Solves the step from time_n to time, of input_dt = time - time_n: disp,
+   // velo, acce and pres, the state of time_n, become that of time. Returns
    // the number of Newton iterations.
-   int solve(double time_n, double input_dt, mfem::ParGridFunction &disp,
+   int solve(double time_n, double time, mfem::ParGridFunction &disp,
              mfem::ParGridFunction &velo, mfem::ParGridFunction &acce,
-             mfem::ParGridFunction &pres)
+             mfem::ParGridFunction &pres) override
    {
+      const double input_dt = time - time_n;
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
 
       // The values on the dofs this rank owns, those of time_n first;
@@ -311,7 +313,7 @@ private:
    {
    public:
       // size: the pressure dofs this rank owns.
-      SchurInverse(const NonlinearSolver &input_owner, int size)
+      SchurInverse(const NonlinearSolver_TaylorHood_Dynamic &input_owner, int size)
          : mfem::Solver(size), owner(input_owner), work(size) {}
 
       void SetOperator(const mfem::Operator &op) override {}
@@ -325,7 +327,7 @@ private:
       }
 
    private:
-      const NonlinearSolver &owner;
+      const NonlinearSolver_TaylorHood_Dynamic &owner;
       mutable mfem::Vector work;
    };
 

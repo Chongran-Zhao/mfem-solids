@@ -1,7 +1,6 @@
-# Input of read_mesh, driver and vtu_writer of sphere_rotation_vms.
-# CMake copies it into sphere_rotation_vms/build/, and the programs read the copy
-# of the directory they run in, or the file given as first argument. Units
-# are SI: meters, seconds. The surface of the ball turns about z by the
+# Input of driver_TaylorHood_dynamic, which reads it by default, and of read_mesh, vtu_writer
+# and probe_disp of sphere_rotation, given as their first argument; CMake
+# copies it into sphere_rotation/build/. Units are SI: meters, seconds. The surface of the ball turns about z by the
 # measured angle of LoadData; the body starts at rest.
 
 mesh:
@@ -38,21 +37,16 @@ mesh:
   output: sphere.mesh
 
 space:
-  # Order of the continuous shape functions of the velocity and of the
-  # pressure, equal (1: Q1/Q1, 2: Q2/Q2), stabilized by VMS, and of the
-  # geometry.
-  elem_order: 1
+  # Order of the continuous shape functions of the displacement, at least 2,
+  # and of the curved geometry; the pressure is one order lower
+  # (Taylor-Hood).
+  elem_order: 2
 
   # Quadrature order of the elements, 2 x elem_order + 1: the
-  # (elem_order + 1)^3 Gauss rule, 2 x 2 x 2 points for Q1 here (5 for Q2);
-  # 0 keeps the default rule, 2 x LocalAssemblyTools OrderGrad.
-  quad_order: 3
-
-  # Factor of the VMS parameter tau = tau_factor dx J / (c rho_0 k^2) of the
-  # incompressible regions, the gelatin: dx the longest diagonal of the
-  # element, c = sqrt(mu / rho_0) and k the element order; 0.01 is that of
-  # PERIGEE. The compressible skull has tau = 0, as in PERIGEE.
-  tau_factor: 0.01
+  # (elem_order + 1)^3 Gauss rule, 3 x 3 x 3 points for Q2 here; 0 keeps the
+  # default rule, 2 x LocalAssemblyTools OrderGrad, 6 x 6 x 6 points on the
+  # curved Q2 elements.
+  quad_order: 5
 
 # The measured rotation of the surface, read by LoadData::read_rotation: the
 # piecewise quintic angle theta(t) fitted to the measurements, one row per
@@ -61,7 +55,7 @@ space:
 loading:
   rotation_file: angle_coefficients.csv
 
-# Time integration method, read into TimeMethod_GenAlpha_1st_Order.
+# Time integration method, read into TimeMethod_GenAlpha_2nd_Order.
 time_method:
   # Spectral radius at infinite frequency of generalized-alpha, in [0, 1].
   rho_inf: 0.5
@@ -74,7 +68,7 @@ time:
   final_time: 0.153
 
 # Displacement boundary conditions: the whole surface follows the rotation of
-# LoadData::disp_loading, its velocity that of LoadData::velo_loading.
+# LoadData::disp_loading.
 Dirichlet:
   fixed_bc: []
   disp_bc:
@@ -87,15 +81,16 @@ Neumann:
   faces: []
 
 # Newton's method settings; the linear solver is GMRES, with the block
-# preconditioner of include/NonlinearSolver.hpp of this case. The
+# preconditioner of include/NonlinearSolver_TaylorHood_Dynamic.hpp. The
 # residual of the stiff skull cannot drop below about 1e-9 N, its bulk
 # modulus, about 3e9 Pa, times the round-off of J - 1, so newton_abs_tol is
 # above that. With the skull started from the rotation of its surface, the
-# residual starts at about 1 N in sphere_rotation_TaylorHood; newton_rel_tol and
-# newton_abs_tol are those of sphere_rotation_TaylorHood.
+# residual starts at about 1 N, and one Newton iteration brings it to about
+# 1e-6 of that, which newton_rel_tol = 1e-5 accepts; the fields then differ
+# from those of 1e-7 by less than 1e-6.
 solver:
   # Solver of the tangents: gmres, with the preconditioner of
-  # include/NonlinearSolver.hpp of this case, or mumps, a direct solver.
+  # include/NonlinearSolver_TaylorHood_Dynamic.hpp, or mumps, a direct solver.
   linear_solver: gmres
   newton_rel_tol: 1.0e-5
   newton_abs_tol: 1.0e-8
@@ -106,11 +101,10 @@ solver:
 # vtu_refine^3 hexahedra at its sampling points; the files grow as
 # (vtu_refine + 1)^3.
 output:
-  vtu: results_vtu
+  vtu: results_TaylorHood_dynamic_vtu
   vtu_interval: 10
-  # 1 for Q1, 2 to show the quadratic fields of Q2.
-  vtu_refine: 1
-  gf: results_gf
+  vtu_refine: 2
+  gf: results_TaylorHood_dynamic_gf
   # The fields are saved every gf_interval-th time step, and at the last;
   # vtu_interval counts the saved steps.
   gf_interval: 1

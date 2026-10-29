@@ -7,7 +7,7 @@
 # through the lowest sample and its neighbours, so the VTU series should be
 # fine in time, about 1 ms. Writes the figure and a CSV file of the arrival
 # times, and prints the wave speed.
-#    pvpython wave_speed.py results_vtu/results_vtu.pvd wave_speed.png
+#    pvpython wave_speed.py results_vms_dynamic_vtu/results_vms_dynamic_vtu.pvd wave_speed.png
 #       [--angle 60] [--radii 10 80 5] [--fit 10 80] [--component r_phi]
 import argparse
 import csv

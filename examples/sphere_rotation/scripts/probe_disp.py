@@ -3,7 +3,7 @@
 # from the VTU series of vtu_writer. The default is u_phi, the circumferential
 # displacement U_theta of the measurements, at their radii 11.12, 32.31 and
 # 53.38 mm on the measured ray, 60 degrees from the x axis.
-#    pvpython probe_disp.py results_vtu/results_vtu.pvd U_phi.csv
+#    pvpython probe_disp.py results_vms_dynamic_vtu/results_vms_dynamic_vtu.pvd U_phi.csv
 #       [--angle 60] [--radii 11.12 32.31 53.38] [--component phi]
 import argparse
 import csv

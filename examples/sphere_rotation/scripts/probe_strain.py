@@ -3,7 +3,7 @@
 # from the VTU series of vtu_writer. The default is E_r_phi, the in-plane
 # shear E_r_theta of the measurements, at 20, 40, 60, 80 mm on the measured
 # ray, 60 degrees from the x axis.
-#    pvpython probe_strain.py results_vtu/results_vtu.pvd E_rphi.csv
+#    pvpython probe_strain.py results_vms_dynamic_vtu/results_vms_dynamic_vtu.pvd E_rphi.csv
 #       [--angle 60] [--radii 20 40 60 80] [--component r_phi]
 import argparse
 import csv

@@ -1,8 +1,8 @@
 // ============================================================================
-// driver.cpp of sphere_rotation_vms
+// driver_vms_dynamic.cpp of sphere_rotation
 //
-// The driver_vms_dynamic of hyperelasticity_mixed for the gelatin ball in its skull shell of
-// sphere_rotation_TaylorHood, spun up by its surface: the rate form with equal-order
+// The driver_vms_dynamic of hyperelasticity_mixed for the gelatin ball in its
+// skull shell, spun up by its surface: the rate form with equal-order
 // elements stabilized by VMS, the materials of the regions, and GMRES. The
 // VMS term acts in the incompressible regions only; as in PERIGEE, the
 // compressible ones, here the skull, have tau = 0.
@@ -30,7 +30,7 @@
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
-#include "NonlinearSolver.hpp"
+#include "NonlinearSolver_VMS_Dynamic.hpp"
 #include "SystemTools.hpp"
 #include "TimeMethod_GenAlpha_1st_Order.hpp"
 #include "TimeSolver.hpp"
@@ -50,10 +50,11 @@ int main(int argc, char *argv[])
    mfem::out << "\nJob started on " << SystemTools::get_time() << ' '
              << SystemTools::get_date() << '\n';
 
-   // 1. Read config.yaml.
+   // 1. Read the input, the file given as first argument, else
+   //    config_vms_dynamic.yaml.
    const std::filesystem::path yaml_file =
       (argc > 1) ? std::filesystem::path(argv[1])
-                 : std::filesystem::path("config.yaml");
+                 : std::filesystem::path("config_vms_dynamic.yaml");
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
    // The measured rotation of the surface, which must last to final_time.
@@ -138,7 +139,7 @@ int main(int argc, char *argv[])
    //    time solver, which owns the nonlinear solver.
    auto time_method =
       std::make_unique<TimeMethod_GenAlpha_1st_Order>(config["time_method"]["rho_inf"].as<double>());
-   auto nonlinear_solver = std::make_unique<NonlinearSolver>(
+   auto nonlinear_solver = std::make_unique<NonlinearSolver_VMS_Dynamic>(
       space_u, space_p, std::move(global_assembly), local_assembly_ref, std::move(time_method),
       config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();

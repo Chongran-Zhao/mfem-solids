@@ -1,17 +1,17 @@
 // ============================================================================
-// probe_disp.cpp of sphere_rotation_TaylorHood
+// probe_disp.cpp of sphere_rotation
 //
 // Writes the history of the circumferential displacement u_phi, in mm, of
 // material points at radii on a ray of the equatorial plane z = 0 to a CSV
-// file, one column per radius, the columns of probe_disp.py of
-// sphere_rotation_vms. The default points are those of the measurements,
+// file, one column per radius, the columns of scripts/probe_disp.py, from
+// the results of either driver, given by their input. The default points are those of the measurements,
 // 11.12, 32.31 and 53.38 mm on the ray 60 degrees from the x axis. Unlike
 // probe_disp.py, which samples the VTU series of vtu_writer at fixed points
 // of the current configuration, each element cut into linear hexahedra, it
 // reads the fields the driver saved and evaluates them with the shape
 // functions of their elements at the material points, found once in the
 // reference configuration, u_phi = e_phi(X) . u(X).
-//    ./probe_disp U_phi.csv [config.yaml]
+//    ./probe_disp U_phi.csv config_TaylorHood_dynamic.yaml
 // It is serial and reads the results on results/mesh.mesh, the mesh the
 // driver gathered them onto.
 //
@@ -35,7 +35,7 @@
 
 int main(int argc, char *argv[])
 {
-   MFEM_VERIFY(argc > 1, "Usage: ./probe_disp <output.csv> [config.yaml]");
+   MFEM_VERIFY(argc == 3, "Usage: ./probe_disp <output.csv> <input of the driver>");
    const std::filesystem::path csv_file(argv[1]);
 
    // The material points: radii in mm on the ray of z = 0 at angle degrees
@@ -43,10 +43,8 @@ int main(int argc, char *argv[])
    const std::vector<double> radii = {11.12, 32.31, 53.38};
    const double angle = 60.0 * M_PI / 180.0;
 
-   // 1. Read config.yaml.
-   const std::filesystem::path yaml_file =
-      (argc > 2) ? std::filesystem::path(argv[2])
-                 : std::filesystem::path("config.yaml");
+   // 1. Read the input of the driver, for its results folder.
+   const std::filesystem::path yaml_file(argv[2]);
    const YAML::Node config = YAML::LoadFile(yaml_file.string());
 
    // 2. Read the mesh the driver saved with its results, on which they live.

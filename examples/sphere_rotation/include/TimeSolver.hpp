@@ -3,8 +3,8 @@
 //
 // The loop over the time steps of the mixed displacement-pressure dynamics:
 // the initial state is completed by the nonlinear solver, and step
-// n = 1, ..., N is solved from the state of step n - 1, in steps of dt up to
-// the final time, the last one shortened to end there. The displacement, the
+// n = 1, ..., N is solved from the state of step n - 1, at the times of
+// TimeSteps, by either nonlinear solver of the case. The displacement, the
 // velocity, the acceleration and the pressure of step 0, of every
 // save_interval-th step and of the last are saved as
 // <results>/disp_XXXX.gf, velo_XXXX.gf, acce_XXXX.gf and pres_XXXX.gf, and the
@@ -75,7 +75,7 @@ public:
                    << "Time step " << step << " / " << num_steps << ", t = " << time
                    << ", dt = " << dt << '\n';
 
-         const int iterations = nonlinear_solver->solve(time_n, dt, disp, velo, acce, pres);
+         const int iterations = nonlinear_solver->solve(time_n, time, disp, velo, acce, pres);
          print_converged(iterations, step_timer);
 
          if (is_saved(step, num_steps))
