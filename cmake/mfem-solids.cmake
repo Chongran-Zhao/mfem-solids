@@ -4,7 +4,7 @@
 # Settings shared by the examples of this project, in examples/; the
 # CMakeLists.txt of each includes it after its own project() call:
 #    project_dir     the root of mfem-solids
-#    mfem_libraries  MFEM, built with MPI and MUMPS, MPI, and yaml-cpp
+#    mfem_libraries  MFEM, built with MPI, MUMPS and PETSc, MPI, and yaml-cpp
 #    mfem_solids     the target of the shared headers of include/, with
 #                    their folders and mfem_libraries; a program links it
 # ============================================================================
@@ -23,12 +23,13 @@ get_filename_component(project_dir "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 # Libraries installed in MFEM/lib, next to mfem-solids.
 set(lib_dir "${project_dir}/../lib")
 
-find_package(MFEM REQUIRED HINTS "${lib_dir}/mfem/build")
+find_package(MFEM REQUIRED HINTS "${lib_dir}/mfem/build_petsc")
 message(STATUS "MFEM ${MFEM_VERSION} at ${MFEM_DIR}")
 
-# The programs run on MPI ranks, and solve with MUMPS by linear_solver: mumps.
-if(NOT MFEM_USE_MPI OR NOT MFEM_USE_MUMPS)
-  message(FATAL_ERROR "mfem-solids needs MFEM built with MPI and MUMPS.")
+# The programs run on MPI ranks, solve with MUMPS by linear_solver: mumps, and
+# solve the damage problems with PETSc.
+if(NOT MFEM_USE_MPI OR NOT MFEM_USE_MUMPS OR NOT MFEM_USE_PETSC)
+  message(FATAL_ERROR "mfem-solids needs MFEM built with MPI, MUMPS and PETSc.")
 endif()
 find_package(MPI REQUIRED COMPONENTS CXX)
 
