@@ -23,17 +23,17 @@ public:
    // a = eta + (1 - eta) (1 - alpha)^2
    double get_a(double alpha) const override
    {
-      return residual_stiffness + (1.0 - residual_stiffness) * (1.0 - alpha) * (1.0 - alpha);
+      return eta + (1.0 - eta) * (1.0 - alpha) * (1.0 - alpha);
    }
 
    // a' = -2 (1 - eta) (1 - alpha)
    double get_da(double alpha) const override
    {
-      return -2.0 * (1.0 - residual_stiffness) * (1.0 - alpha);
+      return -2.0 * (1.0 - eta) * (1.0 - alpha);
    }
 
    // a'' = 2 (1 - eta)
-   double get_d2a(double alpha) const override { return 2.0 * (1.0 - residual_stiffness); }
+   double get_d2a(double alpha) const override { return 2.0 * (1.0 - eta); }
 
    // w = alpha^2
    double get_w(double alpha) const override { return alpha * alpha; }

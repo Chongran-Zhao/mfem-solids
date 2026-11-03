@@ -23,11 +23,8 @@
 class IDamageModel
 {
 public:
-   IDamageModel(double input_fracture_toughness, double input_internal_length,
-                double input_residual_stiffness)
-      : fracture_toughness(input_fracture_toughness),
-        internal_length(input_internal_length),
-        residual_stiffness(input_residual_stiffness) {}
+   IDamageModel(double input_G_c, double input_ell, double input_eta)
+      : G_c(input_G_c), ell(input_ell), eta(input_eta) {}
 
    virtual ~IDamageModel() = default;
 
@@ -44,14 +41,14 @@ public:
    // c_w = int_0^1 sqrt(w(s)) ds.
    virtual double get_c_w() const = 0;
 
-   double get_fracture_toughness() const { return fracture_toughness; }
-   double get_internal_length() const { return internal_length; }
-   double get_residual_stiffness() const { return residual_stiffness; }
+   double get_G_c() const { return G_c; }
+   double get_ell() const { return ell; }
+   double get_eta() const { return eta; }
 
 protected:
-   const double fracture_toughness;   // G_c
-   const double internal_length;      // ell
-   const double residual_stiffness;   // eta
+   const double G_c;   // fracture toughness
+   const double ell;   // internal length
+   const double eta;   // residual stiffness
 };
 
 #endif
