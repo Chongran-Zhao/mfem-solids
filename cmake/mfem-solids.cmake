@@ -81,6 +81,7 @@ set(shared_headers
   ${project_dir}/include/assembly/GlobalAssembly_Disp.hpp
   ${project_dir}/include/assembly/GlobalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssemblyTools.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Damage.hpp
   ${project_dir}/include/assembly/LocalAssembly_Disp.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood.hpp
