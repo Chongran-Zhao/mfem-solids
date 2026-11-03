@@ -91,6 +91,9 @@ set(shared_headers
   ${project_dir}/include/assembly/ShapeCache.hpp
   ${project_dir}/include/boundary/DirichletBoundary.hpp
   ${project_dir}/include/boundary/NeumannBoundary.hpp
+  ${project_dir}/include/material/DamageModel_AT1.hpp
+  ${project_dir}/include/material/DamageModel_AT2.hpp
+  ${project_dir}/include/material/IDamageModel.hpp
   ${project_dir}/include/material/IMaterialModel_ich.hpp
   ${project_dir}/include/material/IMaterialModel_vol.hpp
   ${project_dir}/include/material/MaterialModel.hpp
