@@ -4,9 +4,7 @@
 // Local (element) assembly of compressible hyperelasticity in the Total
 // Lagrangian form: the element residual and tangent. The unknown is the
 // displacement. It is an MFEM NonlinearFormIntegrator, called by
-// NonlinearForm, which assembles the global residual and tangent. An optional
-// factor multiplies the energy density, thus the residual and the tangent, as
-// a(alpha) of phase-field fracture.
+// NonlinearForm, which assembles the global residual and tangent.
 //
 // Author: Chongran Zhao
 // Date: Sep. 25, 2026
@@ -17,7 +15,6 @@
 
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include <mfem.hpp>
 
@@ -50,19 +47,16 @@ public:
       residual = 0.0;
 
       // N_a,J and dV at the points, kept from the first assembly.
-      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
-      const std::vector<ShapeCache::PointShapes> &points =
-         shape_cache.get(elem, nullptr, elem_map, quad_rule);
-      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
+      for (const ShapeCache::PointShapes &point :
+           shape_cache.get(elem, nullptr, elem_map, get_quad_rule(elem, elem_map)))
       {
-         const ShapeCache::PointShapes &point = points[qq];
          const mfem::DenseMatrix &dN_dX = point.dN_dX;
 
          const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
 
          const Tensor2_3D PK1 = material->get_1st_PK_stress(F);
 
-         const double dV = point.dV * get_energy_factor(elem_map, quad_rule, qq);
+         const double dV = point.dV;
 
          for (int aa = 0; aa < num_nodes; aa++)
          {
@@ -97,19 +91,16 @@ public:
       tangent = 0.0;
 
       // N_a,J and dV at the points, kept from the first assembly.
-      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
-      const std::vector<ShapeCache::PointShapes> &points =
-         shape_cache.get(elem, nullptr, elem_map, quad_rule);
-      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
+      for (const ShapeCache::PointShapes &point :
+           shape_cache.get(elem, nullptr, elem_map, get_quad_rule(elem, elem_map)))
       {
-         const ShapeCache::PointShapes &point = points[qq];
          const mfem::DenseMatrix &dN_dX = point.dN_dX;
 
          const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
 
          const Tensor4_3D AA = material->get_1st_elasticity_tensor(F);
 
-         const double dV = point.dV * get_energy_factor(elem_map, quad_rule, qq);
+         const double dV = point.dV;
 
          LocalAssemblyTools::add_momentum_tangent_uu(dN_dX, AA, dV, tangent);
       }
@@ -122,13 +113,6 @@ public:
    // LocalAssemblyTools::get_quad_rule.
    void set_quad_order(int input_quad_order) { quad_order = input_quad_order; }
 
-   // The factor of the energy density, which stays the caller's and is read
-   // at every assembly; without it the factor is 1.
-   void set_energy_factor(mfem::Coefficient &input_energy_factor)
-   {
-      energy_factor = &input_energy_factor;
-   }
-
 private:
    // The rule of order quad_order, or that of LocalAssemblyTools.
    const mfem::IntegrationRule &get_quad_rule(const mfem::FiniteElement &elem,
@@ -138,19 +122,7 @@ private:
                               : LocalAssemblyTools::get_quad_rule(elem, elem_map);
    }
 
-   // The factor of the energy density at the quadrature point qq.
-   double get_energy_factor(mfem::ElementTransformation &elem_map,
-                            const mfem::IntegrationRule &quad_rule, int qq) const
-   {
-      if (!energy_factor)
-         return 1.0;
-      const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
-      elem_map.SetIntPoint(&quad_pt);
-      return energy_factor->Eval(elem_map, quad_pt);
-   }
-
    const std::unique_ptr<const MaterialModel> material;
-   mfem::Coefficient *energy_factor = nullptr;   // factor of the energy density, not owned
    int quad_order = 0;   // quadrature order, 0 for that of LocalAssemblyTools
    ShapeCache shape_cache{false};   // N_a,J and dV of each element
 };

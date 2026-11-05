@@ -27,7 +27,7 @@ find_package(MFEM REQUIRED HINTS "${lib_dir}/mfem/build_petsc")
 message(STATUS "MFEM ${MFEM_VERSION} at ${MFEM_DIR}")
 
 # The programs run on MPI ranks, solve with MUMPS by linear_solver: mumps, and
-# solve the damage problems with PETSc.
+# solve the fracture problems with PETSc.
 if(NOT MFEM_USE_MPI OR NOT MFEM_USE_MUMPS OR NOT MFEM_USE_PETSC)
   message(FATAL_ERROR "mfem-solids needs MFEM built with MPI, MUMPS and PETSc.")
 endif()
@@ -78,13 +78,10 @@ target_include_directories(mfem_solids INTERFACE
   ${MFEM_INCLUDE_DIRS})
 target_link_libraries(mfem_solids INTERFACE ${mfem_libraries})
 set(shared_headers
-  ${project_dir}/include/assembly/DegradationCoefficient.hpp
-  ${project_dir}/include/assembly/ElasticEnergyCoefficient.hpp
   ${project_dir}/include/assembly/GlobalAssembly_Disp.hpp
   ${project_dir}/include/assembly/GlobalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssemblyTools.hpp
   ${project_dir}/include/assembly/LocalAssembly_Disp.hpp
-  ${project_dir}/include/assembly/LocalAssembly_Fracture.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood_Regions.hpp
