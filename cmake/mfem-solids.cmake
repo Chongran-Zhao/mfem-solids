@@ -78,6 +78,8 @@ target_include_directories(mfem_solids INTERFACE
   ${MFEM_INCLUDE_DIRS})
 target_link_libraries(mfem_solids INTERFACE ${mfem_libraries})
 set(shared_headers
+  ${project_dir}/include/assembly/DegradationCoefficient.hpp
+  ${project_dir}/include/assembly/ElasticEnergyCoefficient.hpp
   ${project_dir}/include/assembly/GlobalAssembly_Disp.hpp
   ${project_dir}/include/assembly/GlobalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssemblyTools.hpp
@@ -92,9 +94,7 @@ set(shared_headers
   ${project_dir}/include/assembly/ShapeCache.hpp
   ${project_dir}/include/boundary/DirichletBoundary.hpp
   ${project_dir}/include/boundary/NeumannBoundary.hpp
-  ${project_dir}/include/material/DamageModel_AT1.hpp
-  ${project_dir}/include/material/DamageModel_AT2.hpp
-  ${project_dir}/include/material/IDamageModel.hpp
+  ${project_dir}/include/material/ISurfaceEnergy.hpp
   ${project_dir}/include/material/IMaterialModel_ich.hpp
   ${project_dir}/include/material/IMaterialModel_vol.hpp
   ${project_dir}/include/material/MaterialModel.hpp
@@ -102,6 +102,8 @@ set(shared_headers
   ${project_dir}/include/material/MaterialModel_vol_Incompressible.hpp
   ${project_dir}/include/material/MaterialModel_vol_Quadratic.hpp
   ${project_dir}/include/material/MaterialModel_vol_SimoPister.hpp
+  ${project_dir}/include/material/SurfaceEnergy_AT1.hpp
+  ${project_dir}/include/material/SurfaceEnergy_AT2.hpp
   ${project_dir}/include/solver/INonlinearSolver.hpp
   ${project_dir}/include/solver/ITimeSolver.hpp
   ${project_dir}/include/solver/TimeMethod_GenAlpha_2nd_Order.hpp
