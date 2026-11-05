@@ -27,7 +27,8 @@
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
 #include "LoadData.hpp"
-#include "LocalAssembly_Mixed_TaylorHood.hpp"
+#include "LocalAssembly_Mixed.hpp"
+#include "MassEquation_TaylorHood.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
@@ -100,7 +101,8 @@ int main(int argc, char *argv[])
    // 7. Set up the assembly: the material goes to the local assembly, and the
    //    local assembly and the boundary conditions to the global one, which
    //    owns them.
-   auto local_assembly = std::make_unique<LocalAssembly_Mixed_TaylorHood>(std::move(material));
+   auto local_assembly = std::make_unique<LocalAssembly_Mixed>(
+      std::move(material), std::make_unique<MassEquation_TaylorHood>());
    local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));

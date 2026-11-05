@@ -79,13 +79,13 @@ target_link_libraries(mfem_solids INTERFACE ${mfem_libraries})
 set(shared_headers
   ${project_dir}/include/assembly/GlobalAssembly_Disp.hpp
   ${project_dir}/include/assembly/GlobalAssembly_Mixed.hpp
+  ${project_dir}/include/assembly/IMassEquation.hpp
   ${project_dir}/include/assembly/LocalAssemblyTools.hpp
   ${project_dir}/include/assembly/LocalAssembly_Disp.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed.hpp
-  ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood.hpp
-  ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood_Regions.hpp
-  ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS.hpp
-  ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS_Regions.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Mixed_Regions.hpp
+  ${project_dir}/include/assembly/MassEquation_TaylorHood.hpp
+  ${project_dir}/include/assembly/MassEquation_VMS.hpp
   ${project_dir}/include/assembly/ParBlockNonlinearForm_External.hpp
   ${project_dir}/include/assembly/ShapeCache.hpp
   ${project_dir}/include/boundary/DirichletBoundary.hpp

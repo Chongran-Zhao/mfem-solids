@@ -9,7 +9,7 @@
 // v_{n+1} and p_{n+1} are the unknowns of Newton's method; u_{n+1} follows
 // from the kinematics du_alpha = v_alpha. The pressure has no inertia. The
 // mass equation, with its VMS stabilization, is that of
-// LocalAssembly_Mixed_VMS, to which this solver gives, at every step, u,
+// MassEquation_VMS, to which this solver gives, at every step, u,
 // dv/dt and dp/dt as affine functions of v_alpha and p_alpha. It also
 // computes the initial acceleration. It owns the global assembly, the mass
 // matrix, the time method and the solvers, and keeps the rates du/dt and
@@ -56,7 +56,7 @@
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
 #include "LoadData.hpp"
-#include "LocalAssembly_Mixed_VMS.hpp"
+#include "MassEquation_VMS.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "NonlinearSolver.hpp"
@@ -69,16 +69,16 @@ public:
    // Takes the ownership of the global assembly and of the time method, and
    // assembles the mass matrix and, on space_p, the pressure operators of the
    // preconditioner; the Newton settings come from the solver
-   // section of config.yaml. local_assembly is that of the global assembly,
-   // which owns it.
+   // section of config.yaml. mass_equation is that of the local assembly of
+   // the global assembly, which owns it.
    NonlinearSolver_VMS_Dynamic(mfem::ParFiniteElementSpace &input_space_p,
                                std::unique_ptr<GlobalAssembly_Mixed> input_global_assembly,
-                               LocalAssembly_Mixed_VMS &input_local_assembly,
+                               MassEquation_VMS &input_mass_equation,
                                std::unique_ptr<TimeMethod_GenAlpha_1st_Order> input_time_method,
                                const YAML::Node &solver)
       : NonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
-        local_assembly(input_local_assembly),
+        mass_equation(input_mass_equation),
         time_method(std::move(input_time_method)),
         mass(global_assembly->assemble_mass()),
         space_p(input_space_p),
@@ -145,7 +145,7 @@ public:
       dot_velo_offset = 0.0;
       dot_pres_offset.SetSpace(&space_p);
       dot_pres_offset = 0.0;
-      local_assembly.set_rates(disp_offset, 0.0, dot_velo_offset, dot_pres_offset, 0.0);
+      mass_equation.set_rates(disp_offset, 0.0, dot_velo_offset, dot_pres_offset, 0.0);
 
       // rhs = -R_u(u_0,p_0), the velocity block of the residual, and M the
       // identity on the constrained dofs, where rhs is zero.
@@ -330,9 +330,9 @@ private:
       dot_pres_offset.SetSpace(&space_p);
       dot_pres_offset.SetFromTrueDofs(time_method->get_dot_alpha(
          pres_n, dot_pres_n, time_method->get_state(pres_n, zero_p), dt));
-      local_assembly.set_rates(disp_offset, time_method->get_disp_alpha_factor(dt),
-                               dot_velo_offset, dot_pres_offset,
-                               time_method->get_dot_alpha_factor(dt));
+      mass_equation.set_rates(disp_offset, time_method->get_disp_alpha_factor(dt),
+                              dot_velo_offset, dot_pres_offset,
+                              time_method->get_dot_alpha_factor(dt));
 
       // The part of the Schur approximation that depends on dt only.
       if (dt != pres_dynamic_dt)
@@ -389,7 +389,7 @@ private:
    }
 
    const std::unique_ptr<GlobalAssembly_Mixed> global_assembly;   // R, K and M
-   LocalAssembly_Mixed_VMS &local_assembly;                       // that of global_assembly, for set_rates
+   MassEquation_VMS &mass_equation;                               // that of global_assembly, for set_rates
    const std::unique_ptr<TimeMethod_GenAlpha_1st_Order> time_method; // alpha_m, alpha_f, gamma
    const std::unique_ptr<mfem::HypreParMatrix> mass;              // M of the velocity, assembled once
    mfem::ParFiniteElementSpace &space_p;                          // pressure space, outlives this

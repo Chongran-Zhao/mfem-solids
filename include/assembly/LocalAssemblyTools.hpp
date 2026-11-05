@@ -52,6 +52,15 @@ public:
       return F;
    }
 
+   // J N_a,J F^-1_Jk, the factor of K_up(a k, d) = -int J N_a,J F^-1_Jk M_d dV,
+   // which is also that of its transpose K_pu of Taylor-Hood.
+   static double get_J_dNa_dx(const mfem::DenseMatrix &dN_dX, int aa, int kk, double J,
+                              const Tensor2_3D &F_inv)
+   {
+      return J * (dN_dX(aa, 0) * F_inv(0, kk) + dN_dX(aa, 1) * F_inv(1, kk)
+                + dN_dX(aa, 2) * F_inv(2, kk));
+   }
+
    // K_uu(a k, b l) += dV N_a,J AA_kJlL N_b,L, the tangent of
    // int N_a,J P_kJ dV in every formulation, stored at
    // K_uu(aa+k*num_nodes, bb+l*num_nodes). dV AA_kJlL N_b,L is taken first,

@@ -4,7 +4,7 @@
 // Hyperelastodynamics in the rate form of the mixed displacement-pressure
 // (u/p) formulation, as in PERIGEE solids: the velocity and the pressure are
 // the unknowns, of equal order, stabilized by the VMS term of
-// LocalAssembly_Mixed_VMS, with the first-order generalized-alpha method in
+// MassEquation_VMS, with the first-order generalized-alpha method in
 // physical time. The
 // time steps and the boundary conditions are read from
 // config_vms_dynamic.yaml, the latter referring to faces by name; the material is given by
@@ -29,7 +29,8 @@
 #include "DirichletBoundary.hpp"
 #include "GlobalAssembly_Mixed.hpp"
 #include "LoadData.hpp"
-#include "LocalAssembly_Mixed_VMS.hpp"
+#include "LocalAssembly_Mixed.hpp"
+#include "MassEquation_VMS.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
@@ -110,12 +111,14 @@ int main(int argc, char *argv[])
 
    // 7. Set up the assembly: the material goes to the local assembly, and the
    //    local assembly and the boundary conditions to the global one, which
-   //    owns them. The nonlinear solver keeps a reference to the local
-   //    assembly, to give it the acceleration of each step.
-   auto local_assembly = std::make_unique<LocalAssembly_Mixed_VMS>(
-      std::move(material), shear_modulus, config["space"]["tau_factor"].as<double>());
+   //    owns them. The nonlinear solver keeps a reference to the mass
+   //    equation, to give it the acceleration of each step.
+   auto mass_equation = std::make_unique<MassEquation_VMS>(
+      shear_modulus, config["space"]["tau_factor"].as<double>());
+   MassEquation_VMS &mass_equation_ref = *mass_equation;
+   auto local_assembly =
+      std::make_unique<LocalAssembly_Mixed>(std::move(material), std::move(mass_equation));
    local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
-   LocalAssembly_Mixed_VMS &local_assembly_ref = *local_assembly;
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
 
@@ -124,7 +127,7 @@ int main(int argc, char *argv[])
    auto time_method =
       std::make_unique<TimeMethod_GenAlpha_1st_Order>(config["time_method"]["rho_inf"].as<double>());
    auto nonlinear_solver = std::make_unique<NonlinearSolver_VMS_Dynamic>(
-      space_p, std::move(global_assembly), local_assembly_ref, std::move(time_method),
+      space_p, std::move(global_assembly), mass_equation_ref, std::move(time_method),
       config["solver"]);
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();
    auto time_solver = std::make_unique<TimeSolver>(

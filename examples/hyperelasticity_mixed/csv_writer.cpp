@@ -15,9 +15,8 @@
 // The pressure space is that of the saved pressure, one order below the
 // displacement for Taylor-Hood and of its order with VMS, whose acceleration
 // a is the rate dv/dt of the rate form. The reaction takes the momentum
-// equation of LocalAssembly_Mixed_TaylorHood, which is that of
-// LocalAssembly_Mixed_VMS, both from LocalAssembly_Mixed; its mass equation
-// is not used.
+// equation of LocalAssembly_Mixed, the same for both; the mass equation of
+// Taylor-Hood given to it is not used.
 // Everything is computed with the material of MaterialModelData, which must
 // be the one the driver ran with. It runs on MPI ranks like the driver: the
 // saved fields are split among the ranks, each rank integrates over its
@@ -48,7 +47,8 @@
 #include "GlobalAssembly_Mixed.hpp"
 #include "LoadData.hpp"
 #include "LocalAssemblyTools.hpp"
-#include "LocalAssembly_Mixed_TaylorHood.hpp"
+#include "LocalAssembly_Mixed.hpp"
+#include "MassEquation_TaylorHood.hpp"
 #include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
@@ -116,7 +116,8 @@ int main(int argc, char *argv[])
    auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u,
                                                     LoadData::surface_traction);
    const bool is_traction_load = neumann->is_traction_load();
-   auto local_assembly = std::make_unique<LocalAssembly_Mixed_TaylorHood>(set_material_model());
+   auto local_assembly = std::make_unique<LocalAssembly_Mixed>(
+      set_material_model(), std::make_unique<MassEquation_TaylorHood>());
    local_assembly->set_quad_order(config["space"]["quad_order"].as<int>());
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
