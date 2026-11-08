@@ -52,7 +52,7 @@
 
 #include "LocalAssemblyTools.hpp"
 #include "LocalAssembly_Mixed.hpp"
-#include "MaterialModel_Hyperelastic.hpp"
+#include "MaterialModel.hpp"
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
 #include "Vector_3D.hpp"
@@ -61,7 +61,7 @@ class LocalAssembly_Mixed_VMS : public LocalAssembly_Mixed
 {
 public:
    // Takes ownership of the material; mu and tau_factor give tau.
-   LocalAssembly_Mixed_VMS(std::unique_ptr<const MaterialModel_Hyperelastic> input_material,
+   LocalAssembly_Mixed_VMS(std::unique_ptr<const MaterialModel> input_material,
                            double input_shear_modulus, double input_tau_factor)
       : LocalAssembly_Mixed(std::move(input_material)),
         shear_modulus(input_shear_modulus),

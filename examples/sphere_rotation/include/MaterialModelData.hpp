@@ -27,7 +27,7 @@
 
 #include "IMaterialModel_ich.hpp"
 #include "IMaterialModel_vol.hpp"
-#include "MaterialModel_Hyperelastic.hpp"
+#include "MaterialModel.hpp"
 #include "MaterialModel_ich_NeoHookean.hpp"
 #include "MaterialModel_vol_Incompressible.hpp"
 #include "MaterialModel_vol_Quadratic.hpp"
@@ -77,10 +77,9 @@ inline std::unique_ptr<IMaterialModel_ich> set_ich_model(int attribute)
 // The material of a region: the volumetric and the isochoric model
 // together. It holds no state, so each owner, e.g. each local assembly,
 // creates its own.
-inline std::unique_ptr<MaterialModel_Hyperelastic> set_material_model(int attribute)
+inline std::unique_ptr<MaterialModel> set_material_model(int attribute)
 {
-   return std::make_unique<MaterialModel_Hyperelastic>(set_vol_model(attribute),
-                                                       set_ich_model(attribute));
+   return std::make_unique<MaterialModel>(set_vol_model(attribute), set_ich_model(attribute));
 }
 
 #endif

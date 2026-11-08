@@ -36,7 +36,7 @@
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 
-#include "MaterialModel_Hyperelastic.hpp"
+#include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
 #include "Tensor2_3D.hpp"
@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
 
    // The materials of the regions, by element attribute; they hold no
    // state, so this program creates its own.
-   std::vector<std::unique_ptr<const MaterialModel_Hyperelastic>> materials;
+   std::vector<std::unique_ptr<const MaterialModel>> materials;
    for (int attribute = 1; attribute <= static_cast<int>(region_materials.size()); attribute++)
       materials.push_back(set_material_model(attribute));
 

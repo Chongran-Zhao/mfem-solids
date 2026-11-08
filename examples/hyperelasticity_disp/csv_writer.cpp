@@ -42,7 +42,7 @@
 #include "LoadData.hpp"
 #include "LocalAssemblyTools.hpp"
 #include "LocalAssembly_Disp.hpp"
-#include "MaterialModel_Hyperelastic.hpp"
+#include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
    const int num_dofs = fespace.GetTrueVSize();
    mfem::Vector disp_owned(num_dofs), velo_owned(num_dofs), acce_owned(num_dofs);
    mfem::Vector residual(num_dofs), momentum(num_dofs);
-   const std::unique_ptr<const MaterialModel_Hyperelastic> material = set_material_model();
+   const std::unique_ptr<const MaterialModel> material = set_material_model();
 
    // driver_dynamic saved the velocity and the acceleration with the
    // displacement, driver_static the displacement only.

@@ -30,7 +30,7 @@
 #include "GlobalAssembly_Mixed.hpp"
 #include "LoadData.hpp"
 #include "LocalAssembly_Mixed_VMS.hpp"
-#include "MaterialModel_Hyperelastic.hpp"
+#include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "NonlinearSolver_VMS_Dynamic.hpp"
@@ -106,7 +106,7 @@ int main(int argc, char *argv[])
       neumann->print_traction_load();
 
    // 6. Set up the material model.
-   std::unique_ptr<MaterialModel_Hyperelastic> material = set_material_model();
+   std::unique_ptr<MaterialModel> material = set_material_model();
 
    // 7. Set up the assembly: the material goes to the local assembly, and the
    //    local assembly and the boundary conditions to the global one, which

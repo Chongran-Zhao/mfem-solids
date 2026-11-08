@@ -49,7 +49,7 @@
 #include "LoadData.hpp"
 #include "LocalAssemblyTools.hpp"
 #include "LocalAssembly_Mixed_TaylorHood.hpp"
-#include "MaterialModel_Hyperelastic.hpp"
+#include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "SystemTools.hpp"
@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
    auto global_assembly = std::make_unique<GlobalAssembly_Mixed>(
       space_u, space_p, std::move(local_assembly), std::move(dirichlet), std::move(neumann));
    const std::unique_ptr<mfem::HypreParMatrix> mass = global_assembly->assemble_mass();
-   const std::unique_ptr<const MaterialModel_Hyperelastic> material = set_material_model();
+   const std::unique_ptr<const MaterialModel> material = set_material_model();
 
    // The dynamic drivers saved the velocity and the acceleration with the
    // displacement and the pressure, driver_TaylorHood_static these two only.

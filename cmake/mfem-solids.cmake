@@ -95,7 +95,7 @@ set(shared_headers
   ${project_dir}/include/material/IMaterialModel.hpp
   ${project_dir}/include/material/IMaterialModel_ich.hpp
   ${project_dir}/include/material/IMaterialModel_vol.hpp
-  ${project_dir}/include/material/MaterialModel_Hyperelastic.hpp
+  ${project_dir}/include/material/MaterialModel.hpp
   ${project_dir}/include/material/MaterialModel_LinearElastic.hpp
   ${project_dir}/include/material/MaterialModel_ich_NeoHookean.hpp
   ${project_dir}/include/material/MaterialModel_vol_Incompressible.hpp

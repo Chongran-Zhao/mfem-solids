@@ -25,7 +25,7 @@
 #include "GlobalAssembly_Mixed.hpp"
 #include "LoadData.hpp"
 #include "LocalAssembly_Mixed_TaylorHood_Regions.hpp"
-#include "MaterialModel_Hyperelastic.hpp"
+#include "MaterialModel.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "NonlinearSolver_TaylorHood_Dynamic.hpp"
@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
       neumann->print_traction_load();
 
    // 6. Set up the material of each region, by element attribute.
-   std::vector<std::unique_ptr<const MaterialModel_Hyperelastic>> materials;
+   std::vector<std::unique_ptr<const MaterialModel>> materials;
    for (int attribute = 1; attribute <= static_cast<int>(region_materials.size()); attribute++)
       materials.push_back(set_material_model(attribute));
 

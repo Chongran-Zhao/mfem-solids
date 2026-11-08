@@ -4,8 +4,8 @@
 // Interface of an elastic material for LocalAssembly_Disp: given the
 // deformation gradient F, return the strain energy per reference volume, the
 // first Piola-Kirchhoff stress P = dPsi/dF and the first elasticity tensor
-// AA = dP/dF, and the reference density. MaterialModel_Hyperelastic and
-// MaterialModel_LinearElastic implement it.
+// AA = dP/dF, and the reference density. MaterialModel, the hyperelastic
+// materials, and MaterialModel_LinearElastic implement it.
 //
 // Author: Chongran Zhao
 // Date: Nov. 8, 2026
