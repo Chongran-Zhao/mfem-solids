@@ -82,12 +82,12 @@ set(shared_headers
   ${project_dir}/include/assembly/GlobalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssemblyTools.hpp
   ${project_dir}/include/assembly/LocalAssembly_Disp.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Fracture.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood_Regions.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS_Regions.hpp
-  ${project_dir}/include/assembly/LocalAssembly_PhaseField.hpp
   ${project_dir}/include/assembly/ParBlockNonlinearForm_External.hpp
   ${project_dir}/include/boundary/DirichletBoundary.hpp
   ${project_dir}/include/boundary/NeumannBoundary.hpp

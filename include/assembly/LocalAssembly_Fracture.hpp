@@ -1,5 +1,5 @@
 // ============================================================================
-// LocalAssembly_PhaseField.hpp
+// LocalAssembly_Fracture.hpp
 //
 // Local (element) assembly of the phase-field problem of fracture at a fixed
 // displacement, following the notes Phase-field-fracture.pdf (p. 4): the
@@ -14,8 +14,8 @@
 // Date: Nov. 8, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
-#ifndef LOCAL_ASSEMBLY_PHASE_FIELD_HPP
-#define LOCAL_ASSEMBLY_PHASE_FIELD_HPP
+#ifndef LOCAL_ASSEMBLY_FRACTURE_HPP
+#define LOCAL_ASSEMBLY_FRACTURE_HPP
 
 #include <memory>
 #include <utility>
@@ -27,12 +27,12 @@
 #include "LocalAssemblyTools.hpp"
 #include "Tensor2_3D.hpp"
 
-class LocalAssembly_PhaseField : public mfem::NonlinearFormIntegrator
+class LocalAssembly_Fracture : public mfem::NonlinearFormIntegrator
 {
 public:
    // Takes the ownership of the surface energy and of the material;
    // input_disp, the displacement on the same mesh, stays the caller's.
-   LocalAssembly_PhaseField(std::unique_ptr<const ISurfaceEnergy> input_surface_energy,
+   LocalAssembly_Fracture(std::unique_ptr<const ISurfaceEnergy> input_surface_energy,
                             std::unique_ptr<const IMaterialModel> input_material,
                             const mfem::GridFunction &input_disp)
       : surface_energy(std::move(input_surface_energy)),
