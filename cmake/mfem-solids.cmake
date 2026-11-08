@@ -78,6 +78,8 @@ target_include_directories(mfem_solids INTERFACE
   ${MFEM_INCLUDE_DIRS})
 target_link_libraries(mfem_solids INTERFACE ${mfem_libraries})
 set(shared_headers
+  ${project_dir}/include/assembly/DegradationCoefficient.hpp
+  ${project_dir}/include/assembly/ElasticEnergyCoefficient.hpp
   ${project_dir}/include/assembly/GlobalAssembly_Disp.hpp
   ${project_dir}/include/assembly/GlobalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssemblyTools.hpp
