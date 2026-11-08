@@ -60,7 +60,18 @@ public:
       const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
-         const double dV = set_point(elem, elem_map, quad_rule.IntPoint(qq), N, dN_dxi, dN_dX);
+         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
+         elem_map.SetIntPoint(&quad_pt);
+
+         // N_c
+         elem.CalcShape(quad_pt, N);
+         // dN/dxi
+         elem.CalcDShape(quad_pt, dN_dxi);
+         // N_c,J = dN/dX = dN/dxi (dX/dxi)^-1.
+         mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
+
+         // dV = w_q * det( dX/dxi )
+         const double dV = quad_pt.weight * elem_map.Weight();
 
          // Vector * Vector is the inner product in MFEM.
          const double alpha = N * alpha_dofs;
@@ -93,7 +104,18 @@ public:
       const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
-         const double dV = set_point(elem, elem_map, quad_rule.IntPoint(qq), N, dN_dxi, dN_dX);
+         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
+         elem_map.SetIntPoint(&quad_pt);
+
+         // N_c
+         elem.CalcShape(quad_pt, N);
+         // dN/dxi
+         elem.CalcDShape(quad_pt, dN_dxi);
+         // N_c,J = dN/dX = dN/dxi (dX/dxi)^-1.
+         mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
+
+         // dV = w_q * det( dX/dxi )
+         const double dV = quad_pt.weight * elem_map.Weight();
 
          const double alpha = N * alpha_dofs;
          dN_dX.MultTranspose(alpha_dofs, grad_alpha);
@@ -128,7 +150,18 @@ public:
       const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
       for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
-         const double dV = set_point(elem, elem_map, quad_rule.IntPoint(qq), N, dN_dxi, dN_dX);
+         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
+         elem_map.SetIntPoint(&quad_pt);
+
+         // N_c
+         elem.CalcShape(quad_pt, N);
+         // dN/dxi
+         elem.CalcDShape(quad_pt, dN_dxi);
+         // N_c,J = dN/dX = dN/dxi (dX/dxi)^-1.
+         mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
+
+         // dV = w_q * det( dX/dxi )
+         const double dV = quad_pt.weight * elem_map.Weight();
 
          const double alpha = N * alpha_dofs;
 
@@ -148,20 +181,6 @@ public:
    void set_quad_order(int input_quad_order) { quad_order = input_quad_order; }
 
 private:
-   // Sets the point quad_pt of the element and computes N_c and N_c,J there;
-   // returns dV = w_q det( dX/dxi ). dN_dxi is a work matrix.
-   static double set_point(const mfem::FiniteElement &elem, mfem::ElementTransformation &elem_map,
-                           const mfem::IntegrationPoint &quad_pt, mfem::Vector &N,
-                           mfem::DenseMatrix &dN_dxi, mfem::DenseMatrix &dN_dX)
-   {
-      elem_map.SetIntPoint(&quad_pt);
-      elem.CalcShape(quad_pt, N);
-      elem.CalcDShape(quad_pt, dN_dxi);
-      // N_c,J = dN/dX = dN/dxi (dX/dxi)^-1.
-      mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
-      return quad_pt.weight * elem_map.Weight();
-   }
-
    // psi_e(F) at the point set in elem_map, with F_kJ = delta_kJ + u_k,J.
    double get_elastic_energy(mfem::ElementTransformation &elem_map)
    {
