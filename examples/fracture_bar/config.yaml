@@ -1,0 +1,83 @@
+# Input of driver and read_mesh of fracture_bar, given as their first
+# argument, else config.yaml; CMake copies it into fracture_bar/build/.
+# mesh.file is relative to the project directory.
+# The case is the bar in traction of Bourdin, Francfort and Marigo
+# (J. Elasticity 2008, Section 8.3.1): x in [0, 10], clamped on its left
+# face and pulled along x on its right face by t L, LoadData::disp_loading,
+# so that the time t is the strain of the uncracked bar.
+
+mesh:
+  # Mesh file in MFEM format: 667 x 1 x 1 hexahedra, h = 1.5e-2 as in the
+  # paper, over 10 x 1.5e-2 x 1.5e-2.
+  file: mesh_files/Bar_traction-hex.mesh
+
+  # Number of uniform refinements.
+  refine_levels: 0
+
+  # Name of the mesh file written by read_mesh.
+  output: bar.mesh
+
+  # Web page showing the named faces in 3D, and whether to open it.
+  output_html: bar_boundary.html
+  open_html: false
+
+space:
+  # Order of the continuous shape functions, of the displacement and of the
+  # phase field.
+  elem_order: 1
+
+  # Quadrature order of the elements; 0 keeps the default rule of
+  # LocalAssemblyTools.
+  quad_order: 3
+
+# Load steps, read into TimeSteps: the time is the strain t of the bar.
+time:
+  num_steps: 50
+  final_time: 5.0
+
+# Displacement boundary conditions, one entry per face and direction.
+Dirichlet:
+  # Zero displacement.
+  fixed_bc:
+    - { face: left, dir: x }
+    - { face: left, dir: y }
+    - { face: left, dir: z }
+  # Prescribed displacement, given by LoadData::disp_loading.
+  disp_bc:
+    - { face: right, dir: x }
+
+# Traction faces; the traction is given by LoadData::surface_traction.
+Neumann:
+  faces: []
+
+# Alternate minimization.
+fracture:
+  # A node joins the crack set K_n, alpha = 0, when alpha_n <= eta_lim;
+  # mef90's irrevThres .99 for its damage 1 - alpha.
+  eta_lim: 1.0e-2
+  # Tolerance on ||alpha^(j+1) - alpha^(j)||_inf, and the maximum of
+  # iterations per load step.
+  tol: 1.0e-6
+  max_iter: 1000
+
+# Newton's method of the displacement problem; linear in the displacement
+# for a linear elastic material, so that the predictor already solves it and
+# the absolute tolerance must be positive.
+solver_disp:
+  linear_solver: mumps
+  newton_rel_tol: 1.0e-8
+  newton_abs_tol: 1.0e-10
+  newton_max_iter: 20
+
+# Newton's method of the phase-field problem, linear in alpha for AT2.
+solver_fracture:
+  linear_solver: mumps
+  newton_rel_tol: 1.0e-8
+  newton_abs_tol: 1.0e-10
+  newton_max_iter: 20
+
+# Output folders, in the directory the programs run in.
+output:
+  gf: results_gf
+  # The fields are saved every gf_interval-th load step, and at the last.
+  gf_interval: 1
