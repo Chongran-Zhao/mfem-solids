@@ -6,7 +6,7 @@
 // displacement. It is an MFEM NonlinearFormIntegrator, called by
 // NonlinearForm, which assembles the global residual and tangent. An optional
 // factor multiplies the energy density, thus the residual and the tangent, as
-// a(alpha) of phase-field fracture.
+// g(alpha) of phase-field fracture.
 //
 // Author: Chongran Zhao
 // Date: Sep. 25, 2026
