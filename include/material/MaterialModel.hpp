@@ -15,12 +15,13 @@
 #include <memory>
 #include <utility>
 
+#include "IMaterialModel.hpp"
 #include "IMaterialModel_ich.hpp"
 #include "IMaterialModel_vol.hpp"
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
 
-class MaterialModel
+class MaterialModel : public IMaterialModel
 {
 public:
    MaterialModel(std::unique_ptr<IMaterialModel_vol> input_vol_model,
@@ -28,7 +29,7 @@ public:
       : vol_model(std::move(input_vol_model)), ich_model(std::move(input_ich_model)) {}
 
    // Strain energy Psi = Psi_vol + Psi_ich per reference volume.
-   double get_strain_energy(const Tensor2_3D &F) const
+   double get_strain_energy(const Tensor2_3D &F) const override
    {
       return vol_model->get_energy(F.det()) + ich_model->get_energy(F);
    }
@@ -65,13 +66,13 @@ public:
    }
 
    // First Piola-Kirchhoff stress P = F S.
-   Tensor2_3D get_1st_PK_stress(const Tensor2_3D &F) const
+   Tensor2_3D get_1st_PK_stress(const Tensor2_3D &F) const override
    {
       return F * get_2nd_PK_stress(F);
    }
 
    // First elasticity tensor AA = dP/dF.
-   Tensor4_3D get_1st_elasticity_tensor(const Tensor2_3D &F) const
+   Tensor4_3D get_1st_elasticity_tensor(const Tensor2_3D &F) const override
    {
       return from_CC_to_AA(F, get_2nd_PK_stress(F), get_2nd_elasticity_tensor(F));
    }
@@ -177,7 +178,7 @@ public:
    double get_dJ_dp(double p) const { return vol_model->get_dJ_dp(p); }
 
    // Reference density rho_0 of the volumetric model.
-   double get_rho_0() const { return vol_model->get_rho_0(); }
+   double get_rho_0() const override { return vol_model->get_rho_0(); }
 
 private:
    // dC^J = dF^J^T F + F^T dF^J

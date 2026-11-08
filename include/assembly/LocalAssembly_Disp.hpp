@@ -21,15 +21,16 @@
 #include <mfem.hpp>
 
 #include "LocalAssemblyTools.hpp"
-#include "MaterialModel.hpp"
+#include "IMaterialModel.hpp"
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
 
 class LocalAssembly_Disp : public mfem::NonlinearFormIntegrator
 {
 public:
-   // Takes the ownership of the material.
-   LocalAssembly_Disp(std::unique_ptr<const MaterialModel> input_material)
+   // Takes the ownership of the material, hyperelastic (MaterialModel) or
+   // linear elastic (MaterialModel_LinearElastic).
+   LocalAssembly_Disp(std::unique_ptr<const IMaterialModel> input_material)
       : material(std::move(input_material)) {}
 
    // Required by MFEM: overrides mfem::NonlinearFormIntegrator::
@@ -153,7 +154,7 @@ private:
                               : LocalAssemblyTools::get_quad_rule(elem, elem_map);
    }
 
-   const std::unique_ptr<const MaterialModel> material;
+   const std::unique_ptr<const IMaterialModel> material;
    mfem::Coefficient *energy_factor = nullptr;   // factor of the energy density, not owned
    int quad_order = 0;   // quadrature order, 0 for that of LocalAssemblyTools
 };
