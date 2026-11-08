@@ -10,9 +10,9 @@
 //    K_cd     = int ( g''(alpha) psi_e + G_c w''(alpha) ) N_c N_d
 //                   + 2 G_c c_grad Grad N_c . Grad N_d dV,
 // with F = I + Grad u from the displacement, which it reads at every
-// assembly, and g, w, c_grad, psi_e from MaterialModel_Fracture. It is an
-// MFEM NonlinearFormIntegrator, called by NonlinearForm, which assembles the
-// global energy, residual and tangent.
+// assembly, g, w and c_grad from the surface energy, and psi_e from the
+// elastic material. It is an MFEM NonlinearFormIntegrator, called by
+// NonlinearForm, which assembles the global energy, residual and tangent.
 //
 // Author: Chongran Zhao
 // Date: Nov. 8, 2026
@@ -26,18 +26,23 @@
 
 #include <mfem.hpp>
 
+#include "IMaterialModel.hpp"
+#include "ISurfaceEnergy.hpp"
 #include "LocalAssemblyTools.hpp"
-#include "MaterialModel_Fracture.hpp"
 #include "Tensor2_3D.hpp"
 
 class LocalAssembly_PhaseField : public mfem::NonlinearFormIntegrator
 {
 public:
-   // Takes the ownership of the material; input_disp, the displacement on the
-   // same mesh, stays the caller's and is read at every assembly.
-   LocalAssembly_PhaseField(std::unique_ptr<const MaterialModel_Fracture> input_material,
+   // Takes the ownership of the surface energy and of the elastic material;
+   // input_disp, the displacement on the same mesh, stays the caller's and is
+   // read at every assembly.
+   LocalAssembly_PhaseField(std::unique_ptr<const ISurfaceEnergy> input_surface_energy,
+                            std::unique_ptr<const IMaterialModel> input_material,
                             const mfem::GridFunction &input_disp)
-      : material(std::move(input_material)), disp(input_disp) {}
+      : surface_energy(std::move(input_surface_energy)),
+        material(std::move(input_material)),
+        disp(input_disp) {}
 
    // Required by MFEM: overrides mfem::NonlinearFormIntegrator::
    // GetElementEnergy, which NonlinearForm::GetEnergy calls on every element.
@@ -48,8 +53,8 @@ public:
       const int num_nodes = elem.GetDof();
       mfem::Vector N(num_nodes), grad_alpha(3);
       mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
-      const double G_c = material->get_G_c();
-      const double c_grad = material->get_c_grad();
+      const double G_c = surface_energy->get_G_c();
+      const double c_grad = surface_energy->get_c_grad();
 
       double energy = 0.0;
       const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
@@ -62,8 +67,9 @@ public:
          // alpha,J = N_c,J alpha_c
          dN_dX.MultTranspose(alpha_dofs, grad_alpha);
 
-         energy += dV * (material->get_g(alpha) * get_elastic_energy(elem_map)
-                         + G_c * (material->get_w(alpha) + c_grad * (grad_alpha * grad_alpha)));
+         energy += dV * (surface_energy->get_g(alpha) * get_elastic_energy(elem_map)
+                         + G_c * (surface_energy->get_w(alpha)
+                                  + c_grad * (grad_alpha * grad_alpha)));
       }
       return energy;
    }
@@ -78,8 +84,8 @@ public:
       const int num_nodes = elem.GetDof();
       mfem::Vector N(num_nodes), grad_alpha(3), dN_dX_grad_alpha(num_nodes);
       mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
-      const double G_c = material->get_G_c();
-      const double c_grad = material->get_c_grad();
+      const double G_c = surface_energy->get_G_c();
+      const double c_grad = surface_energy->get_c_grad();
 
       residual.SetSize(num_nodes);
       residual = 0.0;
@@ -95,8 +101,8 @@ public:
          dN_dX.Mult(grad_alpha, dN_dX_grad_alpha);
 
          // g'(alpha) psi_e + G_c w'(alpha)
-         const double local = material->get_dg(alpha) * get_elastic_energy(elem_map)
-                              + G_c * material->get_dw(alpha);
+         const double local = surface_energy->get_dg(alpha) * get_elastic_energy(elem_map)
+                              + G_c * surface_energy->get_dw(alpha);
 
          for (int cc = 0; cc < num_nodes; cc++)
             residual(cc) += dV * (local * N(cc) + 2.0 * G_c * c_grad * dN_dX_grad_alpha(cc));
@@ -113,8 +119,8 @@ public:
       const int num_nodes = elem.GetDof();
       mfem::Vector N(num_nodes);
       mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
-      const double G_c = material->get_G_c();
-      const double c_grad = material->get_c_grad();
+      const double G_c = surface_energy->get_G_c();
+      const double c_grad = surface_energy->get_c_grad();
 
       tangent.SetSize(num_nodes);
       tangent = 0.0;
@@ -127,8 +133,8 @@ public:
          const double alpha = N * alpha_dofs;
 
          // g''(alpha) psi_e + G_c w''(alpha)
-         const double local = material->get_d2g(alpha) * get_elastic_energy(elem_map)
-                              + G_c * material->get_d2w(alpha);
+         const double local = surface_energy->get_d2g(alpha) * get_elastic_energy(elem_map)
+                              + G_c * surface_energy->get_d2w(alpha);
 
          // K_cd += dV local N_c N_d
          mfem::AddMult_a_VVt(dV * local, N, tangent);
@@ -164,7 +170,7 @@ private:
       for (int kk = 0; kk < 3; kk++)
          for (int JJ = 0; JJ < 3; JJ++)
             F(kk, JJ) += grad_u(kk, JJ);
-      return material->get_elastic_energy(F);
+      return material->get_strain_energy(F);
    }
 
    // The rule of order quad_order, or that of LocalAssemblyTools.
@@ -175,7 +181,8 @@ private:
                               : LocalAssemblyTools::get_quad_rule(elem, elem_map);
    }
 
-   const std::unique_ptr<const MaterialModel_Fracture> material;   // g, w, c_grad, psi_e
+   const std::unique_ptr<const ISurfaceEnergy> surface_energy;   // g, w, c_grad
+   const std::unique_ptr<const IMaterialModel> material;         // psi_e
    const mfem::GridFunction &disp;   // displacement, not owned
    mfem::DenseMatrix grad_u;         // u_k,J at the point
    int quad_order = 0;               // quadrature order, 0 for that of LocalAssemblyTools
