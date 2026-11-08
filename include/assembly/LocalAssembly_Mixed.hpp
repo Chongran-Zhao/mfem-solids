@@ -26,7 +26,7 @@
 #include <mfem.hpp>
 
 #include "LocalAssemblyTools.hpp"
-#include "MaterialModel.hpp"
+#include "MaterialModel_Hyperelastic.hpp"
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
 
@@ -34,7 +34,7 @@ class LocalAssembly_Mixed : public mfem::BlockNonlinearFormIntegrator
 {
 public:
    // Takes ownership of the material, as in LocalAssembly_Disp.
-   LocalAssembly_Mixed(std::unique_ptr<const MaterialModel> input_material)
+   LocalAssembly_Mixed(std::unique_ptr<const MaterialModel_Hyperelastic> input_material)
       : material(std::move(input_material)) {}
 
    // Required by MFEM: overrides mfem::BlockNonlinearFormIntegrator::
@@ -124,7 +124,7 @@ protected:
                 + dN_dX(aa, 2) * F_inv(2, kk));
    }
 
-   const std::unique_ptr<const MaterialModel> material;
+   const std::unique_ptr<const MaterialModel_Hyperelastic> material;
    int quad_order = 0;   // quadrature order, 0 for that of LocalAssemblyTools
 };
 

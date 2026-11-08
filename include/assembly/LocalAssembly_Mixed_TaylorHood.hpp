@@ -23,7 +23,7 @@
 
 #include "LocalAssemblyTools.hpp"
 #include "LocalAssembly_Mixed.hpp"
-#include "MaterialModel.hpp"
+#include "MaterialModel_Hyperelastic.hpp"
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
 
@@ -31,7 +31,7 @@ class LocalAssembly_Mixed_TaylorHood : public LocalAssembly_Mixed
 {
 public:
    // Takes ownership of the material, as in LocalAssembly_Disp.
-   LocalAssembly_Mixed_TaylorHood(std::unique_ptr<const MaterialModel> input_material)
+   LocalAssembly_Mixed_TaylorHood(std::unique_ptr<const MaterialModel_Hyperelastic> input_material)
       : LocalAssembly_Mixed(std::move(input_material)) {}
 
    // Required by MFEM: overrides mfem::BlockNonlinearFormIntegrator::

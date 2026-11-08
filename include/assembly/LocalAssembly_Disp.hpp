@@ -28,8 +28,9 @@
 class LocalAssembly_Disp : public mfem::NonlinearFormIntegrator
 {
 public:
-   // Takes the ownership of the material, hyperelastic (MaterialModel) or
-   // linear elastic (MaterialModel_LinearElastic).
+   // Takes the ownership of the material, hyperelastic
+   // (MaterialModel_Hyperelastic) or linear elastic
+   // (MaterialModel_LinearElastic).
    LocalAssembly_Disp(std::unique_ptr<const IMaterialModel> input_material)
       : material(std::move(input_material)) {}
 

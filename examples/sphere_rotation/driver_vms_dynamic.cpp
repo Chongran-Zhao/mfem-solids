@@ -27,7 +27,7 @@
 #include "GlobalAssembly_Mixed.hpp"
 #include "LoadData.hpp"
 #include "LocalAssembly_Mixed_VMS_Regions.hpp"
-#include "MaterialModel.hpp"
+#include "MaterialModel_Hyperelastic.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "NonlinearSolver_VMS_Dynamic.hpp"
@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
    //    region, by element attribute; tau_factor of config.yaml in the
    //    incompressible regions, 0 in the compressible ones.
    const double tau_factor = config["space"]["tau_factor"].as<double>();
-   std::vector<std::unique_ptr<const MaterialModel>> materials;
+   std::vector<std::unique_ptr<const MaterialModel_Hyperelastic>> materials;
    std::vector<double> shear_moduli, tau_factors;
    for (int attribute = 1; attribute <= static_cast<int>(region_materials.size()); attribute++)
    {

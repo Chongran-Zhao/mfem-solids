@@ -23,7 +23,7 @@
 #include <mfem.hpp>
 
 #include "LocalAssembly_Mixed_TaylorHood.hpp"
-#include "MaterialModel.hpp"
+#include "MaterialModel_Hyperelastic.hpp"
 
 class LocalAssembly_Mixed_TaylorHood_Regions : public LocalAssembly_Mixed_TaylorHood
 {
@@ -31,7 +31,7 @@ public:
    // Takes the ownership of the materials; materials[aa] is that of element
    // attribute aa + 1.
    LocalAssembly_Mixed_TaylorHood_Regions(
-      std::vector<std::unique_ptr<const MaterialModel>> materials)
+      std::vector<std::unique_ptr<const MaterialModel_Hyperelastic>> materials)
       : LocalAssembly_Mixed_TaylorHood(std::move(materials[0]))
    {
       for (std::size_t aa = 1; aa < materials.size(); aa++)

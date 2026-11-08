@@ -24,16 +24,16 @@
 #include <mfem.hpp>
 
 #include "LocalAssembly_Mixed_VMS.hpp"
-#include "MaterialModel.hpp"
+#include "MaterialModel_Hyperelastic.hpp"
 
 class LocalAssembly_Mixed_VMS_Regions : public LocalAssembly_Mixed_VMS
 {
 public:
    // Takes the ownership of the materials; materials[aa], shear_moduli[aa]
    // and tau_factors[aa] are those of element attribute aa + 1.
-   LocalAssembly_Mixed_VMS_Regions(std::vector<std::unique_ptr<const MaterialModel>> materials,
-                                   const std::vector<double> &shear_moduli,
-                                   const std::vector<double> &tau_factors)
+   LocalAssembly_Mixed_VMS_Regions(
+      std::vector<std::unique_ptr<const MaterialModel_Hyperelastic>> materials,
+      const std::vector<double> &shear_moduli, const std::vector<double> &tau_factors)
       : LocalAssembly_Mixed_VMS(std::move(materials[0]), shear_moduli[0], tau_factors[0])
    {
       MFEM_VERIFY(shear_moduli.size() == materials.size() && tau_factors.size() == materials.size(),

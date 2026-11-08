@@ -31,7 +31,7 @@
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
 
-#include "MaterialModel.hpp"
+#include "MaterialModel_Hyperelastic.hpp"
 #include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
 #include "Tensor2_3D.hpp"
@@ -88,7 +88,7 @@ int main(int argc, char *argv[])
    const bool is_dynamic = std::filesystem::exists(results_dir / "velo_0000.gf");
 
    // The material; it holds no state, so this program creates its own.
-   const std::unique_ptr<const MaterialModel> material = set_material_model();
+   const std::unique_ptr<const MaterialModel_Hyperelastic> material = set_material_model();
 
    // P = P_ich - p J F^-T of the material, at the deformation gradient F and
    // the pressure p of a point.
