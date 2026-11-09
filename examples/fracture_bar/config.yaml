@@ -38,8 +38,10 @@ space:
   elem_order: 1
 
   # Quadrature order of the elements; 0 keeps the default rule of
-  # LocalAssemblyTools.
-  quad_order: 3
+  # LocalAssemblyTools, only 1 point on a linear tetrahedron. 2 integrates
+  # g(alpha) psi_e and w(alpha) exactly on linear elements; on hexahedra it
+  # is the same rule as 3, 2 x 2 x 2 points.
+  quad_order: 2
 
 # Load steps, read into TimeSteps: the time is the strain t of the bar.
 time:
