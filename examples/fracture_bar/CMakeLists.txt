@@ -20,7 +20,8 @@ set(case_headers
   include/MaterialModelData.hpp
   include/NonlinearSolver_Disp.hpp
   include/NonlinearSolver_Fracture.hpp
-  include/TimeSolver.hpp)
+  include/TimeSolver.hpp
+  include/VTK_Tools_Fracture.hpp)
 check_header_list(${CMAKE_CURRENT_SOURCE_DIR}/include ${case_headers})
 
 # The input is copied into the build folder, again whenever it changes; the
