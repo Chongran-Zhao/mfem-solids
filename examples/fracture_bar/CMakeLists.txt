@@ -6,6 +6,7 @@
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
 #    cd build && ./read_mesh config.yaml && mpirun -np 2 ./driver config.yaml
+#    mpirun -np 2 ./vtu_writer config.yaml
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(fracture_bar LANGUAGES CXX)
@@ -37,3 +38,7 @@ target_compile_definitions(read_mesh PRIVATE PROJECT_DIR="${project_dir}"
 add_executable(driver driver.cpp ${case_headers})
 target_include_directories(driver PRIVATE include)
 target_link_libraries(driver PRIVATE mfem_solids)
+
+add_executable(vtu_writer vtu_writer.cpp ${case_headers})
+target_include_directories(vtu_writer PRIVATE include)
+target_link_libraries(vtu_writer PRIVATE mfem_solids)

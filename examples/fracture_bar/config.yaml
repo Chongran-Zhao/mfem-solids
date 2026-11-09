@@ -94,6 +94,10 @@ solver_fracture:
 
 # Output folders, in the directory the programs run in.
 output:
+  vtu: results_vtu
+  # vtu_writer cuts each element into vtu_refine^3 cells at its sampling
+  # points; 1, the element itself, suffices for linear elements.
+  vtu_refine: 1
   gf: results_gf
   # The fields are saved every gf_interval-th load step, and at the last.
   gf_interval: 1

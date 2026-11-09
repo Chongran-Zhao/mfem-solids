@@ -6,12 +6,16 @@
 // write_pvd, so that the steps may be written by several MPI ranks. Each element is cut into refine^3 linear
 // hexahedra at (refine + 1)^3 evenly spaced points of its reference cube, as
 // the visualization of MixPERIGEE does, so that the curved geometry and the
-// fields of the higher-order elements show within it; the points of an
+// fields of the higher-order elements show within it; a tetrahedron is cut
+// into the linear tetrahedra of MFEM's refinement of it. The points of an
 // element are its own, not shared with its neighbors. At each point it
 // writes the displacement, and, if given, the velocity and the
 // acceleration; the pressure; the Cauchy and the second Piola-Kirchhoff
-// stresses and the Green-Lagrange strain; and for each hexahedron the
-// region of its element, the element attribute. The pressure is that of
+// stresses and the Green-Lagrange strain; any scalar fields given, as the
+// phase field of fracture; and for each cell the region of its element,
+// the element attribute. An optional factor, as g(alpha) of phase-field
+// fracture, multiplies the first Piola-Kirchhoff stress of the material,
+// as it multiplies the energy density in LocalAssembly_Disp. The pressure is that of
 // the pressure field of the mixed form, and in the displacement form
 // p = -tr(sigma) / 3, the pressure of the volumetric model, since the
 // isochoric stress has no trace.
@@ -53,8 +57,8 @@
 class VTK_Tools
 {
 public:
-   // Create the output folder; refine is the number of hexahedra per edge
-   // of an element, at least 1.
+   // Create the output folder; refine is the number of cells along each
+   // edge of an element, at least 1.
    VTK_Tools(const std::string &input_dir, int input_refine)
       : dir(input_dir), refine(input_refine)
    {
@@ -64,15 +68,23 @@ public:
 
    virtual ~VTK_Tools() = default;
 
+   // The factor of the stress at a point, e.g. g(alpha); 1 without it.
+   void set_energy_factor(mfem::Coefficient &input_energy_factor)
+   {
+      energy_factor = &input_energy_factor;
+   }
+
    // Write step_XXXX.vtu. velo and acce, of the
    // dynamics, are in the space of disp, and pres, of the mixed form, is
    // nodal in H1; each may be null. first_PK_stress(attribute, F, p) gives
    // P of the material of the element attribute, at the pressure p of pres,
-   // zero without it.
+   // zero without it, times the factor of set_energy_factor. scalars are
+   // named scalar fields on the same mesh, written at each point.
    template <typename Stress>
    void save(int step, const mfem::GridFunction &disp,
              const mfem::GridFunction *velo, const mfem::GridFunction *acce,
-             const mfem::GridFunction *pres, const Stress &first_PK_stress)
+             const mfem::GridFunction *pres, const Stress &first_PK_stress,
+             const std::vector<std::pair<std::string, const mfem::GridFunction *>> &scalars = {})
    {
       const mfem::FiniteElementSpace &fespace = *disp.FESpace();
       mfem::Mesh &mesh = *fespace.GetMesh();
@@ -81,6 +93,7 @@ public:
       // Point data, Float32, and cell data of the hexahedra.
       std::vector<float> points, disp_out, disp_basis_out, velo_out, acce_out, pres_out,
          cauchy_out, PK2_out, E_out;
+      std::vector<std::vector<float>> scalars_out(scalars.size());
       std::vector<std::int32_t> connectivity, offsets, regions;
       std::vector<std::uint8_t> types;
 
@@ -133,13 +146,17 @@ public:
                append_vector(acce_out, Q_cur, value);
             }
             const double p = pres ? pres->GetValue(elem_map, ref_pt) : 0.0;
+            for (std::size_t ff = 0; ff < scalars.size(); ff++)
+               scalars_out[ff].push_back(
+                  static_cast<float>(scalars[ff].second->GetValue(elem_map, ref_pt)));
 
             // F, then P, sigma = J^-1 P F^T, S = F^-1 P and
             // E = 1/2 (F^T F - I) at the point.
             elem.CalcDShape(ref_pt, dN_dxi);
             mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
             const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(elem_disp, dN_dX);
-            const Tensor2_3D PK1 = first_PK_stress(attribute, F, p);
+            const double factor = energy_factor ? energy_factor->Eval(elem_map, ref_pt) : 1.0;
+            const Tensor2_3D PK1 = factor * first_PK_stress(attribute, F, p);
             const Tensor2_3D cauchy = (1.0 / F.det()) * PK1 * F.transpose();
             const Tensor2_3D PK2 = F.inverse() * PK1;
             const Tensor2_3D E = 0.5 * (F.transpose() * F - Tensor2_3D::identity());
@@ -149,14 +166,16 @@ public:
             append_symmetric(E_out, Q_ref.transpose() * E * Q_ref);
          }
 
-         // The hexahedra of this element; MFEM and VTK order their vertices
-         // the same way.
-         for (int hh = 0; hh < refined.RefGeoms.Size() / 8; hh++)
+         // The cells of this element, hexahedra or tetrahedra; MFEM and VTK
+         // order their vertices the same way.
+         const int num_vertices = mfem::Geometry::NumVerts[elem.GetGeomType()];
+         const std::uint8_t cell_type = get_cell_type(elem.GetGeomType());
+         for (int hh = 0; hh < refined.RefGeoms.Size() / num_vertices; hh++)
          {
-            for (int vv = 0; vv < 8; vv++)
-               connectivity.push_back(first_point + refined.RefGeoms[8 * hh + vv]);
+            for (int vv = 0; vv < num_vertices; vv++)
+               connectivity.push_back(first_point + refined.RefGeoms[num_vertices * hh + vv]);
             offsets.push_back(static_cast<std::int32_t>(connectivity.size()));
-            types.push_back(12);   // VTK_HEXAHEDRON
+            types.push_back(cell_type);
             regions.push_back(attribute);
          }
       }
@@ -184,6 +203,8 @@ public:
       write_array(out, "Float32", "Cauchy_stress" + suffix, tensor_names, cauchy_out);
       write_array(out, "Float32", "second_PK_stress" + suffix, tensor_names, PK2_out);
       write_array(out, "Float32", "Green_Lagrange_strain" + suffix, tensor_names, E_out);
+      for (std::size_t ff = 0; ff < scalars.size(); ff++)
+         write_array(out, "Float32", scalars[ff].first, {}, scalars_out[ff]);
       out << "</PointData>\n";
 
       out << "<CellData Scalars=\"region\">\n";
@@ -239,7 +260,18 @@ protected:
 
 private:
    std::filesystem::path dir;
-   const int refine;                                   // hexahedra per edge of an element
+   const int refine;                                   // cells along an edge of an element
+   mfem::Coefficient *energy_factor = nullptr;         // factor of the stress, not owned
+
+   // The VTK cell type of the linear cells of an element geometry.
+   static std::uint8_t get_cell_type(mfem::Geometry::Type geometry)
+   {
+      if (geometry == mfem::Geometry::CUBE)
+         return 12;   // VTK_HEXAHEDRON
+      MFEM_VERIFY(geometry == mfem::Geometry::TETRAHEDRON,
+                  "VTK_Tools writes hexahedra and tetrahedra only.");
+      return 10;      // VTK_TETRA
+   }
 
    // The components Q^T v of a vector in the basis Q.
    static void append_vector(std::vector<float> &data, const Tensor2_3D &Q,
