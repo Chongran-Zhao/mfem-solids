@@ -26,6 +26,10 @@
 
 class INonlinearSolver : public mfem::Operator
 {
+public:
+   // ||R|| over all ranks at the last Newton iteration.
+   double get_final_norm() const { return newton_solver.GetFinalNorm(); }
+
 protected:
    // An operator on num_dofs unknowns, those this rank owns, of the ranks of
    // comm.

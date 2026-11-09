@@ -34,7 +34,6 @@
 #include "INonlinearSolver.hpp"
 #include "LoadData.hpp"
 #include "NeumannBoundary.hpp"
-#include "SystemTools.hpp"
 
 class NonlinearSolver_Disp : public INonlinearSolver
 {
@@ -54,13 +53,10 @@ public:
    }
 
    // Solves the load at time from disp, and returns the number of Newton
-   // iterations.
+   // iterations; the residual norm of the last one is get_final_norm.
    int solve(double time, mfem::ParGridFunction &disp)
    {
-      const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
-      const NeumannBoundary &neumann = global_assembly->get_neumann();
-
-      if (neumann.is_traction_load())
+      if (global_assembly->get_neumann().is_traction_load())
          global_assembly->set_traction_load(time);
 
       // The unknowns of Newton's method, the values of disp on the dofs this
@@ -70,17 +66,21 @@ public:
 
       initial_guess(time, disp, disp_owned);
 
-      // The load value: the prescribed displacement, or the traction faces.
-      if (dirichlet.is_disp_load())
-         dirichlet.print_disp_load_by_step(disp);
-      else
-         neumann.print_traction_load_by_step();
-      SystemTools::print_newton_header();
-
       // Newton iterations for R(d) = 0.
       const int iterations = solve_newton(time, disp_owned);
       disp.SetFromTrueDofs(disp_owned);
       return iterations;
+   }
+
+   // Prints the load value of the step from disp: the prescribed
+   // displacement, or the traction faces.
+   void print_load(const mfem::ParGridFunction &disp) const
+   {
+      const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
+      if (dirichlet.is_disp_load())
+         dirichlet.print_disp_load_by_step(disp);
+      else
+         global_assembly->get_neumann().print_traction_load_by_step();
    }
 
    // Required by MFEM: overrides mfem::Operator::Mult, which NewtonSolver
@@ -154,7 +154,7 @@ private:
    const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R and K
    mutable mfem::HypreBoomerAMG amg;                             // preconditioner of GMRES
    mfem::GMRESSolver linear_solver;                              // solver of the tangent
-   SystemTools::NewtonMonitor newton_monitor;                    // prints the residual norms
+   mfem::IterativeSolverMonitor newton_monitor;                  // silent; TimeSolver prints
 };
 
 #endif

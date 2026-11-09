@@ -30,7 +30,6 @@
 
 #include "GlobalAssembly_Fracture.hpp"
 #include "INonlinearSolver.hpp"
-#include "SystemTools.hpp"
 
 class NonlinearSolver_Fracture : public INonlinearSolver
 {
@@ -72,15 +71,14 @@ public:
    }
 
    // Solves the phase field from alpha, and returns the number of Newton
-   // iterations; time is that of the load step, for the messages.
+   // iterations; the residual norm of the last one is get_final_norm. time
+   // is that of the load step, for the messages.
    int solve(double time, mfem::ParGridFunction &alpha)
    {
       // The unknowns of Newton's method, the values of alpha on the dofs
       // this rank owns.
       mfem::Vector alpha_owned(global_assembly->get_num_dofs());
       alpha.GetTrueDofs(alpha_owned);
-
-      SystemTools::print_newton_header();
 
       // Newton iterations for R(alpha) = 0.
       const int iterations = solve_newton(time, alpha_owned);
@@ -124,7 +122,7 @@ private:
    const std::unique_ptr<GlobalAssembly_Fracture> global_assembly;   // E, R and K
    mutable mfem::HypreBoomerAMG amg;                                 // preconditioner of GMRES
    mfem::GMRESSolver linear_solver;                                  // solver of the tangent
-   SystemTools::NewtonMonitor newton_monitor;                        // prints the residual norms
+   mfem::IterativeSolverMonitor newton_monitor;                      // silent; TimeSolver prints
 };
 
 #endif

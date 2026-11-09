@@ -11,8 +11,10 @@
 //       field with the displacement fixed,
 //       until ||alpha^(j+1) - alpha^(j)||_inf <= tol.
 // The first iteration of each step starts from the alpha of the previous
-// one, 1 at the first step. The energy E(u, alpha) is printed after each
-// iteration, as a check that it decreases. The displacement and the phase
+// one, 1 at the first step. Each step prints a table, one row per
+// iteration: the Newton iterations and the last residual norm of each
+// problem, ||alpha - alpha_old||_inf and the energy E(u, alpha), as a check
+// that it decreases. The displacement and the phase
 // field of step 0, of every save_interval-th step and of the last are saved
 // as <results>/disp_XXXX.gf and alpha_XXXX.gf, and the time of each saved
 // step, with its number of iterations, in <results>/time.csv; there the
@@ -121,16 +123,25 @@ private:
       {
          alpha_old = alpha;
 
-         mfem::out << "--- alternate iteration " << iter << ": displacement\n";
-         solver_disp->solve(time, disp);
-         mfem::out << "--- alternate iteration " << iter << ": phase field\n";
-         solver_fracture->solve(time, alpha);
+         const int newton_disp = solver_disp->solve(time, disp);
+         // The load value and the header of the table, once per step.
+         if (iter == 1)
+         {
+            solver_disp->print_load(disp);
+            print_alternate_header();
+         }
+         const int newton_fracture = solver_fracture->solve(time, alpha);
 
          const double change = get_max_change(alpha, alpha_old);
          const double energy = solver_fracture->get_energy(alpha);
-         mfem::out << "--- alternate iteration " << iter << ": ||alpha - alpha_old||_inf = "
-                   << std::scientific << std::setprecision(6) << change << ", energy = "
-                   << std::setprecision(12) << energy << std::defaultfloat
+
+         // One row per iteration: the Newton iterations and the last
+         // residual norm of each problem, the change of alpha and E.
+         mfem::out << std::left << std::setw(5) << iter << std::setw(10) << newton_disp
+                   << std::scientific << std::setprecision(6) << std::setw(14)
+                   << solver_disp->get_final_norm() << std::setw(10) << newton_fracture
+                   << std::setw(14) << solver_fracture->get_final_norm() << std::setw(14)
+                   << change << std::setprecision(12) << energy << std::defaultfloat
                    << std::setprecision(6) << '\n';
 
          if (change <= tol)
@@ -138,6 +149,16 @@ private:
       }
       MFEM_ABORT("Alternate minimization did not converge at t = " << time << ".");
       return max_iter;
+   }
+
+   // Header of the table of the alternate iterations: the Newton iterations
+   // and the last residual norm of the displacement, u, and of the phase
+   // field, a, then ||alpha - alpha_old||_inf and the energy E.
+   static void print_alternate_header()
+   {
+      mfem::out << '\n' << std::left << std::setw(5) << "alt" << std::setw(10) << "Newton_u"
+                << std::setw(14) << "||R_u||" << std::setw(10) << "Newton_a" << std::setw(14)
+                << "||R_a||" << std::setw(14) << "||da||_inf" << "energy\n";
    }
 
    // max |alpha - alpha_old| over the dofs of all ranks.
