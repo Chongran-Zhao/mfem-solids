@@ -34,6 +34,7 @@
 #include "INonlinearSolver.hpp"
 #include "LoadData.hpp"
 #include "NeumannBoundary.hpp"
+#include "SystemTools.hpp"
 
 class NonlinearSolver_Disp : public INonlinearSolver
 {
@@ -44,7 +45,8 @@ public:
                         const YAML::Node &solver)
       : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
-        linear_solver(global_assembly->get_comm())
+        linear_solver(global_assembly->get_comm()),
+        newton_monitor(newton_indent)
    {
       amg.SetSystemsOptions(3, false);
       amg.SetPrintLevel(0);
@@ -53,7 +55,7 @@ public:
    }
 
    // Solves the load at time from disp, and returns the number of Newton
-   // iterations; the residual norm of the last one is get_final_norm.
+   // iterations, whose residual norms it prints, indented by newton_indent.
    int solve(double time, mfem::ParGridFunction &disp)
    {
       if (global_assembly->get_neumann().is_traction_load())
@@ -65,6 +67,7 @@ public:
       disp.GetTrueDofs(disp_owned);
 
       initial_guess(time, disp, disp_owned);
+      SystemTools::print_newton_header(newton_indent);
 
       // Newton iterations for R(d) = 0.
       const int iterations = solve_newton(time, disp_owned);
@@ -72,13 +75,18 @@ public:
       return iterations;
    }
 
-   // Prints the load value of the step from disp: the prescribed
-   // displacement, or the traction faces.
-   void print_load(const mfem::ParGridFunction &disp) const
+   // Prints the load value at time, before the step is solved: the
+   // prescribed displacement, set on a copy of disp, or the traction faces.
+   void print_load(double time, const mfem::ParGridFunction &disp) const
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
       if (dirichlet.is_disp_load())
-         dirichlet.print_disp_load_by_step(disp);
+      {
+         mfem::ParGridFunction disp_load(disp.ParFESpace());
+         disp_load = disp;
+         dirichlet.apply_load_bc(time, LoadData::disp_loading, disp_load);
+         dirichlet.print_disp_load_by_step(disp_load);
+      }
       else
          global_assembly->get_neumann().print_traction_load_by_step();
    }
@@ -154,7 +162,8 @@ private:
    const std::unique_ptr<GlobalAssembly_Disp> global_assembly;   // R and K
    mutable mfem::HypreBoomerAMG amg;                             // preconditioner of GMRES
    mfem::GMRESSolver linear_solver;                              // solver of the tangent
-   mfem::IterativeSolverMonitor newton_monitor;                  // silent; TimeSolver prints
+   SystemTools::NewtonMonitor newton_monitor;                    // prints the residual norms
+   static constexpr int newton_indent = 5;                       // spaces before the Newton lines
 };
 
 #endif
