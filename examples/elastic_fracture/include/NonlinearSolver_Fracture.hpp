@@ -14,7 +14,8 @@
 // GetGradient. Newton's method works on the vector of the dofs this rank
 // owns, with the norms over all ranks.
 //
-// The linear systems are solved by GMRES, preconditioned by BoomerAMG, or
+// The linear systems are solved by GMRES, or CG, the tangent being
+// symmetric positive definite, preconditioned by BoomerAMG, or
 // by MUMPS, by linear_solver of the solver_fracture section of config.yaml.
 //
 // Author: Chongran Zhao
@@ -25,6 +26,7 @@
 #define NONLINEAR_SOLVER_FRACTURE_HPP
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include <mfem.hpp>
@@ -43,12 +45,13 @@ public:
                             const YAML::Node &solver)
       : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
-        linear_solver(global_assembly->get_comm()),
+        linear_solver(make_iterative_solver(get_linear_solver_name(solver),
+                                            global_assembly->get_comm())),
         newton_monitor(newton_indent)
    {
       amg.SetPrintLevel(0);
-      set_linear_solver(linear_solver, amg);
-      set_newton_solver(solver, linear_solver, newton_monitor);
+      set_linear_solver(*linear_solver, amg);
+      set_newton_solver(solver, *linear_solver, newton_monitor);
    }
 
    // The initial crack: the dofs this rank owns on the faces of the crack,
@@ -139,11 +142,21 @@ public:
    }
 
 private:
+   // CG for linear_solver cg, else GMRES, also for mumps, which does not
+   // use it.
+   static std::unique_ptr<mfem::IterativeSolver> make_iterative_solver(const std::string &name,
+                                                                       MPI_Comm comm)
+   {
+      if (name == "cg")
+         return std::make_unique<mfem::CGSolver>(comm);
+      return std::make_unique<mfem::GMRESSolver>(comm);
+   }
+
    // The tangent is owned by global_assembly.
    const std::unique_ptr<GlobalAssembly_Fracture> global_assembly;   // E, R and K
    mfem::Array<int> initial_crack;                                   // dofs where alpha = 0 always
    mutable mfem::HypreBoomerAMG amg;                                 // preconditioner of GMRES
-   mfem::GMRESSolver linear_solver;                                  // solver of the tangent
+   const std::unique_ptr<mfem::IterativeSolver> linear_solver;             // GMRES or CG
    SystemTools::NewtonMonitor newton_monitor;                        // prints the residual norms
    static constexpr int newton_indent = 5;                           // spaces before the Newton lines
 };
