@@ -140,7 +140,7 @@ private:
          mfem::out << std::left << std::setw(11) << iter << std::setw(8) << newton_disp
                    << std::scientific << std::setprecision(6) << std::setw(16)
                    << solver_disp->get_final_norm() << std::setw(8) << newton_fracture
-                   << std::setw(16) << solver_fracture->get_final_norm() << std::setw(16)
+                   << std::setw(16) << solver_fracture->get_final_norm() << std::setw(19)
                    << change << std::setprecision(12) << energy << std::defaultfloat
                    << std::setprecision(6) << '\n';
 
@@ -161,9 +161,7 @@ private:
                 << "1. displacement u" << "2. phase field alpha\n"
                 << std::setw(11) << "iteration" << std::setw(8) << "Newton" << std::setw(16)
                 << "||R||" << std::setw(8) << "Newton" << std::setw(16) << "||R||"
-                // Delta and alpha take 2 bytes each in UTF-8, which setw
-                // counts, so 18 for 16 columns.
-                << std::setw(18) << "max|Δα|" << "energy\n";
+                << std::setw(19) << "max|Delta alpha|" << "energy\n";
    }
 
    // max |alpha - alpha_old| over the dofs of all ranks.
