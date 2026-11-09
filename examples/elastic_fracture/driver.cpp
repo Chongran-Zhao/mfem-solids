@@ -3,13 +3,15 @@
 //
 // Quasi-static phase-field fracture by alternate minimization, following the
 // notes Phase-field-fracture.pdf: the displacement problem with the phase
-// field fixed, LocalAssembly_Disp with the energy factor g(alpha), and the
-// phase-field problem with the displacement fixed, LocalAssembly_Fracture,
-// solved in turn at each load step of config.yaml. The case is the helical
-// crack of Bourdin (2007, Section 3), described in config.yaml; the loading
-// is given by LoadData, the materials by MaterialModelData. The initial displacement is zero and the initial phase
-// field 1, the sound material, but 0 on the faces of the initial crack of
-// config.yaml, if any.
+// field fixed, LocalAssembly_Disp_Regions with the energy factor g(alpha)
+// where the material breaks, and the phase-field problem with the
+// displacement fixed, LocalAssembly_Fracture_Regions, solved in turn at each
+// load step of config.yaml. Each element attribute is a region with its own
+// material, breakable or not, as in MaterialModelData. The case is the
+// helical crack of Bourdin (2007, Section 3), described in config.yaml; the
+// loading is given by LoadData. The initial displacement is zero and the
+// initial phase field 1, the sound material, but 0 on the faces of the
+// initial crack of config.yaml, if any.
 //
 // Author: Chongran Zhao
 // Date: Nov. 8, 2026
@@ -21,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
@@ -30,8 +33,8 @@
 #include "GlobalAssembly_Fracture.hpp"
 #include "ISurfaceEnergy.hpp"
 #include "LoadData.hpp"
-#include "LocalAssembly_Disp.hpp"
-#include "LocalAssembly_Fracture.hpp"
+#include "LocalAssembly_Disp_Regions.hpp"
+#include "LocalAssembly_Fracture_Regions.hpp"
 #include "MaterialModelData.hpp"
 #include "NeumannBoundary.hpp"
 #include "NonlinearSolver_Disp.hpp"
@@ -101,22 +104,37 @@ int main(int argc, char *argv[])
    if (neumann->is_traction_load())
       neumann->print_traction_load();
 
-   // 7. The displacement problem: the material and the energy factor go to
-   //    the local assembly, the local assembly and the boundary conditions
-   //    to the global one, which the nonlinear solver owns.
-   auto local_assembly_disp = std::make_unique<LocalAssembly_Disp>(set_material_model());
+   // 7. The displacement problem: the material of each region goes to the
+   //    local assembly, with the energy factor g(alpha) where the region
+   //    breaks; the local assembly and the boundary conditions go to the
+   //    global one, which the nonlinear solver owns.
+   const int num_regions = static_cast<int>(region_materials.size());
+   std::vector<std::unique_ptr<const IMaterialModel>> materials_disp;
+   for (int attribute = 1; attribute <= num_regions; attribute++)
+      materials_disp.push_back(set_material_model(attribute));
+   auto local_assembly_disp = std::make_unique<LocalAssembly_Disp_Regions>(std::move(materials_disp));
    local_assembly_disp->set_quad_order(quad_order);
-   local_assembly_disp->set_energy_factor(g_coefficient);
+   for (int attribute = 1; attribute <= num_regions; attribute++)
+      if (get_region_material(attribute).breakable)
+         local_assembly_disp->set_energy_factor(attribute, g_coefficient);
    auto global_assembly_disp = std::make_unique<GlobalAssembly_Disp>(
       space_u, std::move(local_assembly_disp), std::move(dirichlet), std::move(neumann));
    auto solver_disp = std::make_unique<NonlinearSolver_Disp>(std::move(global_assembly_disp),
                                                              config["solver_disp"]);
 
-   // 8. The phase-field problem: the surface energy, a material of its own
-   //    and the displacement go to the local assembly, the local assembly
-   //    to the global one, which the nonlinear solver owns.
-   auto local_assembly_fracture = std::make_unique<LocalAssembly_Fracture>(
-      set_surface_energy(), set_material_model(), disp);
+   // 8. The phase-field problem: the surface energy, materials of its own,
+   //    whether each region breaks and the displacement go to the local
+   //    assembly, the local assembly to the global one, which the nonlinear
+   //    solver owns.
+   std::vector<std::unique_ptr<const IMaterialModel>> materials_fracture;
+   std::vector<bool> breakable;
+   for (int attribute = 1; attribute <= num_regions; attribute++)
+   {
+      materials_fracture.push_back(set_material_model(attribute));
+      breakable.push_back(get_region_material(attribute).breakable);
+   }
+   auto local_assembly_fracture = std::make_unique<LocalAssembly_Fracture_Regions>(
+      set_surface_energy(), std::move(materials_fracture), breakable, disp);
    local_assembly_fracture->set_quad_order(quad_order);
    auto global_assembly_fracture = std::make_unique<GlobalAssembly_Fracture>(
       space_alpha, std::move(local_assembly_fracture));

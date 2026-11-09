@@ -83,7 +83,9 @@ set(shared_headers
   ${project_dir}/include/assembly/GlobalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssemblyTools.hpp
   ${project_dir}/include/assembly/LocalAssembly_Disp.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Disp_Regions.hpp
   ${project_dir}/include/assembly/LocalAssembly_Fracture.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Fracture_Regions.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood_Regions.hpp

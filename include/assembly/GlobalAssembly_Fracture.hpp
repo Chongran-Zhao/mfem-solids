@@ -7,7 +7,8 @@
 //               surface energy, for the check of the alternate
 //               minimization;
 //    residual   R(alpha) = dE/dalpha, from one ParNonlinearForm over
-//               LocalAssembly_Fracture;
+//               the local assembly, LocalAssembly_Fracture or
+//               LocalAssembly_Fracture_Regions;
 //    tangent    K(alpha) = dR/dalpha, a HypreParMatrix assembled from the
 //               element tangents, whose rows on each rank are the dofs it
 //               owns.
@@ -28,15 +29,13 @@
 
 #include <mfem.hpp>
 
-#include "LocalAssembly_Fracture.hpp"
-
 class GlobalAssembly_Fracture
 {
 public:
    // Takes the ownership of the local assembly; the global_assembly only
    // borrows it.
    GlobalAssembly_Fracture(mfem::ParFiniteElementSpace &input_space,
-                           std::unique_ptr<LocalAssembly_Fracture> input_local_assembly)
+                           std::unique_ptr<mfem::NonlinearFormIntegrator> input_local_assembly)
       : space(input_space),
         local_assembly(std::move(input_local_assembly)),
         global_assembly(&input_space)
@@ -95,7 +94,7 @@ private:
 
    // Declared before global_assembly, so that global_assembly, which
    // borrows it, goes first.
-   const std::unique_ptr<LocalAssembly_Fracture> local_assembly;
+   const std::unique_ptr<mfem::NonlinearFormIntegrator> local_assembly;
    mfem::ParNonlinearForm global_assembly;   // E, R and K, without constraints
 };
 

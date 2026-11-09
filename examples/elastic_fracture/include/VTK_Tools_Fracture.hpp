@@ -11,10 +11,12 @@
 //    displacement   u;
 //    alpha          the phase field;
 //    strain         eps = (grad u + grad u^T) / 2;
-//    stress         g(alpha) sigma_0, the stress of the displacement
-//                   problem, with sigma_0 the first Piola-Kirchhoff stress
-//                   of the material, lambda tr(eps) I + 2 mu eps for the
-//                   linear elastic one;
+//    stress         the stress of the displacement problem, given by the
+//                   caller from the element attribute, F and alpha, e.g.
+//                   g(alpha) sigma_0 where the material breaks, with sigma_0
+//                   the first Piola-Kirchhoff stress of the material of the
+//                   region, lambda tr(eps) I + 2 mu eps for the linear
+//                   elastic one;
 // and for each cell the region of its element, the element attribute.
 //
 // The points are at the reference position X when is_reference is set,
@@ -44,8 +46,6 @@
 
 #include <mfem.hpp>
 
-#include "IMaterialModel.hpp"
-#include "ISurfaceEnergy.hpp"
 #include "LocalAssemblyTools.hpp"
 #include "Tensor2_3D.hpp"
 
@@ -62,10 +62,12 @@ public:
    }
 
    // Write step_XXXX.vtu from the displacement and the phase field of a
-   // step, on the same mesh; the stress is that of material, degraded by
-   // g(alpha) of surface_energy.
+   // step, on the same mesh; stress(attribute, F, alpha) gives the stress of
+   // the region of the element attribute at the deformation gradient F and
+   // the phase field alpha of a point.
+   template <typename Stress>
    void save(int step, const mfem::GridFunction &disp, const mfem::GridFunction &alpha,
-             const IMaterialModel &material, const ISurfaceEnergy &surface_energy)
+             const Stress &stress_of)
    {
       const mfem::FiniteElementSpace &fespace = *disp.FESpace();
       mfem::Mesh &mesh = *fespace.GetMesh();
@@ -113,13 +115,12 @@ public:
             const double alpha_value = alpha.GetValue(elem_map, ref_pt);
             alpha_out.push_back(static_cast<float>(alpha_value));
 
-            // F, then eps = (F + F^T) / 2 - I and g(alpha) sigma_0(F).
+            // F, then eps = (F + F^T) / 2 - I and the stress.
             elem.CalcDShape(ref_pt, dN_dxi);
             mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
             const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(elem_disp, dN_dX);
             const Tensor2_3D strain = 0.5 * (F + F.transpose()) - Tensor2_3D::identity();
-            const Tensor2_3D stress =
-               surface_energy.get_g(alpha_value) * material.get_1st_PK_stress(F);
+            const Tensor2_3D stress = stress_of(attribute, F, alpha_value);
             append_symmetric(strain_out, strain);
             append_symmetric(stress_out, stress);
          }

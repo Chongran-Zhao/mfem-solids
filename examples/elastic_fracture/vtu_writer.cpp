@@ -6,9 +6,10 @@
 // sampled within each element by VTK_Tools_Fracture, at the reference
 // positions or the deformed ones by output.vtu_reference of config.yaml.
 // The steps and the fields are those the driver saved. The stress is that
-// of the material of MaterialModelData, which must be the one the driver
-// ran with, degraded by g(alpha) of its surface energy: g(alpha) sigma_0,
-// the stress of the displacement problem. It runs
+// of the material of the region of MaterialModelData, which must be the one
+// the driver ran with, degraded by g(alpha) of its surface energy where the
+// region breaks: g(alpha) sigma_0, the stress of the displacement problem,
+// and sigma_0 elsewhere. It runs
 // on MPI ranks, each writing every num_ranks-th step, and rank 0 the PVD
 // file once all are written; every rank reads the results on
 // results/mesh.mesh, the mesh the driver gathered them onto.
@@ -34,6 +35,7 @@
 #include "ISurfaceEnergy.hpp"
 #include "MaterialModelData.hpp"
 #include "SystemTools.hpp"
+#include "Tensor2_3D.hpp"
 #include "VTK_Tools_Fracture.hpp"
 
 int main(int argc, char *argv[])
@@ -82,10 +84,21 @@ int main(int argc, char *argv[])
       return std::make_unique<mfem::GridFunction>(&mesh, gf_file);
    };
 
-   // The material and the surface energy; they hold no state, so this
-   // program creates its own.
-   const std::unique_ptr<const IMaterialModel> material = set_material_model();
+   // The materials of the regions and the surface energy; they hold no
+   // state, so this program creates its own.
+   std::vector<std::unique_ptr<const IMaterialModel>> materials;
+   for (int attribute = 1; attribute <= static_cast<int>(region_materials.size()); attribute++)
+      materials.push_back(set_material_model(attribute));
    const std::unique_ptr<const ISurfaceEnergy> surface_energy = set_surface_energy();
+
+   // g(alpha) sigma_0 of the region where it breaks, sigma_0 elsewhere.
+   auto stress = [&](int attribute, const Tensor2_3D &F, double alpha)
+   {
+      const Tensor2_3D sigma_0 = materials[attribute - 1]->get_1st_PK_stress(F);
+      if (get_region_material(attribute).breakable)
+         return surface_energy->get_g(alpha) * sigma_0;
+      return sigma_0;
+   };
 
    VTK_Tools_Fracture output(config["output"]["vtu"].as<std::string>(),
                              config["output"]["vtu_refine"].as<int>(),
@@ -101,7 +114,7 @@ int main(int argc, char *argv[])
       if (step == 0)
          SystemTools::print_space(*disp->FESpace());
 
-      output.save(step, *disp, *alpha, *material, *surface_energy);
+      output.save(step, *disp, *alpha, stress);
    }
 
    // The PVD file, once every rank has written its steps.
