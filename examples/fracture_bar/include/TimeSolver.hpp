@@ -4,14 +4,16 @@
 // The loop over the load steps of phase-field fracture by alternate
 // minimization, as in the notes Phase-field-fracture.pdf (p. 6, 7) and
 // Algorithm 1 of Bourdin, Francfort and Marigo (J. Elasticity 2008): at the
-// load step of time t,
+// load step of time t, from step 0 at t = 0,
 //    1. the crack set K_n, the nodes where alpha_n <= eta_lim, is fixed to
 //       alpha = 0 for the whole step;
 //    2. repeat: solve the displacement with alpha fixed, then the phase
 //       field with the displacement fixed,
 //       until ||alpha^(j+1) - alpha^(j)||_inf <= tol.
 // The first iteration of each step starts from the alpha of the previous
-// one, 1 at the first step. Each step prints one block per iteration: the
+// one; step 0, without load, starts from the alpha given, 1 but 0 on the
+// initial crack, and forms the profile of alpha around the crack, as mef90
+// solves its first time. Each step prints one block per iteration: the
 // Newton iterations of each problem, indented, then
 // ||alpha - alpha_old||_inf and the energy E(u, alpha), elastic and surface
 // and their sum, as a check that it decreases. The displacement and the phase
@@ -69,19 +71,19 @@ public:
    {
    }
 
-   // Solves the load steps from disp and alpha, the state at t = 0, and
-   // saves the state of step 0, of every save_interval-th step and of the
-   // last.
+   // Solves the load steps from disp and alpha, the initial state, step 0
+   // at t = 0 first, and saves the state of step 0, of every
+   // save_interval-th step and of the last.
    void run(mfem::ParGridFunction &disp, mfem::ParGridFunction &alpha)
    {
-      save_fields(0, {{"disp", &disp}, {"alpha", &alpha}});
+      // time.csv starts with the row of step 0.
       std::ofstream time_file = open_time_file();
 
       const int num_steps = time_steps.get_num_steps();
 
       mfem::StopWatch step_timer;
       double time_n = 0.0;
-      for (int step = 1; step <= num_steps; step++)
+      for (int step = 0; step <= num_steps; step++)
       {
          // Wall-clock time of the step, up to the convergence.
          step_timer.Restart();
@@ -105,7 +107,8 @@ public:
          if (is_saved(step, num_steps))
          {
             save_fields(step, {{"disp", &disp}, {"alpha", &alpha}});
-            write_time(time_file, step, time, dt, iterations);
+            if (step > 0)
+               write_time(time_file, step, time, dt, iterations);
          }
 
          time_n = time;
