@@ -126,8 +126,10 @@ private:
          alpha_old = alpha;
 
          // One block per iteration: the Newton iterations of each problem,
-         // then the change of alpha and E.
-         mfem::out << "\nalternate iteration " << iter << '\n';
+         // then the change of alpha and E; a blank line before the first,
+         // a dashed line between two.
+         mfem::out << ((iter == 1) ? std::string("\n") : std::string(74, '-') + '\n')
+                   << "alternate iteration " << iter << '\n';
          mfem::out << "  --> displacement u\n";
          solver_disp->solve(time, disp);
          mfem::out << "  --> phase field alpha\n";
