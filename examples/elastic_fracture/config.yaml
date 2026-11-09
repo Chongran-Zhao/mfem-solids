@@ -84,16 +84,20 @@ fracture:
 
 # Newton's method of the displacement problem; linear in the displacement
 # for a linear elastic material, so that the predictor already solves it and
-# the absolute tolerance must be positive.
+# the absolute tolerance must be positive. linear_solver gmres, preconditioned
+# by BoomerAMG, or mumps: on the helical mesh, 8 ranks, a load step took 11 s
+# with gmres for both problems and 65 s with mumps for both, for the same
+# energies; mumps is the fallback should gmres stall once the crack opens,
+# where the stiffness falls to eta.
 solver_disp:
-  linear_solver: mumps
+  linear_solver: gmres
   newton_rel_tol: 1.0e-8
   newton_abs_tol: 1.0e-10
   newton_max_iter: 20
 
 # Newton's method of the phase-field problem, linear in alpha for AT2.
 solver_fracture:
-  linear_solver: mumps
+  linear_solver: gmres
   newton_rel_tol: 1.0e-8
   newton_abs_tol: 1.0e-10
   newton_max_iter: 20
