@@ -13,8 +13,8 @@
 // The first iteration of each step starts from the alpha of the previous
 // one, 1 at the first step. Each step prints one block per iteration: the
 // Newton iterations of each problem, indented, then
-// ||alpha - alpha_old||_inf and the energy E(u, alpha), as a check that it
-// decreases. The displacement and the phase
+// ||alpha - alpha_old||_inf and the energy E(u, alpha), elastic and surface
+// and their sum, as a check that it decreases. The displacement and the phase
 // field of step 0, of every save_interval-th step and of the last are saved
 // as <results>/disp_XXXX.gf and alpha_XXXX.gf, and the time of each saved
 // step, with its number of iterations, in <results>/time.csv; there the
@@ -135,11 +135,16 @@ private:
          mfem::out << "  --> phase field alpha\n";
          solver_fracture->solve(time, alpha);
 
+         // The energy E = elastic + surface; the surface energy is E less
+         // the elastic one.
          const double change = get_max_change(alpha, alpha_old);
          const double energy = solver_fracture->get_energy(alpha);
+         const double elastic_energy = solver_disp->get_energy(disp);
          mfem::out << "  max|Delta alpha| = " << std::scientific << std::setprecision(6)
-                   << change << ", energy = " << std::setprecision(12) << energy
-                   << std::defaultfloat << std::setprecision(6) << '\n';
+                   << change << '\n' << std::setprecision(12) << "  energy: elastic = "
+                   << elastic_energy << ", surface = " << energy - elastic_energy
+                   << ", total = " << energy << std::defaultfloat << std::setprecision(6)
+                   << '\n';
 
          if (change <= tol)
             return iter;

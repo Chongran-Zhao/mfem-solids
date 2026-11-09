@@ -72,6 +72,11 @@ public:
       local_traction.ParallelAssemble(external_force);
    }
 
+   // The strain energy int Psi(F) dV over all ranks, times the factor of
+   // LocalAssembly_Disp, from the values of disp on the dofs this rank owns;
+   // without the work of the tractions.
+   double get_energy(const mfem::Vector &disp) const { return global_assembly.GetEnergy(disp); }
+
    // R(d) at every dof this rank owns.
    void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
    {

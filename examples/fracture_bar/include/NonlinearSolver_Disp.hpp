@@ -75,6 +75,14 @@ public:
       return iterations;
    }
 
+   // The elastic energy int g(alpha) psi_e dV over all ranks.
+   double get_energy(const mfem::ParGridFunction &disp) const
+   {
+      mfem::Vector disp_owned(global_assembly->get_num_dofs());
+      disp.GetTrueDofs(disp_owned);
+      return global_assembly->get_energy(disp_owned);
+   }
+
    // Prints the load value at time, before the step is solved: the
    // prescribed displacement, set on a copy of disp, or the traction faces.
    void print_load(double time, const mfem::ParGridFunction &disp) const

@@ -2,8 +2,8 @@
 // LocalAssembly_Disp.hpp
 //
 // Local (element) assembly of compressible hyperelasticity in the Total
-// Lagrangian form: the element residual and tangent. The unknown is the
-// displacement. It is an MFEM NonlinearFormIntegrator, called by
+// Lagrangian form: the element energy, residual and tangent. The unknown is
+// the displacement. It is an MFEM NonlinearFormIntegrator, called by
 // NonlinearForm, which assembles the global residual and tangent. An optional
 // factor multiplies the energy density, thus the residual and the tangent, as
 // g(alpha) of phase-field fracture.
@@ -32,6 +32,41 @@ public:
    // linear elastic (MaterialModel_LinearElastic).
    LocalAssembly_Disp(std::unique_ptr<const IMaterialModel> input_material)
       : material(std::move(input_material)) {}
+
+   // Required by MFEM: overrides mfem::NonlinearFormIntegrator::
+   // GetElementEnergy, which NonlinearForm::GetEnergy calls on every element.
+   // E = int Psi(F) dV over the element in the reference configuration,
+   // times the factor of the energy density.
+   double GetElementEnergy(const mfem::FiniteElement &elem,
+                           mfem::ElementTransformation &elem_map,
+                           const mfem::Vector &disp) override
+   {
+      const int num_nodes = elem.GetDof();
+      mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
+
+      double energy = 0.0;
+
+      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
+
+      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
+      {
+         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
+         elem_map.SetIntPoint(&quad_pt);
+
+         // dN/dxi
+         elem.CalcDShape(quad_pt, dN_dxi);
+         // N_a,J = dN/dX = dN/dxi (dX/dxi)^-1.
+         mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
+
+         const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
+
+         // dV = w_q * det( dX/dxi ), times the factor of the energy density.
+         const double dV = quad_pt.weight * elem_map.Weight() * get_energy_factor(elem_map, quad_pt);
+
+         energy += dV * material->get_strain_energy(F);
+      }
+      return energy;
+   }
 
    // Required by MFEM: overrides mfem::NonlinearFormIntegrator::
    // AssembleElementVector, which NonlinearForm calls on every element.
