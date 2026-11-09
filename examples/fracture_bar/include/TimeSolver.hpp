@@ -15,8 +15,9 @@
 // iteration, as a check that it decreases. The displacement and the phase
 // field of step 0, of every save_interval-th step and of the last are saved
 // as <results>/disp_XXXX.gf and alpha_XXXX.gf, and the time of each saved
-// step, with its number of iterations, in <results>/time.csv. It owns the
-// two nonlinear solvers.
+// step, with its number of iterations, in <results>/time.csv; there the
+// iterations are the alternate iterations of the step, not the Newton ones.
+// It owns the two nonlinear solvers.
 //
 // Author: Chongran Zhao
 // Date: Nov. 8, 2026
