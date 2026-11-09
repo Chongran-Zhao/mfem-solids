@@ -128,9 +128,9 @@ private:
          // One block per iteration: the Newton iterations of each problem,
          // then the change of alpha and E.
          mfem::out << "\nalternate iteration " << iter << '\n';
-         mfem::out << "  1. displacement u\n";
+         mfem::out << "  --> displacement u\n";
          solver_disp->solve(time, disp);
-         mfem::out << "  2. phase field alpha\n";
+         mfem::out << "  --> phase field alpha\n";
          solver_fracture->solve(time, alpha);
 
          const double change = get_max_change(alpha, alpha_old);
