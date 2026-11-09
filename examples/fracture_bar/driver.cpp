@@ -9,7 +9,8 @@
 // traction of Bourdin, Francfort and Marigo (J. Elasticity 2008, Section
 // 8.3.1); the loading is given by LoadData, the materials by
 // MaterialModelData. The initial displacement is zero and the initial phase
-// field 1, the sound material.
+// field 1, the sound material, but 0 on the faces of the initial crack of
+// config.yaml, if any.
 //
 // Author: Chongran Zhao
 // Date: Nov. 8, 2026
@@ -122,6 +123,20 @@ int main(int argc, char *argv[])
       space_alpha, std::move(local_assembly_fracture));
    auto solver_fracture = std::make_unique<NonlinearSolver_Fracture>(
       std::move(global_assembly_fracture), config["solver_fracture"]);
+
+   // The initial crack: the dofs of the faces of fracture.initial_crack,
+   // named in mesh.faces of config.yaml, where alpha = 0 at every step.
+   mfem::Array<int> initial_crack;
+   for (const YAML::Node &face : config["fracture"]["initial_crack"])
+   {
+      mfem::Array<int> face_marker =
+         mesh.bdr_attribute_sets.GetAttributeSetMarker(face.as<std::string>());
+      mfem::Array<int> face_dofs;
+      space_alpha.GetEssentialTrueDofs(face_marker, face_dofs);
+      initial_crack.Append(face_dofs);
+   }
+   const int crack_size = solver_fracture->set_initial_crack(initial_crack);
+   mfem::out << "\ninitial crack: " << crack_size << " dofs with alpha = 0\n";
 
    // 9. The time solver, which owns the two nonlinear solvers.
    const std::filesystem::path results_dir = config["output"]["gf"].as<std::string>();

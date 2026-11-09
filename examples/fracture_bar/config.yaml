@@ -66,6 +66,9 @@ fracture:
   # A node joins the crack set K_n, alpha = 0, when alpha_n <= eta_lim;
   # mef90's irrevThres .99 for its damage 1 - alpha.
   eta_lim: 1.0e-2
+  # Faces of the initial crack, named in mesh.faces, where alpha = 0 at
+  # every step; none for the bar of the paper.
+  initial_crack: []
   # Tolerance on ||alpha^(j+1) - alpha^(j)||_inf, and the maximum of
   # iterations per load step.
   tol: 1.0e-6
