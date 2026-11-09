@@ -1,13 +1,16 @@
 // ============================================================================
 // read_mesh.cpp
 //
-// Reads the mesh named in config.yaml and labels the six faces of its bounding
-// box, so that boundary conditions can refer to faces by name.
+// Reads the mesh named in config.yaml and names its boundary attributes, the
+// physical tags of a Gmsh file, as mesh.faces of config.yaml gives them, so
+// that boundary conditions and the initial crack can refer to faces by name.
+// The attributes are those of the mesh file, and a face may lie inside the
+// body, as the faces of an initial crack.
 // Step 1: read the mesh section of config.yaml.
 // Step 2: read and refine the mesh.
-// Step 3: label the boundary faces left, right, front, back, bottom, top.
-// Step 4: report the faces of each label.
-// Step 5: name the labels and save the mesh.
+// Step 3: check the names of mesh.faces against the attributes of the mesh.
+// Step 4: report the faces of each attribute.
+// Step 5: name the attributes and save the mesh.
 // Step 6: draw the named faces in a web page and open it.
 //
 // Author: Chongran Zhao
@@ -24,6 +27,7 @@
 #include <ios>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <sstream>
 #include <string>
 
@@ -33,7 +37,8 @@
 int main(int argc, char *argv[])
 {
    // 1. The mesh section of config.yaml gives the mesh file, the number of
-   //    uniform refinements and the output file. The file given as first
+   //    uniform refinements, the names of the boundary attributes and the
+   //    output file. The file given as first
    //    argument is read, else the config.yaml of the directory the program
    //    runs in, the copies CMake puts in the build folder. The mesh file is
    //    relative to the project
@@ -47,6 +52,8 @@ int main(int argc, char *argv[])
    const std::string mesh_file =
       (std::filesystem::path(PROJECT_DIR) / paras["file"].as<std::string>()).lexically_normal().string();
    const int refine_levels = paras["refine_levels"].as<int>();
+   // Name -> boundary attribute, e.g. left: 5.
+   const std::map<std::string, int> face_map = paras["faces"].as<std::map<std::string, int>>();
    const std::string output_mesh = paras["output"].as<std::string>();
    const std::string output_html = paras["output_html"].as<std::string>();
    const bool open_html = paras["open_html"].as<bool>();
@@ -64,63 +71,48 @@ int main(int argc, char *argv[])
              << std::setw(20) << "boundary elements" << mesh.GetNBE() << '\n'
              << std::string(74, '-') << '\n';
 
-   // 3. Attribute 2*axis + 1 is the face at the minimum of the bounding box
-   //    along that axis, 2*axis + 2 the face at its maximum. A boundary face
-   //    belongs to a label when all its vertices lie on that plane; faces on
-   //    none of the six planes get attribute 7.
-   const std::array<std::string, 7> face_names = {"left", "right", "front", "back",
-                                                  "bottom", "top", "other"};
-
+   // 3. Every name of mesh.faces must be an attribute of the mesh; the
+   //    attributes without a name are reported, and no boundary condition
+   //    can refer to them.
    mfem::Vector box_min, box_max;
    mesh.GetBoundingBox(box_min, box_max);
    const double tol = 1.0e-8 * (box_max.Normlinf() + box_min.Normlinf());
 
+   std::map<int, std::string> face_names;   // attribute -> name, "-" without one
+   for (int attr : mesh.bdr_attributes)
+      face_names[attr] = "-";
+   for (const auto &[name, attr] : face_map)
+   {
+      MFEM_VERIFY(face_names.count(attr) == 1,
+                  "mesh.faces: " << name << " is attribute " << attr
+                  << ", which no boundary face of the mesh has.");
+      face_names[attr] = name;
+   }
+
+   // 4. For each attribute: the number of faces and the range of x, y, z of
+   //    their vertices, printed as a table.
+   std::map<int, int> num_faces;
+   std::map<int, std::array<double, 3>> coord_min, coord_max;
+   for (const auto &[attr, name] : face_names)
+   {
+      num_faces[attr] = 0;
+      coord_min[attr].fill(std::numeric_limits<double>::max());
+      coord_max[attr].fill(std::numeric_limits<double>::lowest());
+   }
+
    mfem::Array<int> face_vertices;
    for (int jj = 0; jj < mesh.GetNBE(); jj++)
    {
-      mesh.GetBdrElementVertices(jj, face_vertices);
-
-      int label = 7;
-      for (int axis = 0; axis < 3 && label == 7; axis++)
-      {
-         bool on_min = true, on_max = true;
-         for (int vv : face_vertices)
-         {
-            const double coord = mesh.GetVertex(vv)[axis];
-            on_min = on_min && std::abs(coord - box_min(axis)) < tol;
-            on_max = on_max && std::abs(coord - box_max(axis)) < tol;
-         }
-         if (on_min)
-            label = 2 * axis + 1;
-         else if (on_max)
-            label = 2 * axis + 2;
-      }
-      mesh.SetBdrAttribute(jj, label);
-   }
-   // Rebuild the list mesh.bdr_attributes from the new labels.
-   mesh.SetAttributes();
-
-   // 4. For each label: the number of faces and the range of x, y, z of
-   //    their vertices, printed as a table.
-   std::array<int, 7> num_faces = {0, 0, 0, 0, 0, 0, 0};
-   std::array<std::array<double, 3>, 7> coord_min, coord_max;
-   for (auto &xx : coord_min)
-      xx.fill(std::numeric_limits<double>::max());
-   for (auto &xx : coord_max)
-      xx.fill(std::numeric_limits<double>::lowest());
-
-   for (int jj = 0; jj < mesh.GetNBE(); jj++)
-   {
-      const int label = mesh.GetBdrAttribute(jj);
-      num_faces[label - 1]++;
+      const int attr = mesh.GetBdrAttribute(jj);
+      num_faces[attr]++;
 
       mesh.GetBdrElementVertices(jj, face_vertices);
       for (int vv : face_vertices)
          for (int axis = 0; axis < 3; axis++)
          {
             const double coord = mesh.GetVertex(vv)[axis];
-            coord_min[label - 1][axis] = std::min(coord_min[label - 1][axis], coord);
-            coord_max[label - 1][axis] = std::max(coord_max[label - 1][axis], coord);
+            coord_min[attr][axis] = std::min(coord_min[attr][axis], coord);
+            coord_max[attr][axis] = std::max(coord_max[attr][axis], coord);
          }
    }
 
@@ -132,35 +124,40 @@ int main(int argc, char *argv[])
       return out.str();
    };
 
-   // "name  x = value" for the plane of one label, padded to a fixed width.
-   auto plane = [&](int label)
+   // The axis of the plane of the bounding box the faces of attr lie on, and
+   // +1 at its maximum or -1 at its minimum; axis -1 when they lie on none,
+   // as the faces inside the body.
+   auto box_plane = [&](int attr, int &side)
    {
-      const int axis = (label - 1) / 2;
-      const double value = (label % 2 == 1) ? box_min(axis) : box_max(axis);
-      std::ostringstream out;
-      out << std::setprecision(4) << std::left << std::setw(7) << face_names[label - 1]
-          << "xyz"[axis] << " = " << value;
-      return out.str();
+      for (int axis = 0; axis < 3; axis++)
+         if (coord_max[attr][axis] - coord_min[attr][axis] < tol)
+         {
+            if (std::abs(coord_min[attr][axis] - box_min(axis)) < tol)
+            {
+               side = -1;
+               return axis;
+            }
+            if (std::abs(coord_max[attr][axis] - box_max(axis)) < tol)
+            {
+               side = 1;
+               return axis;
+            }
+         }
+      side = 0;
+      return -1;
    };
 
    mfem::out << "\nBoundary faces\n"
-             << "        z                     " << std::left << std::setw(18) << plane(1) << plane(2) << '\n'
-             << "        |  y                  " << std::setw(18) << plane(3) << plane(4) << '\n'
-             << "        | /                   " << std::setw(18) << plane(5) << plane(6) << '\n'
-             << "        |/\n"
-             << "        +------ x\n\n"
              << std::left << std::setw(6) << "attr" << std::setw(8) << "name"
              << std::right << std::setw(10) << "bdr elems" << "   "
              << std::left << std::setw(16) << "x" << std::setw(16) << "y" << "z\n"
              << std::string(74, '-') << '\n';
-   for (int label = 1; label <= 7; label++)
+   for (const auto &[attr, name] : face_names)
    {
-      if (num_faces[label - 1] == 0)
-         continue;
-      const auto &lo = coord_min[label - 1];
-      const auto &hi = coord_max[label - 1];
-      mfem::out << std::left << std::setw(6) << label << std::setw(8) << face_names[label - 1]
-                << std::right << std::setw(10) << num_faces[label - 1] << "   "
+      const auto &lo = coord_min[attr];
+      const auto &hi = coord_max[attr];
+      mfem::out << std::left << std::setw(6) << attr << std::setw(8) << name
+                << std::right << std::setw(10) << num_faces[attr] << "   "
                 << std::left << std::setw(16) << range(lo[0], hi[0])
                 << std::setw(16) << range(lo[1], hi[1]) << range(lo[2], hi[2]) << '\n';
    }
@@ -169,16 +166,14 @@ int main(int argc, char *argv[])
              << mesh.GetNBE() << "   " << std::left << std::setw(16) << range(box_min(0), box_max(0))
              << std::setw(16) << range(box_min(1), box_max(1)) << range(box_min(2), box_max(2))
              << "\n\n";
-   if (num_faces[6] > 0)
-      mfem::out << "Warning: some boundary faces are not on the bounding box.\n";
+   if (face_map.size() < face_names.size())
+      mfem::out << "Warning: some boundary attributes have no name in mesh.faces.\n";
 
-   // 5. Give each label that occurs its name as a boundary attribute set, so
-   //    that later steps can ask for the face "right" instead of attribute 2.
+   // 5. Give each name its attribute as a boundary attribute set, so that
+   //    later steps can ask for the face "right" instead of its attribute.
    //    Mesh files with named sets are written in the MFEM mesh v1.3 format.
-   for (int label = 1; label <= 7; label++)
-      if (num_faces[label - 1] > 0)
-         mesh.bdr_attribute_sets.SetAttributeSet(face_names[label - 1],
-                                                 mfem::Array<int>({label}));
+   for (const auto &[name, attr] : face_map)
+      mesh.bdr_attribute_sets.SetAttributeSet(name, mfem::Array<int>({attr}));
 
    mesh.Save(output_mesh);
    mfem::out << std::left << std::setw(20) << "saved"
@@ -196,30 +191,35 @@ int main(int argc, char *argv[])
         << box_max(1) << ", " << box_min(2) << ", " << box_max(2) << "], \"faces\": [";
 
    bool first_face = true;
-   for (int label = 1; label <= 7; label++)
+   for (const auto &[attr, name] : face_names)
    {
-      if (num_faces[label - 1] == 0)
-         continue;
-
-      // Label position: center of the face group, pushed outwards along the
-      // normal of its plane so that it does not sit inside the surface.
+      // Label position: center of the faces; for faces on a plane of the
+      // bounding box, pushed outwards along its normal so that it does not
+      // sit inside the surface.
+      int side = 0;
+      const int axis = box_plane(attr, side);
       std::array<double, 3> label_position;
-      for (int axis = 0; axis < 3; axis++)
-         label_position[axis] = 0.5 * (coord_min[label - 1][axis] + coord_max[label - 1][axis]);
-      if (label <= 6)
-         label_position[(label - 1) / 2] += (label % 2 == 1 ? -0.06 : 0.06) * box_size;
+      for (int aa = 0; aa < 3; aa++)
+         label_position[aa] = 0.5 * (coord_min[attr][aa] + coord_max[attr][aa]);
+      std::string plane;
+      if (axis >= 0)
+      {
+         label_position[axis] += 0.06 * side * box_size;
+         std::ostringstream out;
+         out << std::setprecision(4) << "xyz"[axis] << " = " << coord_min[attr][axis];
+         plane = out.str();
+      }
 
-      json << (first_face ? "" : ", ") << "{\"attribute\": " << label
-           << ", \"name\": \"" << face_names[label - 1] << "\", \"plane\": \""
-           << (label <= 6 ? plane(label).substr(7) : std::string("")) << "\", \"label_position\": ["
-           << label_position[0] << ", " << label_position[1] << ", " << label_position[2]
-           << "], \"polygons\": [";
+      json << (first_face ? "" : ", ") << "{\"attribute\": " << attr
+           << ", \"name\": \"" << name << "\", \"plane\": \"" << plane
+           << "\", \"label_position\": [" << label_position[0] << ", " << label_position[1]
+           << ", " << label_position[2] << "], \"polygons\": [";
       first_face = false;
 
       bool first_polygon = true;
       for (int jj = 0; jj < mesh.GetNBE(); jj++)
       {
-         if (mesh.GetBdrAttribute(jj) != label)
+         if (mesh.GetBdrAttribute(jj) != attr)
             continue;
          mesh.GetBdrElementVertices(jj, face_vertices);
 

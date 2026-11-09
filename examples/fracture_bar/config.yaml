@@ -11,6 +11,17 @@ mesh:
   # paper, over 10 x 1.5e-2 x 1.5e-2.
   file: mesh_files/Bar_traction-hex.mesh
 
+  # Names of the boundary attributes of the mesh file, the physical tags of
+  # a Gmsh file; the boundary conditions and the initial crack refer to the
+  # faces by these names.
+  faces:
+    left: 5       # x = 0
+    right: 3      # x = 10
+    front: 2      # y = 0
+    back: 4       # y = 1.5e-2
+    bottom: 1     # z = 0
+    top: 6        # z = 1.5e-2
+
   # Number of uniform refinements.
   refine_levels: 0
 
