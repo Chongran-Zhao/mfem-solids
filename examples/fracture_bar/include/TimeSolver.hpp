@@ -161,7 +161,9 @@ private:
                 << "1. displacement u" << "2. phase field alpha\n"
                 << std::setw(11) << "iteration" << std::setw(8) << "Newton" << std::setw(16)
                 << "||R||" << std::setw(8) << "Newton" << std::setw(16) << "||R||"
-                << std::setw(16) << "||dalpha||_inf" << "energy\n";
+                // Delta and alpha take 2 bytes each in UTF-8, which setw
+                // counts, so 18 for 16 columns.
+                << std::setw(18) << "max|Δα|" << "energy\n";
    }
 
    // max |alpha - alpha_old| over the dofs of all ranks.
