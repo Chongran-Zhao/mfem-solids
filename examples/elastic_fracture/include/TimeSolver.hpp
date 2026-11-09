@@ -15,8 +15,9 @@
 // initial crack, and forms the profile of alpha around the crack, as mef90
 // solves its first time. Each step prints one block per iteration: the
 // Newton iterations of each problem, indented, then
-// ||alpha - alpha_old||_inf and the energy E(u, alpha), elastic and surface
-// and their sum, as a check that it decreases. The displacement and the phase
+// ||alpha - alpha_old||_inf and the energy E(u, alpha), elastic, work of
+// the external force and surface, and E = elastic - work + surface, as a
+// check that it decreases. The displacement and the phase
 // field of step 0, of every save_interval-th step and of the last are saved
 // as <results>/disp_XXXX.gf and alpha_XXXX.gf, and the time of each saved
 // step, with its number of iterations, in <results>/time.csv; there the
@@ -138,16 +139,18 @@ private:
          mfem::out << "  --> phase field alpha\n";
          solver_fracture->solve(time, alpha);
 
-         // The energy E = elastic + surface; the surface energy is E less
-         // the elastic one.
+         // The energy E = elastic - work + surface, with the work of the
+         // external force; the phase-field problem gives elastic + surface,
+         // the surface energy is that less the elastic one.
          const double change = get_max_change(alpha, alpha_old);
          const double energy = solver_fracture->get_energy(alpha);
          const double elastic_energy = solver_disp->get_energy(disp);
+         const double work = solver_disp->get_external_work(disp);
          mfem::out << "  max|Delta alpha| = " << std::scientific << std::setprecision(6)
                    << change << '\n' << std::setprecision(12) << "  energy: elastic = "
-                   << elastic_energy << ", surface = " << energy - elastic_energy
-                   << ", total = " << energy << std::defaultfloat << std::setprecision(6)
-                   << '\n';
+                   << elastic_energy << ", work = " << work << ", surface = "
+                   << energy - elastic_energy << ", total = " << energy - work
+                   << std::defaultfloat << std::setprecision(6) << '\n';
 
          if (change <= tol)
             return iter;

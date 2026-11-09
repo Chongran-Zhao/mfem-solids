@@ -94,6 +94,16 @@ int main(int argc, char *argv[])
    mfem::TransformedCoefficient g_coefficient(
       &alpha_coefficient, [&surface_energy](double value) { return surface_energy->get_g(value); });
 
+   // The body force of LoadData, on its region, at the time the displacement
+   // problem sets; declared before the solvers, as the coefficients above.
+   mfem::VectorFunctionCoefficient body_force_coefficient(
+      3, [](const mfem::Vector &pt, double tt, mfem::Vector &value)
+      {
+         const Vector_3D body_force = LoadData::body_force(pt, tt);
+         for (int comp = 0; comp < 3; comp++)
+            value(comp) = body_force(comp);
+      });
+
    // 6. Set up the boundary conditions of the displacement.
    auto dirichlet = std::make_unique<DirichletBoundary>(config["Dirichlet"], space_u);
    auto neumann = std::make_unique<NeumannBoundary>(config["Neumann"], space_u,
@@ -119,6 +129,10 @@ int main(int argc, char *argv[])
          local_assembly_disp->set_energy_factor(attribute, g_coefficient);
    auto global_assembly_disp = std::make_unique<GlobalAssembly_Disp>(
       space_u, std::move(local_assembly_disp), std::move(dirichlet), std::move(neumann));
+   mfem::Array<int> body_force_marker(mesh.attributes.Max());
+   body_force_marker = 0;
+   body_force_marker[LoadData::body_force_region - 1] = 1;
+   global_assembly_disp->set_body_force(body_force_coefficient, body_force_marker);
    auto solver_disp = std::make_unique<NonlinearSolver_Disp>(std::move(global_assembly_disp),
                                                              config["solver_disp"]);
 

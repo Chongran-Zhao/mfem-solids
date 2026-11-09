@@ -5,10 +5,10 @@
 # brittle fracture: numerical implementation and extensions, 2007, Section
 # 3), as set up in the mef90 runs of ~/runs/HelicalCrack2007L016: a cylinder
 # of radius 1 and length 10 with an unbreakable shaft of radius .5, capped at
-# both ends, clamped at the bottom, with an initial crack inside. The
-# regions, the shaft and the caps that do not break and the stiffer caps,
-# are in MaterialModelData. Not yet here: the body force on the top cap, so
-# that the case does not yet load the cylinder.
+# both ends, clamped at the bottom, with an initial crack inside, pulled by
+# a body force along +z on the top cap, LoadData::body_force. The regions,
+# the shaft and the caps that do not break and the stiffer caps, are in
+# MaterialModelData.
 
 mesh:
   # Mesh file, Gmsh 2.2, of mesh_files/HelicalCrack2007.geo with h = .08,
