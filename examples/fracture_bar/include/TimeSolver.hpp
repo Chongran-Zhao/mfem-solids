@@ -137,10 +137,10 @@ private:
 
          // One row per iteration: the Newton iterations and the last
          // residual norm of each problem, the change of alpha and E.
-         mfem::out << std::left << std::setw(5) << iter << std::setw(10) << newton_disp
-                   << std::scientific << std::setprecision(6) << std::setw(14)
-                   << solver_disp->get_final_norm() << std::setw(10) << newton_fracture
-                   << std::setw(14) << solver_fracture->get_final_norm() << std::setw(14)
+         mfem::out << std::left << std::setw(11) << iter << std::setw(8) << newton_disp
+                   << std::scientific << std::setprecision(6) << std::setw(16)
+                   << solver_disp->get_final_norm() << std::setw(8) << newton_fracture
+                   << std::setw(16) << solver_fracture->get_final_norm() << std::setw(16)
                    << change << std::setprecision(12) << energy << std::defaultfloat
                    << std::setprecision(6) << '\n';
 
@@ -151,14 +151,17 @@ private:
       return max_iter;
    }
 
-   // Header of the table of the alternate iterations: the Newton iterations
-   // and the last residual norm of the displacement, u, and of the phase
-   // field, a, then ||alpha - alpha_old||_inf and the energy E.
+   // Header of the table of the alternate iterations, each of which solves
+   // the displacement and then the phase field: their Newton iterations and
+   // last residual norms, under the name of each problem, then
+   // ||alpha - alpha_old||_inf and the energy E.
    static void print_alternate_header()
    {
-      mfem::out << '\n' << std::left << std::setw(5) << "alt" << std::setw(10) << "Newton_u"
-                << std::setw(14) << "||R_u||" << std::setw(10) << "Newton_a" << std::setw(14)
-                << "||R_a||" << std::setw(14) << "||da||_inf" << "energy\n";
+      mfem::out << '\n' << std::left << std::setw(11) << "alternate" << std::setw(24)
+                << "1. displacement u" << "2. phase field alpha\n"
+                << std::setw(11) << "iteration" << std::setw(8) << "Newton" << std::setw(16)
+                << "||R||" << std::setw(8) << "Newton" << std::setw(16) << "||R||"
+                << std::setw(16) << "||dalpha||_inf" << "energy\n";
    }
 
    // max |alpha - alpha_old| over the dofs of all ranks.
