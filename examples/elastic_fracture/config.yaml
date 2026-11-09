@@ -1,35 +1,37 @@
-# Input of driver and read_mesh of fracture_bar, given as their first
-# argument, else config.yaml; CMake copies it into fracture_bar/build/.
-# mesh.file is relative to the project directory.
-# The case is the bar in traction of Bourdin, Francfort and Marigo
-# (J. Elasticity 2008, Section 8.3.1): x in [0, 10], clamped on its left
-# face and pulled along x on its right face by t L, LoadData::disp_loading,
-# so that the time t is the strain of the uncracked bar.
+# Input of driver, read_mesh and vtu_writer of elastic_fracture, given as
+# their first argument, else config.yaml; CMake copies it into
+# elastic_fracture/build/. mesh.file is relative to the project directory.
+# The case is the helical crack of Bourdin (The variational formulation of
+# brittle fracture: numerical implementation and extensions, 2007, Section
+# 3), as set up in the mef90 runs of ~/runs/HelicalCrack2007L016: a cylinder
+# of radius 1 and length 10 with an unbreakable shaft of radius .5, capped at
+# both ends, clamped at the bottom, with an initial crack inside. Not yet
+# here: the regions (the shaft and the caps do not break, the caps are
+# stiffer) and the body force on the top cap, so that the case does not yet
+# load the cylinder.
 
 mesh:
-  # Mesh file in MFEM format: 667 x 1 x 1 hexahedra, h = 1.5e-2 as in the
-  # paper, over 10 x 1.5e-2 x 1.5e-2.
-  file: mesh_files/Bar_traction-hex.mesh
+  # Mesh file, Gmsh 2.2, of mesh_files/HelicalCrack2007.geo with h = .08,
+  # 59,411 vertices; not kept in git, made from the project directory by
+  #    gmsh -3 -setnumber h 0.08 mesh_files/HelicalCrack2007.geo -o mesh_files/HelicalCrack2007-h008.msh
+  file: mesh_files/HelicalCrack2007-h008.msh
 
   # Names of the boundary attributes of the mesh file, the physical tags of
   # a Gmsh file; the boundary conditions and the initial crack refer to the
   # faces by these names.
   faces:
-    left: 5       # x = 0
-    right: 3      # x = 10
-    front: 2      # y = 0
-    back: 4       # y = 1.5e-2
-    bottom: 1     # z = 0
-    top: 6        # z = 1.5e-2
+    clamped: 20   # bottom face of the bottom cap, z = -.5
+    top: 30       # both faces of the top cap, z = 10 and 10.5
+    crack: 40     # initial crack, a disk of radius .4 at z = 5, tilted by 30 degrees
 
   # Number of uniform refinements.
   refine_levels: 0
 
   # Name of the mesh file written by read_mesh.
-  output: bar.mesh
+  output: helical.mesh
 
   # Web page showing the named faces in 3D, and whether to open it.
-  output_html: bar_boundary.html
+  output_html: helical_boundary.html
   open_html: false
 
 space:
@@ -43,21 +45,25 @@ space:
   # is the same rule as 3, 2 x 2 x 2 points.
   quad_order: 2
 
-# Load steps, read into TimeSteps: the time is the strain t of the bar.
+# Load steps, read into TimeSteps: steps of .02 as in the mef90 runs, up to
+# t = 1.9, past both jumps of Fig. 2 of the paper.
 time:
-  num_steps: 50
-  final_time: 5.0
+  dt: 0.02
+  final_time: 1.9
 
 # Displacement boundary conditions, one entry per face and direction.
 Dirichlet:
   # Zero displacement.
+  # The clamped face; on the faces of the top cap ux = uy = 0, so that the
+  # cap cannot rotate, as in the mef90 runs, not in the paper.
   fixed_bc:
-    - { face: left, dir: x }
-    - { face: left, dir: y }
-    - { face: left, dir: z }
-  # Prescribed displacement, given by LoadData::disp_loading.
-  disp_bc:
-    - { face: right, dir: x }
+    - { face: clamped, dir: x }
+    - { face: clamped, dir: y }
+    - { face: clamped, dir: z }
+    - { face: top, dir: x }
+    - { face: top, dir: y }
+  # Prescribed displacement, given by LoadData::disp_loading: none.
+  disp_bc: []
 
 # Traction faces; the traction is given by LoadData::surface_traction.
 Neumann:
@@ -69,8 +75,8 @@ fracture:
   # mef90's irrevThres .99 for its damage 1 - alpha.
   eta_lim: 1.0e-2
   # Faces of the initial crack, named in mesh.faces, where alpha = 0 at
-  # every step; none for the bar of the paper.
-  initial_crack: []
+  # every step.
+  initial_crack: [crack]
   # Tolerance on ||alpha^(j+1) - alpha^(j)||_inf, and the maximum of
   # iterations per load step.
   tol: 1.0e-6

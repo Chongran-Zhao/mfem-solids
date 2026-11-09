@@ -1,11 +1,13 @@
 // ============================================================================
 // MaterialModelData.hpp
 //
-// The material of the bar of Bourdin, Francfort and Marigo (J. Elasticity
-// 2008, Section 8.3.1): E = 4e-2, the toughness k = G_c = 1 and the width
-// eps = 8e-2, with the AT2 surface energy of eq. 8.2. Poisson's ratio is 0,
-// so that the three-dimensional bar has the energy E/2 (u_x,x)^2 of the
-// one-dimensional one. Changing the material means changing this file.
+// The material of the brittle matrix of the helical crack of Bourdin (2007,
+// Section 3), as in the mef90 runs of ~/runs/HelicalCrack2007L016 (cs0001):
+// E = 1, Poisson's ratio .2, the toughness G_c = 1 and the width eps = .08
+// (mef90's internal length .16, not given in the paper), with the AT2
+// surface energy. The unbreakable shaft and the stiffer caps (E = 1000) of
+// those runs are not yet here: every element has this material. Changing
+// the material means changing this file.
 //
 // Author: Chongran Zhao
 // Date: Nov. 8, 2026
@@ -23,8 +25,8 @@
 
 // Young's modulus, Poisson's ratio and reference density; the density
 // matters only to the dynamics.
-inline constexpr double young = 4.0e-2;
-inline constexpr double poisson = 0.0;
+inline constexpr double young = 1.0;
+inline constexpr double poisson = 0.2;
 inline constexpr double density = 1.0;
 
 // Toughness G_c and width eps of the surface energy.

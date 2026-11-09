@@ -1,14 +1,14 @@
 // ============================================================================
 // LoadData.hpp
 //
-// The loading of the bar of Bourdin, Francfort and Marigo (J. Elasticity
-// 2008, Section 8.3.1), x in [0, L] with L = 10, clamped at x = 0 and pulled
-// by the displacement t L at x = L, so that the strain of the uncracked bar
-// is t, the time of the load steps. It passes its functions to
-// DirichletBoundary and NeumannBoundary.
+// The loading of the helical crack of Bourdin (2007, Section 3). In the
+// mef90 runs of ~/runs/HelicalCrack2007L016 the cylinder is loaded by a body
+// force .968 t along z on the top cap, which is not yet applied here; the
+// faces have no prescribed displacement other than zero, and no traction.
+// It passes its functions to DirichletBoundary and NeumannBoundary.
 //
 // Author: Chongran Zhao
-// Date: Nov. 8, 2026
+// Date: Nov. 9, 2026
 // Email: chongran_zhao@brown.edu
 // ============================================================================
 #ifndef LOAD_DATA_HPP
@@ -24,9 +24,6 @@
 class LoadData
 {
 public:
-   // Length of the bar.
-   static constexpr double length = 10.0;
-
    // Nominal traction (force per reference area) on the named face: none.
    static Vector_3D surface_traction(const mfem::Vector &pt, double tt,
                                      const std::string &face)
@@ -35,23 +32,17 @@ public:
    }
 
    // Prescribed displacement on the named face, along the selected direction:
-   // t L along x at x = L.
+   // zero on every face.
    static Vector_3D disp_loading(const mfem::Vector &pt, double tt,
                                  const std::string &face)
    {
       switch (get_face(face))
       {
-         case faces::left:
-            return Vector_3D(0.0, 0.0, 0.0);
-         case faces::right:
-            return Vector_3D(tt * length, 0.0, 0.0);
-         case faces::front:
-            return Vector_3D(0.0, 0.0, 0.0);
-         case faces::back:
-            return Vector_3D(0.0, 0.0, 0.0);
-         case faces::bottom:
+         case faces::clamped:
             return Vector_3D(0.0, 0.0, 0.0);
          case faces::top:
+            return Vector_3D(0.0, 0.0, 0.0);
+         case faces::crack:
             return Vector_3D(0.0, 0.0, 0.0);
       }
       return Vector_3D(0.0, 0.0, 0.0);
@@ -59,15 +50,13 @@ public:
 
 private:
 
-   enum class faces { left, right, front, back, bottom, top };
+   enum class faces { clamped, top, crack };
 
    // Face name -> faces.
    static faces get_face(const std::string &face)
    {
       static const std::map<std::string, faces> face_map = {
-         {"left", faces::left},     {"right", faces::right},
-         {"front", faces::front},   {"back", faces::back},
-         {"bottom", faces::bottom}, {"top", faces::top}};
+         {"clamped", faces::clamped}, {"top", faces::top}, {"crack", faces::crack}};
       MFEM_VERIFY(face_map.count(face), "Unknown face \"" << face << "\".");
       return face_map.at(face);
    }

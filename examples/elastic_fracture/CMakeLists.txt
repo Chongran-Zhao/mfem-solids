@@ -1,7 +1,7 @@
 # ============================================================================
-# fracture_bar: quasi-static phase-field fracture by alternate minimization,
-# the bar in traction of Bourdin, Francfort and Marigo (J. Elasticity 2008,
-# Section 8.3.1), by driver and config.yaml
+# elastic_fracture: quasi-static phase-field fracture of a linear elastic
+# body by alternate minimization, the helical crack of Bourdin (2007,
+# Section 3), by driver and config.yaml
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
@@ -9,7 +9,7 @@
 #    mpirun -np 2 ./vtu_writer config.yaml
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
-project(fracture_bar LANGUAGES CXX)
+project(elastic_fracture LANGUAGES CXX)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/mfem-solids.cmake)
 

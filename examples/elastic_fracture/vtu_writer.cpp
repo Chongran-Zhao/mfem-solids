@@ -1,5 +1,5 @@
 // ============================================================================
-// vtu_writer.cpp of fracture_bar
+// vtu_writer.cpp of elastic_fracture
 //
 // Writes the displacement, the phase field alpha, the strain and the
 // stress of each saved load step for ParaView, at the times of time.csv,

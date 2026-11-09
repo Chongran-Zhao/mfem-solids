@@ -1,14 +1,13 @@
 // ============================================================================
-// driver.cpp of fracture_bar
+// driver.cpp of elastic_fracture
 //
 // Quasi-static phase-field fracture by alternate minimization, following the
 // notes Phase-field-fracture.pdf: the displacement problem with the phase
 // field fixed, LocalAssembly_Disp with the energy factor g(alpha), and the
 // phase-field problem with the displacement fixed, LocalAssembly_Fracture,
-// solved in turn at each load step of config.yaml. The case is the bar in
-// traction of Bourdin, Francfort and Marigo (J. Elasticity 2008, Section
-// 8.3.1); the loading is given by LoadData, the materials by
-// MaterialModelData. The initial displacement is zero and the initial phase
+// solved in turn at each load step of config.yaml. The case is the helical
+// crack of Bourdin (2007, Section 3), described in config.yaml; the loading
+// is given by LoadData, the materials by MaterialModelData. The initial displacement is zero and the initial phase
 // field 1, the sound material, but 0 on the faces of the initial crack of
 // config.yaml, if any.
 //
