@@ -47,6 +47,14 @@ int main(int argc, char *argv[])
    // Start MPI and hypre; only rank 0 prints.
    mfem::Mpi::Init(argc, argv);
    mfem::Hypre::Init();
+
+   // Start PETSc, whose SNES solves the phase field with bounds, and end it
+   // after every PETSc object of main, which go before petsc_guard.
+   struct PetscGuard
+   {
+      PetscGuard(int *argc_ptr, char ***argv_ptr) { mfem::MFEMInitializePetsc(argc_ptr, argv_ptr); }
+      ~PetscGuard() { mfem::MFEMFinalizePetsc(); }
+   } petsc_guard(&argc, &argv);
    if (!mfem::Mpi::Root())
       mfem::out.Disable();
 

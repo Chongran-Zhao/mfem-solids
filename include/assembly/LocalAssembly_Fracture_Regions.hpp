@@ -65,7 +65,8 @@ public:
                            const mfem::Vector &phase) override
    {
       const int num_nodes = elem.GetDof();
-      mfem::Vector N(num_nodes), dalpha_dX(3);
+      mfem::Vector N(num_nodes), dalpha_dX(3), phase_minus_1(phase);
+      phase_minus_1 -= 1.0;
       mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
 
       const double G_c = surface_energy->get_G_c();
@@ -91,8 +92,11 @@ public:
          // Interpolate the phase field alpha = N_c alpha_c;
          // Vector * Vector is the inner product in MFEM.
          const double alpha = N * phase;
-         // alpha,J = N_c,J alpha_c
-         dN_dX.MultTranspose(phase, dalpha_dX);
+         // alpha,J = N_c,J alpha_c = N_c,J (alpha_c - 1), the shapes summing
+         // to 1; from alpha_c - 1 it is exactly 0 where alpha = 1, free of
+         // round-off, so that the bound alpha <= 1 of a VI solver does not
+         // hold the sound material by the sign of a round-off residual.
+         dN_dX.MultTranspose(phase_minus_1, dalpha_dX);
 
          const double psi_e = get_elastic_energy(elem_map);
 
@@ -121,7 +125,8 @@ public:
                               mfem::Vector &residual) override
    {
       const int num_nodes = elem.GetDof();
-      mfem::Vector N(num_nodes), dalpha_dX(3);
+      mfem::Vector N(num_nodes), dalpha_dX(3), phase_minus_1(phase);
+      phase_minus_1 -= 1.0;
       mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
 
       const double G_c = surface_energy->get_G_c();
@@ -148,8 +153,11 @@ public:
          // Interpolate the phase field alpha = N_c alpha_c;
          // Vector * Vector is the inner product in MFEM.
          const double alpha = N * phase;
-         // alpha,J = N_c,J alpha_c
-         dN_dX.MultTranspose(phase, dalpha_dX);
+         // alpha,J = N_c,J alpha_c = N_c,J (alpha_c - 1), the shapes summing
+         // to 1; from alpha_c - 1 it is exactly 0 where alpha = 1, free of
+         // round-off, so that the bound alpha <= 1 of a VI solver does not
+         // hold the sound material by the sign of a round-off residual.
+         dN_dX.MultTranspose(phase_minus_1, dalpha_dX);
 
          // g'(alpha) psi_e where the region breaks, 0 elsewhere
          const double driving =
