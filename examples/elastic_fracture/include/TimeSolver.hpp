@@ -102,7 +102,7 @@ public:
                    << '\n';
 
          // 2. The alternate minimization.
-         const int iterations = solve_alternate(time, disp, alpha);
+         const int iterations = solve_alternate(step, num_steps, time, disp, alpha);
          print_converged(iterations, step_timer);
 
          if (is_saved(step, num_steps))
@@ -119,8 +119,10 @@ public:
 private:
    // Alternate minimization at time: disp and alpha are solved in turn until
    // the largest change of alpha is at most tol; aborts unless it converges
-   // in max_iter iterations. Returns the number of iterations.
-   int solve_alternate(double time, mfem::ParGridFunction &disp, mfem::ParGridFunction &alpha)
+   // in max_iter iterations. Returns the number of iterations. step of
+   // num_steps is the load step of time, printed with each iteration.
+   int solve_alternate(int step, int num_steps, double time, mfem::ParGridFunction &disp,
+                       mfem::ParGridFunction &alpha)
    {
       solver_disp->print_load(time, disp);
 
@@ -131,9 +133,11 @@ private:
 
          // One block per iteration: the Newton iterations of each problem,
          // then the change of alpha and E; a blank line before the first,
-         // a dashed line between two.
+         // a dashed line between two. The header names the load step, lost
+         // from sight when a step takes many iterations.
          mfem::out << ((iter == 1) ? std::string("\n") : std::string(74, '-') + '\n')
-                   << "alternate iteration " << iter << '\n';
+                   << "alternate iteration " << iter << " (time step " << step << " / "
+                   << num_steps << ", t = " << time << ")\n";
          mfem::out << "  --> displacement u\n";
          solver_disp->solve(time, disp);
          mfem::out << "  --> phase field alpha\n";
