@@ -49,7 +49,7 @@ space:
 # t = 1.9, past both jumps of Fig. 2 of the paper.
 time:
   dt: 0.02
-  final_time: 1.9
+  final_time: 5.5
 
 # Displacement boundary conditions, one entry per face and direction.
 Dirichlet:
