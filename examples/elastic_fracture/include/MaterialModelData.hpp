@@ -8,8 +8,11 @@
 // top cap (cs0003, cs0004). The paper gives E = 1 and Poisson's ratio .2 to
 // the matrix and the shaft, and the toughness 1; the shaft and the caps do
 // not break, elastic: true in those runs. The caps are rigid in the paper,
-// E = 1000 in those runs. The surface energy is AT2 with G_c = 1 and the
-// width eps = .08, mef90's internal length .16, not given in the paper.
+// E = 1000 in those runs. The surface energy is AT1, as in the mef90 runs of
+// the 2008 helical crack that gave a helix (~/runs/ATTEMPTS.md), with
+// G_c = 1 and the width eps = .08, mef90's internal length .16, not given in
+// the paper; the paper's regularization is AT2. AT1 needs the bounds of
+// solver_fracture.nonlinear_solver vi.
 // Changing the materials means changing this file.
 //
 // Author: Chongran Zhao
@@ -28,7 +31,7 @@
 #include "IMaterialModel.hpp"
 #include "ISurfaceEnergy.hpp"
 #include "MaterialModel_LinearElastic.hpp"
-#include "SurfaceEnergy_AT2.hpp"
+#include "SurfaceEnergy_AT1.hpp"
 
 // The parameters of a region.
 struct region_material
@@ -72,7 +75,7 @@ inline std::unique_ptr<IMaterialModel> set_material_model(int attribute)
 // The surface energy, one per owner as the material.
 inline std::unique_ptr<ISurfaceEnergy> set_surface_energy()
 {
-   return std::make_unique<SurfaceEnergy_AT2>(toughness, width);
+   return std::make_unique<SurfaceEnergy_AT1>(toughness, width);
 }
 
 #endif

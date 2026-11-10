@@ -95,8 +95,12 @@ solver_disp:
   newton_abs_tol: 1.0e-10
   newton_max_iter: 20
 
-# Newton's method of the phase-field problem, linear in alpha for AT2.
+# Newton's method of the phase-field problem, linear in alpha for AT2 and
+# AT1, with the bounds 0 <= alpha <= 1 by nonlinear_solver vi, the SNES VI of
+# PETSc, which AT1 needs; newton, MFEM's Newton method without bounds, is
+# for AT2 only.
 solver_fracture:
+  nonlinear_solver: vi
   linear_solver: gmres
   newton_rel_tol: 1.0e-8
   newton_abs_tol: 1.0e-10
