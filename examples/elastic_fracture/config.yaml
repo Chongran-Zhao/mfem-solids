@@ -46,7 +46,8 @@ space:
   quad_order: 2
 
 # Load steps, read into TimeSteps: steps of .02 as in the mef90 runs, up to
-# t = 1.9, past both jumps of Fig. 2 of the paper.
+# t = 5.5, the end of the loading of the paper; AT1 needs a higher load to
+# crack than AT2.
 time:
   dt: 0.02
   final_time: 5.5
@@ -118,5 +119,6 @@ output:
   # ParaView's Warp By Vector of displacement draws the deformed shape.
   vtu_reference: true
   gf: results_gf
-  # The fields are saved every gf_interval-th load step, and at the last.
-  gf_interval: 1
+  # The fields are saved every gf_interval-th load step, and at the last;
+  # every .1 here, for the disk.
+  gf_interval: 5
