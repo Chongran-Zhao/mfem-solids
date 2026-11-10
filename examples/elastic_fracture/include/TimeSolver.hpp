@@ -15,9 +15,15 @@
 // initial crack, and forms the profile of alpha around the crack, as mef90
 // solves its first time. Each step prints one block per iteration: the
 // Newton iterations of each problem, indented, then
-// ||alpha - alpha_old||_inf and the energy E(u, alpha), elastic, work of
-// the external force and surface, and E = elastic - work + surface, as a
-// check that it decreases. The displacement and the phase
+// ||alpha - alpha_old||_inf. Once a step converges it prints the energy
+// E(u, alpha), elastic, surface and E = elastic - work + surface, with the
+// work F_ext . u of the external force, and the energy balance: the work
+// W_ext of the external force over the steps so far, by the trapezoidal
+// rule 1/2 (F_n + F_n+1) . (u_n+1 - u_n), and the energy dissipated,
+// W_ext - elastic - (surface - surface of step 0). It stays near zero while
+// the crack grows smoothly and jumps when it grows brutally. W_ext counts
+// the traction and the body force only, not the work of a prescribed
+// displacement. The displacement and the phase
 // field of step 0, of every save_interval-th step and of the last are saved
 // as <results>/disp_XXXX.gf and alpha_XXXX.gf, and the time of each saved
 // step, with its number of iterations, in <results>/time.csv; there the
@@ -82,6 +88,17 @@ public:
 
       const int num_steps = time_steps.get_num_steps();
 
+      // The external force and the displacement of the previous step, on the
+      // dofs this rank owns, zero before step 0, for the work W_ext of the
+      // external force; the surface energy of step 0, that of the initial
+      // crack.
+      const int num_dofs = solver_disp->get_external_force().Size();
+      mfem::Vector force_n(num_dofs), disp_n(num_dofs), disp_owned(num_dofs);
+      force_n = 0.0;
+      disp_n = 0.0;
+      double external_work = 0.0;
+      double surface_0 = 0.0;
+
       mfem::StopWatch step_timer;
       double time_n = 0.0;
       for (int step = 0; step <= num_steps; step++)
@@ -104,6 +121,30 @@ public:
          // 2. The alternate minimization.
          const int iterations = solve_alternate(step, num_steps, time, disp, alpha);
          print_converged(iterations, step_timer);
+
+         // 3. The energy and the energy balance; the phase-field problem
+         //    gives elastic + surface.
+         const mfem::Vector &force = solver_disp->get_external_force();
+         const MPI_Comm comm = disp.ParFESpace()->GetComm();
+         disp.GetTrueDofs(disp_owned);
+         mfem::Vector disp_change(disp_owned), force_mean(force);
+         disp_change -= disp_n;
+         force_mean += force_n;
+         force_mean *= 0.5;
+         external_work += mfem::InnerProduct(comm, force_mean, disp_change);
+         const double elastic_energy = solver_disp->get_energy(disp);
+         const double surface_energy = solver_fracture->get_energy(alpha) - elastic_energy;
+         const double work = mfem::InnerProduct(comm, force, disp_owned);
+         if (step == 0)
+            surface_0 = surface_energy;
+         mfem::out << std::scientific << std::setprecision(6)
+                   << "  energy: elastic = " << elastic_energy << ", surface = "
+                   << surface_energy << ", total = " << elastic_energy - work + surface_energy
+                   << '\n' << "  balance: W_ext = " << external_work << ", dissipated = "
+                   << external_work - elastic_energy - (surface_energy - surface_0)
+                   << std::defaultfloat << '\n';
+         force_n = force;
+         disp_n = disp_owned;
 
          if (is_saved(step, num_steps))
          {
@@ -132,7 +173,7 @@ private:
          alpha_old = alpha;
 
          // One block per iteration: the Newton iterations of each problem,
-         // then the change of alpha and E; a blank line before the first,
+         // then the change of alpha; a blank line before the first,
          // a dashed line between two. The header names the load step, lost
          // from sight when a step takes many iterations.
          mfem::out << ((iter == 1) ? std::string("\n") : std::string(74, '-') + '\n')
@@ -143,18 +184,9 @@ private:
          mfem::out << "  --> phase field alpha\n";
          solver_fracture->solve(time, alpha);
 
-         // The energy E = elastic - work + surface, with the work of the
-         // external force; the phase-field problem gives elastic + surface,
-         // the surface energy is that less the elastic one.
          const double change = get_max_change(alpha, alpha_old);
-         const double energy = solver_fracture->get_energy(alpha);
-         const double elastic_energy = solver_disp->get_energy(disp);
-         const double work = solver_disp->get_external_work(disp);
          mfem::out << "  max|Delta alpha| = " << std::scientific << std::setprecision(6)
-                   << change << '\n' << std::setprecision(12) << "  energy: elastic = "
-                   << elastic_energy << ", work = " << work << ", surface = "
-                   << energy - elastic_energy << ", total = " << energy - work
-                   << std::defaultfloat << std::setprecision(6) << '\n';
+                   << change << std::defaultfloat << '\n';
 
          if (change <= tol)
             return iter;

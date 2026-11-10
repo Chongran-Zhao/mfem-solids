@@ -97,6 +97,9 @@ public:
       return global_assembly->get_external_work(disp_owned);
    }
 
+   // The external force F_ext of the last solve, on the dofs this rank owns.
+   const mfem::Vector &get_external_force() const { return global_assembly->get_external_force(); }
+
    // Prints the load value at time, before the step is solved: the
    // prescribed displacement, set on a copy of disp, or the traction faces,
    // and the body force at the origin, if any.
