@@ -18,6 +18,7 @@
 // It runs on MPI ranks, each writing every num_ranks-th step, and rank 0 the
 // PVD file once all are written; every rank reads the results on
 // results/mesh.mesh, the mesh the driver gathered them onto.
+// Each rank prints a line for each step it has written.
 //
 // Author: Chongran Zhao
 // Date: Oct. 11, 2026
@@ -27,6 +28,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -107,13 +109,24 @@ int main(int argc, char *argv[])
 
    // 4. Write every vtu_interval-th saved step, and the last one, each rank
    //    every num_ranks-th of them.
+   //    Every rank prints a line once it has written a step, the line written
+   //    whole so that those of the ranks do not mix.
    std::vector<std::pair<int, double>> written_steps;   // step and time
    for (std::size_t ss = 0; ss < saved_steps.size(); ss++)
       if (ss % vtu_interval == 0 || ss + 1 == saved_steps.size())
          written_steps.push_back(saved_steps[ss]);
-   for (std::size_t ss = mfem::Mpi::WorldRank(); ss < written_steps.size();
-        ss += mfem::Mpi::WorldSize())
+   const int rank = mfem::Mpi::WorldRank();
+   const int num_ranks = mfem::Mpi::WorldSize();
+   const int num_steps = static_cast<int>(written_steps.size());
+   const int num_own = (num_steps - rank + num_ranks - 1) / num_ranks;   // steps of this rank
+   mfem::out << "writing " << num_steps << " steps on " << num_ranks << " ranks\n"
+             << std::flush;
+   MPI_Barrier(MPI_COMM_WORLD);
+   mfem::StopWatch step_timer;
+   int num_written = 0;
+   for (std::size_t ss = rank; ss < written_steps.size(); ss += num_ranks)
    {
+      step_timer.Restart();
       const int step = written_steps[ss].first;
       const std::unique_ptr<mfem::GridFunction> disp = read_gf("disp", step);
       const std::unique_ptr<mfem::GridFunction> velo = read_gf("velo", step);
@@ -126,6 +139,14 @@ int main(int argc, char *argv[])
       }
 
       output.save(step, *disp, velo.get(), acce.get(), pres.get(), first_PK_stress);
+
+      num_written++;
+      std::ostringstream line;
+      line << "  rank " << rank << ": step " << step << ", t = " << written_steps[ss].second
+           << " written (" << num_written << " / " << num_own << " of this rank), "
+           << std::fixed << std::setprecision(2) << step_timer.RealTime() << " sec. "
+           << SystemTools::get_time() << '\n';
+      std::cout << line.str() << std::flush;
    }
 
    // The PVD file, once every rank has written its steps.
