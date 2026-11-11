@@ -3,30 +3,26 @@
 //
 // Solves the phase-field problem of one alternate-minimization iteration,
 // R(alpha) = 0 with the displacement fixed, from the current phase field, by
-// nonlinear_solver of the solver_fracture section of config.yaml:
-//    newton   Newton's method of MFEM, for AT2, whose alpha stays in [0, 1]
-//             without bounds;
-//    vi       Newton's method with the bounds 0 <= alpha <= 1, SNESVINEWTONRSLS
-//             of PETSc, as mef90 solves the phase field
-//             (m_MEF90_DefMech.F90), needed by AT1, whose w'(1) < 0 would
-//             push alpha above 1.
+// Newton's method with the bounds 0 <= alpha <= 1, SNESVINEWTONRSLS of PETSc,
+// as mef90 solves the phase field (m_MEF90_DefMech.F90), for AT1 and AT2
+// alike: AT1 needs the bounds, its w'(1) < 0 would push alpha above 1, and
+// AT2, whose alpha stays in [0, 1] without them, does not mind them.
 // The irreversibility of the notes Phase-field-fracture.pdf (p. 5, 7), after
 // Bourdin, Francfort and Marigo (J. Elasticity 2008, eq. 8.13), fixes
 // alpha = 0 on the nodes of the crack set K_n, those where alpha_n <= eta_lim
 // at the start of the load step; set_crack_set builds it, together with the
 // initial crack, the dofs of the faces given by set_initial_crack, where
 // alpha = 0 at every step, as the damage boundary condition of mef90
-// (damageBC, boundaryDamage 1); with vi, both bounds are 0 there. It owns the
-// global assembly and the solvers, and is the mfem::Operator that its
-// NewtonSolver, or the SNES of PETSc, solves, through Mult and GetGradient.
-// Newton's method works on the vector of the dofs this rank owns, with the
-// norms over all ranks.
+// (damageBC, boundaryDamage 1); both bounds are 0 there. It owns the global
+// assembly and the SNES, and is the mfem::Operator that the SNES solves,
+// through Mult and GetGradient. Newton's method works on the vector of the
+// dofs this rank owns, with the norms over all ranks.
 //
-// The linear systems are solved by GMRES, or CG, the tangent being
-// symmetric positive definite, preconditioned by BoomerAMG, or by MUMPS, by
-// linear_solver of the solver_fracture section of config.yaml; with vi, by
-// the KSP and PC of PETSc of the same names, which the PETSc options of the
-// prefix fracture_ may change, e.g. -fracture_ksp_monitor.
+// The linear systems are solved by the KSP and PC of PETSc of linear_solver
+// of the solver_fracture section of config.yaml: GMRES, or CG, the tangent
+// being symmetric positive definite, preconditioned by BoomerAMG, or MUMPS;
+// the PETSc options of the prefix fracture_ may change them, e.g.
+// -fracture_ksp_monitor.
 //
 // Author: Chongran Zhao
 // Date: Nov. 8, 2026
@@ -59,25 +55,12 @@ public:
                             const YAML::Node &solver)
       : INonlinearSolver(input_global_assembly->get_num_dofs(), input_global_assembly->get_comm()),
         global_assembly(std::move(input_global_assembly)),
-        linear_solver(make_iterative_solver(get_linear_solver_name(solver),
-                                            global_assembly->get_comm())),
-        newton_monitor(newton_indent),
         lower_bound(global_assembly->get_num_dofs()),
         upper_bound(global_assembly->get_num_dofs())
    {
-      amg.SetPrintLevel(0);
-      set_linear_solver(*linear_solver, amg);
-      set_newton_solver(solver, *linear_solver, newton_monitor);
       lower_bound = 0.0;
       upper_bound = 1.0;
-
-      const std::string nonlinear_solver =
-         solver["nonlinear_solver"] ? solver["nonlinear_solver"].as<std::string>() : "newton";
-      MFEM_VERIFY(nonlinear_solver == "newton" || nonlinear_solver == "vi",
-                  "solver_fracture.nonlinear_solver must be newton or vi, not "
-                  << nonlinear_solver << ".");
-      if (nonlinear_solver == "vi")
-         set_vi_solver(solver);
+      set_vi_solver(solver);
    }
 
    // The initial crack: the dofs this rank owns on the faces of the crack,
@@ -112,7 +95,7 @@ public:
          alpha_owned(dof) = 0.0;
       global_assembly->set_ess_tdof_list(crack_set);
 
-      // The bounds of vi: 0 <= alpha <= 1, both 0 on the crack set.
+      // The bounds: 0 <= alpha <= 1, both 0 on the crack set.
       lower_bound = 0.0;
       upper_bound = 1.0;
       for (int dof : crack_set)
@@ -136,9 +119,8 @@ public:
 
       SystemTools::print_newton_header(newton_indent);
 
-      // Newton iterations for R(alpha) = 0, within the bounds with vi.
-      const int iterations = vi_solver ? solve_vi(time, alpha_owned)
-                                       : solve_newton(time, alpha_owned);
+      // Newton iterations for R(alpha) = 0, within the bounds.
+      const int iterations = solve_vi(time, alpha_owned);
       alpha.SetFromTrueDofs(alpha_owned);
       return iterations;
    }
@@ -152,8 +134,8 @@ public:
       return global_assembly->get_energy(alpha_owned);
    }
 
-   // Required by MFEM: overrides mfem::Operator::Mult, which NewtonSolver
-   // calls at every iteration for the residual.
+   // Required by MFEM: overrides mfem::Operator::Mult, which the SNES calls
+   // at every iteration for the residual.
    // R(alpha), zero on the constrained dofs.
    void Mult(const mfem::Vector &alpha, mfem::Vector &residual) const override
    {
@@ -161,16 +143,13 @@ public:
       global_assembly->set_essential_bdr(residual);
    }
 
-   // Required by MFEM: overrides mfem::Operator::GetGradient, which
-   // NewtonSolver calls at every iteration for the tangent.
-   // K(alpha), the identity on the constrained dofs; also the operator of
-   // the AMG preconditioner, unless MUMPS solves it.
+   // Required by MFEM: overrides mfem::Operator::GetGradient, which the
+   // SNES calls at every iteration for the tangent.
+   // K(alpha), the identity on the constrained dofs.
    mfem::Operator &GetGradient(const mfem::Vector &alpha) const override
    {
       mfem::HypreParMatrix &tangent = global_assembly->assemble_tangent(alpha);
       global_assembly->set_essential_bdr(tangent);
-      if (!is_direct() && !vi_solver)
-         amg.SetOperator(tangent);
       return tangent;
    }
 
@@ -259,27 +238,14 @@ private:
       return vi_solver->GetNumIterations();
    }
 
-   // CG for linear_solver cg, else GMRES, also for mumps, which does not
-   // use it.
-   static std::unique_ptr<mfem::IterativeSolver> make_iterative_solver(const std::string &name,
-                                                                       MPI_Comm comm)
-   {
-      if (name == "cg")
-         return std::make_unique<mfem::CGSolver>(comm);
-      return std::make_unique<mfem::GMRESSolver>(comm);
-   }
-
    // The tangent is owned by global_assembly.
    const std::unique_ptr<GlobalAssembly_Fracture> global_assembly;   // E, R and K
    mfem::Array<int> initial_crack;                                   // dofs where alpha = 0 always
-   mutable mfem::HypreBoomerAMG amg;                                 // preconditioner of GMRES
-   const std::unique_ptr<mfem::IterativeSolver> linear_solver;       // GMRES or CG
-   SystemTools::NewtonMonitor newton_monitor;                        // prints the residual norms
    static constexpr int newton_indent = 5;                           // spaces before the Newton lines
-   mfem::Vector lower_bound, upper_bound;                            // bounds of alpha, with vi
-   VI_Monitor vi_monitor{newton_indent};                             // prints the residual norms of vi
-   std::unique_ptr<mfem::PetscParVector> vi_layout;                  // layout of the unknowns, with vi
-   std::unique_ptr<mfem::PetscNonlinearSolver> vi_solver;            // SNESVINEWTONRSLS, with vi
+   mfem::Vector lower_bound, upper_bound;                            // bounds of alpha
+   VI_Monitor vi_monitor{newton_indent};                             // prints the residual norms
+   std::unique_ptr<mfem::PetscParVector> vi_layout;                  // layout of the unknowns
+   std::unique_ptr<mfem::PetscNonlinearSolver> vi_solver;            // SNESVINEWTONRSLS
 };
 
 #endif

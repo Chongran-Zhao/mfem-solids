@@ -10,8 +10,9 @@
 // break, elastic: true in those runs. The surface energy is AT1, as in the
 // run of those that gave a helix (HelicalCrack), with G_c = 1 and the width
 // eps = .15, mef90's internal length .3, not given in the paper; the paper's
-// regularization is AT2. AT1 needs the bounds of
-// solver_fracture.nonlinear_solver vi.
+// regularization is AT2; AT2 is chosen by SurfaceEnergy_AT2 in
+// set_surface_energy below. The phase field is solved with the bounds
+// 0 <= alpha <= 1, which AT1 needs, for both.
 // Changing the materials means changing this file.
 //
 // Author: Chongran Zhao
