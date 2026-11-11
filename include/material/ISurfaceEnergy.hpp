@@ -10,7 +10,7 @@
 //    g(alpha)     = alpha^2 + eta,
 // with G_c the critical energy release rate, k in the paper, eps the width of
 // the transition, and eta the residual stiffness, which keeps g > 0 in the
-// crack; eta is fixed to 1e-6, the value of Section 8.3.3 of the paper. Each
+// crack; MaterialModelData of each case gives G_c, eps and eta. Each
 // model gives w(alpha), its derivatives and c_grad, scaled so that a fully
 // developed crack costs G_c per unit area.
 //
@@ -24,7 +24,8 @@
 class ISurfaceEnergy
 {
 public:
-   ISurfaceEnergy(double input_G_c, double input_eps) : G_c(input_G_c), eps(input_eps) {}
+   ISurfaceEnergy(double input_G_c, double input_eps, double input_eta)
+      : G_c(input_G_c), eps(input_eps), eta(input_eta) {}
 
    virtual ~ISurfaceEnergy() = default;
 
@@ -49,7 +50,7 @@ public:
 protected:
    const double G_c;                            // critical energy release rate
    const double eps;                            // width of the transition
-   static constexpr double eta = 1.0e-6;        // residual stiffness
+   const double eta;                            // residual stiffness
 };
 
 #endif

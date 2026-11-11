@@ -50,9 +50,12 @@ inline const std::array<region_material, 4> region_materials = {{
    {"bottom cap", 1000.0, 0.2, 1.0, false},
    {"top cap", 1000.0, 0.2, 1.0, false}}};
 
-// Toughness G_c and width eps of the surface energy.
+// Toughness G_c, width eps and residual stiffness eta of the surface
+// energy; eta = 1e-6 is the value of Section 8.3.3 of Bourdin, Francfort
+// and Marigo (2008), and of the mef90 runs.
 inline constexpr double toughness = 1.0;
 inline constexpr double width = 8.0e-2;
+inline constexpr double residual_stiffness = 1.0e-6;
 
 // The parameters of the region of the given element attribute.
 inline const region_material &get_region_material(int attribute)
@@ -75,7 +78,7 @@ inline std::unique_ptr<IMaterialModel> set_material_model(int attribute)
 // The surface energy, one per owner as the material.
 inline std::unique_ptr<ISurfaceEnergy> set_surface_energy()
 {
-   return std::make_unique<SurfaceEnergy_AT1>(toughness, width);
+   return std::make_unique<SurfaceEnergy_AT1>(toughness, width, residual_stiffness);
 }
 
 #endif
