@@ -87,7 +87,7 @@ fracture:
   # iterations of about 2 s on 8 ranks, alpha changing by a factor of .988
   # per iteration at the end.
   tol: 1.0e-3
-  max_iter: 1000
+  max_iter: 3000
 
 # Newton's method of the displacement problem; linear in the displacement
 # for a linear elastic material, so that the predictor already solves it and
