@@ -100,12 +100,14 @@ protected:
       return time_file;
    }
 
-   // One row of time.csv, written on rank 0.
+   // One row of time.csv, written on rank 0 and flushed, so that the file
+   // lists the steps saved so far should the run be stopped.
    static void write_time(std::ofstream &time_file, int step, double time, double dt,
                           int iterations)
    {
       if (mfem::Mpi::Root())
-         time_file << step << ',' << time << ',' << dt << ',' << iterations << '\n';
+         time_file << step << ',' << time << ',' << dt << ',' << iterations << '\n'
+                   << std::flush;
    }
 
    const std::filesystem::path results_dir;   // folder of the results
