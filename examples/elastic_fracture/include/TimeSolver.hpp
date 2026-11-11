@@ -6,7 +6,7 @@
 // Algorithm 1 of Bourdin, Francfort and Marigo (J. Elasticity 2008): at the
 // load step of time t, from step 0 at t = 0,
 //    1. the crack set K_n, the nodes where alpha_n <= eta_lim, is fixed to
-//       alpha = 0 for the whole step;
+//       alpha = 0 for the whole step, and alpha <= alpha_n elsewhere;
 //    2. repeat: solve the displacement with alpha fixed, then the phase
 //       field with the displacement fixed,
 //       until ||alpha^(j+1) - alpha^(j)||_inf <= tol.

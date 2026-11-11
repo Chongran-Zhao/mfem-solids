@@ -13,7 +13,9 @@
 // at the start of the load step; set_crack_set builds it, together with the
 // initial crack, the dofs of the faces given by set_initial_crack, where
 // alpha = 0 at every step, as the damage boundary condition of mef90
-// (damageBC, boundaryDamage 1); both bounds are 0 there. It owns the global
+// (damageBC, boundaryDamage 1); both bounds are 0 there. Elsewhere alpha is
+// bounded by alpha_n from above, alpha <= alpha_n, so that alpha never rises
+// in a load step, as irrevThres 0 of the mef90 runs. It owns the global
 // assembly and the SNES, and is the mfem::Operator that the SNES solves,
 // through Mult and GetGradient. Newton's method works on the vector of the
 // dofs this rank owns, with the norms over all ranks.
@@ -79,7 +81,8 @@ public:
 
    // The crack set K_n of the load step: the dofs this rank owns where
    // alpha <= eta_lim, and those of the initial crack, set to alpha = 0 and
-   // constrained. Returns the number of its dofs over all ranks.
+   // constrained; and the bounds 0 <= alpha <= alpha_n of the step. Returns
+   // the number of dofs of K_n over all ranks.
    int set_crack_set(mfem::ParGridFunction &alpha, double eta_lim)
    {
       mfem::Vector alpha_owned(global_assembly->get_num_dofs());
@@ -95,11 +98,10 @@ public:
          alpha_owned(dof) = 0.0;
       global_assembly->set_ess_tdof_list(crack_set);
 
-      // The bounds: 0 <= alpha <= 1, both 0 on the crack set.
+      // The bounds: 0 <= alpha <= alpha_n, alpha_n <= 1, so both 0 on the
+      // crack set.
       lower_bound = 0.0;
-      upper_bound = 1.0;
-      for (int dof : crack_set)
-         upper_bound(dof) = 0.0;
+      upper_bound = alpha_owned;
       alpha.SetFromTrueDofs(alpha_owned);
 
       int size = crack_set.Size();
