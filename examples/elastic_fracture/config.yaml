@@ -75,6 +75,9 @@ Neumann:
 
 # Alternate minimization.
 fracture:
+  # A node joins the crack set K_n, alpha = 0, when alpha_n <= eta_lim;
+  # elsewhere alpha <= alpha_n, as irrevThres 0 of the mef90 run.
+  eta_lim: 1.0e-2
   # Faces of the initial crack, named in mesh.faces, where alpha = 0 at
   # every step.
   initial_crack: [crack]

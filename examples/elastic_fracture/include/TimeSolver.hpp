@@ -6,7 +6,8 @@
 // Algorithm 1 of Bourdin, Francfort and Marigo (J. Elasticity 2008): at the
 // load step of time t, from step 0 at t = 0,
 //    1. alpha is bounded by alpha_n, alpha <= alpha_n, at every node for
-//       the whole step;
+//       the whole step, and set to 0 on the crack set K_n, the nodes where
+//       alpha_n <= eta_lim;
 //    2. repeat: solve the displacement with alpha fixed, then the phase
 //       field with the displacement fixed,
 //       until ||alpha^(j+1) - alpha^(j)||_inf <= tol.
@@ -59,8 +60,8 @@
 class TimeSolver : public ITimeSolver
 {
 public:
-   // Takes the ownership of the two nonlinear solvers; tol and max_iter
-   // come from the fracture section of config.yaml; the results go
+   // Takes the ownership of the two nonlinear solvers; eta_lim, tol and
+   // max_iter come from the fracture section of config.yaml; the results go
    // to results_dir, which rank 0 empties first and where it saves the
    // serial mesh of mesh, with its named faces; the fields are saved every
    // input_save_interval-th step.
@@ -72,6 +73,7 @@ public:
       : ITimeSolver(input_results_dir, mesh, input_save_interval),
         solver_disp(std::move(input_solver_disp)),
         solver_fracture(std::move(input_solver_fracture)),
+        eta_lim(fracture["eta_lim"].as<double>()),
         tol(fracture["tol"].as<double>()),
         max_iter(fracture["max_iter"].as<int>()),
         time_steps(input_time_steps)
@@ -112,8 +114,11 @@ public:
                    << "Time step " << step << " / " << num_steps << ", t = " << time
                    << ", dt = " << dt << '\n';
 
-         // 1. The bounds alpha <= alpha_n, from the alpha of the previous step.
-         solver_fracture->set_bounds(alpha);
+         // 1. The bounds alpha <= alpha_n and the crack set K_n, from the
+         //    alpha of the previous step.
+         const int crack_size = solver_fracture->set_bounds(alpha, eta_lim);
+         mfem::out << "crack set K_n: " << crack_size << " dofs with alpha <= " << eta_lim
+                   << '\n';
 
          // 2. The alternate minimization.
          const int iterations = solve_alternate(step, num_steps, time, disp, alpha);
@@ -206,6 +211,7 @@ private:
 
    const std::unique_ptr<NonlinearSolver_Disp> solver_disp;           // u with alpha fixed
    const std::unique_ptr<NonlinearSolver_Fracture> solver_fracture;   // alpha with u fixed
+   const double eta_lim;     // alpha_n <= eta_lim puts a node in K_n
    const double tol;         // tolerance on ||alpha^(j+1) - alpha^(j)||_inf
    const int max_iter;       // maximum of alternate iterations per step
    const TimeSteps time_steps;   // t_n of the steps

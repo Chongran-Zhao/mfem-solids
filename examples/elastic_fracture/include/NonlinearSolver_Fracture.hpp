@@ -9,7 +9,11 @@
 // AT2, whose alpha stays in [0, 1] without them, does not mind them.
 // The irreversibility bounds alpha by alpha_n, its value at the start of the
 // load step, at every node, alpha <= alpha_n, so that alpha never rises, as
-// irrevThres 0 of the mef90 runs; set_bounds sets the bounds of the step.
+// irrevThres 0 of the mef90 runs; and, as in the notes Phase-field-fracture.pdf
+// (p. 5, 7), after Bourdin, Francfort and Marigo (J. Elasticity 2008,
+// eq. 8.13), sets alpha = 0 on the crack set K_n, the nodes where
+// alpha_n <= eta_lim, by the bounds alone: both are 0 there, so that the SNES
+// keeps them in its active set. set_bounds sets the bounds of the step.
 // On the initial crack, the dofs of the faces given by set_initial_crack,
 // alpha = 0 at every step, as the damage boundary condition of mef90
 // (damageBC, boundaryDamage 1); both bounds are 0 there. It owns the global
@@ -78,17 +82,30 @@ public:
    }
 
    // The bounds 0 <= alpha <= alpha_n of the load step, alpha_n the alpha
-   // given, set to 0 on the initial crack, so that both bounds are 0 there.
-   void set_bounds(mfem::ParGridFunction &alpha)
+   // given, set to 0 on the initial crack and on the crack set K_n, the dofs
+   // this rank owns where alpha_n <= eta_lim, so that both bounds are 0
+   // there. Returns the number of dofs of K_n, with the initial crack, over
+   // all ranks.
+   int set_bounds(mfem::ParGridFunction &alpha, double eta_lim)
    {
       mfem::Vector alpha_owned(global_assembly->get_num_dofs());
       alpha.GetTrueDofs(alpha_owned);
       for (int dof : initial_crack)
          alpha_owned(dof) = 0.0;
+      int size = 0;
+      for (int dof = 0; dof < alpha_owned.Size(); dof++)
+         if (alpha_owned(dof) <= eta_lim)
+         {
+            alpha_owned(dof) = 0.0;
+            size++;
+         }
 
       lower_bound = 0.0;
       upper_bound = alpha_owned;
       alpha.SetFromTrueDofs(alpha_owned);
+
+      MPI_Allreduce(MPI_IN_PLACE, &size, 1, MPI_INT, MPI_SUM, global_assembly->get_comm());
+      return size;
    }
 
    // Solves the phase field from alpha, and returns the number of Newton
