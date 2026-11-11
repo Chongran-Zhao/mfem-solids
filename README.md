@@ -1,6 +1,6 @@
 # mfem-solids
 
-Finite-strain solid mechanics with [MFEM](https://mfem.org/).
+Finite-strain solid mechanics and phase-field fracture with [MFEM](https://mfem.org/).
 
 ## Dependencies
 
@@ -10,14 +10,14 @@ if yours are elsewhere.
 
 | Package | Version | Usage |
 |---|---|---|
-| CMake | 3.20 or newer | builds the libraries and the cases |
+| CMake | 3.20 or newer | builds the libraries and the examples |
 | Open MPI | 5.0.10 | parallel runs: the MPI compilers and `mpirun` |
 | gfortran, OpenBLAS, ScaLAPACK | Homebrew `gcc`, `openblas`, `scalapack` | for PETSc and MUMPS: MUMPS is written in Fortran, and its dense kernels use BLAS, LAPACK and ScaLAPACK |
-| PETSc | 3.24.6 | the solver of the damage problems with bounds, `SNESVINEWTONRSLS`; it also provides METIS, hypre and MUMPS below, which it downloads and builds, so that one copy of each is linked |
+| PETSc | 3.24.6 | the solver of the phase field of fracture with the bounds 0 <= alpha <= 1, `SNESVINEWTONRSLS`; it also provides METIS, hypre and MUMPS below, which it downloads and builds, so that one copy of each is linked |
 | METIS | 5.1.0, from PETSc | splits the mesh among the ranks (`ParMesh`), and orders the matrix for MUMPS |
 | hypre | 3.0.0, `da9f93f8d`, from PETSc | the parallel matrices of MFEM (`HypreParMatrix`), and the BoomerAMG preconditioners of the GMRES solvers of the linear systems |
-| MUMPS | 5.8.1, from PETSc | parallel direct solver of the linear systems, instead of GMRES with `linear_solver: mumps` in the `solver` section of the input of a case; MFEM has only its interface |
-| yaml-cpp | 0.9.0 | reads the inputs of the cases, `config_*.yaml` |
+| MUMPS | 5.8.1, from PETSc | parallel direct solver of the linear systems, instead of GMRES with `linear_solver: mumps` in a solver section of the input; MFEM has only its interface |
+| yaml-cpp | 0.9.0 | reads the inputs, `config*.yaml` |
 | MFEM | 4.10.1, master `45799eb` | finite element spaces, meshes, assembly, the Krylov solvers and the interface to PETSc |
 
 ```
