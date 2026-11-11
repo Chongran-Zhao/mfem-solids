@@ -18,12 +18,13 @@
 // ||alpha - alpha_old||_inf. Once a step converges it prints the energy
 // E(u, alpha), elastic, surface and E = elastic - work + surface, with the
 // work F_ext . u of the external force, and the energy balance: the work
-// W_ext of the external force over the steps so far, by the trapezoidal
-// rule 1/2 (F_n + F_n+1) . (u_n+1 - u_n), and the energy dissipated,
+// W_ext of the loads over the steps so far, by the trapezoidal rule
+// 1/2 (f_n + f_n+1) . (u_n+1 - u_n) with the internal force f at every dof,
+// which is the reaction on the constrained ones, so that W_ext counts the
+// prescribed displacement, and the energy dissipated,
 // W_ext - elastic - (surface - surface of step 0). It stays near zero while
-// the crack grows smoothly and jumps when it grows brutally. W_ext counts
-// the traction and the body force only, not the work of a prescribed
-// displacement. The displacement and the phase
+// the crack grows smoothly and jumps when it grows brutally. The
+// displacement and the phase
 // field of step 0, of every save_interval-th step and of the last are saved
 // as <results>/disp_XXXX.gf and alpha_XXXX.gf, and the time of each saved
 // step, with its number of iterations, in <results>/time.csv; there the
@@ -88,12 +89,11 @@ public:
 
       const int num_steps = time_steps.get_num_steps();
 
-      // The external force and the displacement of the previous step, on the
+      // The internal force and the displacement of the previous step, on the
       // dofs this rank owns, zero before step 0, for the work W_ext of the
-      // external force; the surface energy of step 0, that of the initial
-      // crack.
-      const int num_dofs = solver_disp->get_external_force().Size();
-      mfem::Vector force_n(num_dofs), disp_n(num_dofs), disp_owned(num_dofs);
+      // loads; the surface energy of step 0, that of the initial crack.
+      const int num_dofs = disp.ParFESpace()->GetTrueVSize();
+      mfem::Vector force_n(num_dofs), disp_n(num_dofs), disp_owned(num_dofs), force(num_dofs);
       force_n = 0.0;
       disp_n = 0.0;
       double external_work = 0.0;
@@ -124,7 +124,7 @@ public:
 
          // 3. The energy and the energy balance; the phase-field problem
          //    gives elastic + surface.
-         const mfem::Vector &force = solver_disp->get_external_force();
+         solver_disp->get_internal_force(disp, force);
          const MPI_Comm comm = disp.ParFESpace()->GetComm();
          disp.GetTrueDofs(disp_owned);
          mfem::Vector disp_change(disp_owned), force_mean(force);
@@ -134,7 +134,7 @@ public:
          external_work += mfem::InnerProduct(comm, force_mean, disp_change);
          const double elastic_energy = solver_disp->get_energy(disp);
          const double surface_energy = solver_fracture->get_energy(alpha) - elastic_energy;
-         const double work = mfem::InnerProduct(comm, force, disp_owned);
+         const double work = solver_disp->get_external_work(disp);
          if (step == 0)
             surface_0 = surface_energy;
          mfem::out << std::scientific << std::setprecision(6)

@@ -63,8 +63,6 @@ public:
    {
       if (global_assembly->get_neumann().is_traction_load())
          global_assembly->set_traction_load(time);
-      if (global_assembly->is_body_force_load())
-         global_assembly->set_body_force_load(time);
 
       // The unknowns of Newton's method, the values of disp on the dofs this
       // rank owns.
@@ -97,12 +95,22 @@ public:
       return global_assembly->get_external_work(disp_owned);
    }
 
-   // The external force F_ext of the last solve, on the dofs this rank owns.
-   const mfem::Vector &get_external_force() const { return global_assembly->get_external_force(); }
+   // The internal force int N_a,J P_kJ dV of disp, R(d) + F_ext, on the dofs
+   // this rank owns, the constrained ones included: at equilibrium it is
+   // F_ext on the free dofs and the reaction on the constrained ones, so
+   // that its work is that of all the loads, the prescribed displacement
+   // included.
+   void get_internal_force(const mfem::ParGridFunction &disp, mfem::Vector &internal_force) const
+   {
+      mfem::Vector disp_owned(global_assembly->get_num_dofs());
+      disp.GetTrueDofs(disp_owned);
+      internal_force.SetSize(global_assembly->get_num_dofs());
+      global_assembly->assemble_residual(disp_owned, internal_force);
+      internal_force += global_assembly->get_external_force();
+   }
 
    // Prints the load value at time, before the step is solved: the
-   // prescribed displacement, set on a copy of disp, or the traction faces,
-   // and the body force at the origin, if any.
+   // prescribed displacement, set on a copy of disp, or the traction faces.
    void print_load(double time, const mfem::ParGridFunction &disp) const
    {
       const DirichletBoundary &dirichlet = global_assembly->get_dirichlet();
@@ -115,14 +123,6 @@ public:
       }
       else
          global_assembly->get_neumann().print_traction_load_by_step();
-      if (global_assembly->is_body_force_load())
-      {
-         mfem::Vector origin(3);
-         origin = 0.0;
-         const Vector_3D body_force = LoadData::body_force(origin, time);
-         mfem::out << "  body force on attribute " << LoadData::body_force_region << ": ("
-                   << body_force(0) << ", " << body_force(1) << ", " << body_force(2) << ")\n";
-      }
    }
 
    // Required by MFEM: overrides mfem::Operator::Mult, which NewtonSolver

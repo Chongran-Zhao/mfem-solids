@@ -1,7 +1,7 @@
 # ============================================================================
 # elastic_fracture: quasi-static phase-field fracture of a linear elastic
-# body by alternate minimization, the helical crack of Bourdin (2007,
-# Section 3), by driver and config.yaml
+# body by alternate minimization, the helical crack of Bourdin, Francfort
+# and Marigo (2008, Section 6, Fig. 30), by driver and config.yaml
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build

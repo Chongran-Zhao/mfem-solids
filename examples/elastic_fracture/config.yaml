@@ -1,37 +1,38 @@
 # Input of driver, read_mesh and vtu_writer of elastic_fracture, given as
 # their first argument, else config.yaml; CMake copies it into
 # elastic_fracture/build/. mesh.file is relative to the project directory.
-# The case is the helical crack of Bourdin (The variational formulation of
-# brittle fracture: numerical implementation and extensions, 2007, Section
-# 3), as set up in the mef90 runs of ~/runs/HelicalCrack2007L016: a cylinder
-# of radius 1 and length 10 with an unbreakable shaft of radius .5, capped at
-# both ends, clamped at the bottom, with an initial crack inside, pulled by
-# a body force along +z on the top cap, LoadData::body_force. The regions,
-# the shaft and the caps that do not break and the stiffer caps, are in
+# The case is the helical crack of Bourdin, Francfort and Marigo (The
+# variational approach to fracture, J. Elasticity 2008, Section 6, Fig.
+# 30), as set up in the mef90 run HelicalCrack of ~/runs/ATTEMPTS.md, the one
+# with AT1 that gave a helix: a tube along e1 of length 30 and diameter 2
+# with an unbreakable core of diameter 1, a half-disk notch in the middle
+# cross-section, clamped at the left end and pulled by a displacement delta
+# at the right one, LoadData::disp_loading. The regions are in
 # MaterialModelData.
 
 mesh:
-  # Mesh file, Gmsh 2.2, of mesh_files/HelicalCrack2007.geo with h = .08,
-  # 59,411 vertices; not kept in git, made from the project directory by
-  #    gmsh -3 -setnumber h 0.08 mesh_files/HelicalCrack2007.geo -o mesh_files/HelicalCrack2007-h008.msh
-  file: mesh_files/HelicalCrack2007-h008.msh
+  # Mesh file, Gmsh 2.2, of mesh_files/HelicalCrack2008.geo with h = .15,
+  # 28,154 vertices, against 27,963 in the mef90 run; not kept in git, made
+  # from the project directory by
+  #    gmsh -3 -setnumber h 0.15 mesh_files/HelicalCrack2008.geo -o mesh_files/HelicalCrack2008-h015.msh
+  file: mesh_files/HelicalCrack2008-h015.msh
 
   # Names of the boundary attributes of the mesh file, the physical tags of
   # a Gmsh file; the boundary conditions and the initial crack refer to the
   # faces by these names.
   faces:
-    clamped: 20   # bottom face of the bottom cap, z = -.5
-    top: 30       # both faces of the top cap, z = 10 and 10.5
-    crack: 40     # initial crack, a disk of radius .4 at z = 5, tilted by 30 degrees
+    left: 10      # left cross-section, x = 0
+    right: 20     # right cross-section, x = 30
+    crack: 40     # initial crack, a half disk of radius .4 in the cross-section x = 15
 
   # Number of uniform refinements.
   refine_levels: 0
 
   # Name of the mesh file written by read_mesh.
-  output: helical.mesh
+  output: tube.mesh
 
   # Web page showing the named faces in 3D, and whether to open it.
-  output_html: helical_boundary.html
+  output_html: tube_boundary.html
   open_html: false
 
 space:
@@ -45,26 +46,28 @@ space:
   # is the same rule as 3, 2 x 2 x 2 points.
   quad_order: 2
 
-# Load steps, read into TimeSteps: steps of .02 as in the mef90 runs, up to
-# t = 5.5, the end of the loading of the paper; AT1 needs a higher load to
-# crack than AT2.
+# Load steps, read into TimeSteps: t is the displacement delta of the right
+# end, 0 to 50 in 50 steps as in the mef90 run, whose notch started to grow
+# near delta = 23; Fig. 30 of the paper goes on up to delta = 86.5.
 time:
-  dt: 0.02
-  final_time: 5.5
+  dt: 1.0
+  final_time: 50.0
 
 # Displacement boundary conditions, one entry per face and direction.
 Dirichlet:
   # Zero displacement.
-  # The clamped face; on the faces of the top cap ux = uy = 0, so that the
-  # cap cannot rotate, as in the mef90 runs, not in the paper.
+  # The left end is clamped (Section 6); the right end does not move
+  # across, which the paper does not say.
   fixed_bc:
-    - { face: clamped, dir: x }
-    - { face: clamped, dir: y }
-    - { face: clamped, dir: z }
-    - { face: top, dir: x }
-    - { face: top, dir: y }
-  # Prescribed displacement, given by LoadData::disp_loading: none.
-  disp_bc: []
+    - { face: left, dir: x }
+    - { face: left, dir: y }
+    - { face: left, dir: z }
+    - { face: right, dir: y }
+    - { face: right, dir: z }
+  # Prescribed displacement, given by LoadData::disp_loading: delta = t
+  # along e1 at the right end.
+  disp_bc:
+    - { face: right, dir: x }
 
 # Traction faces; the traction is given by LoadData::surface_traction.
 Neumann:
@@ -73,20 +76,23 @@ Neumann:
 # Alternate minimization.
 fracture:
   # A node joins the crack set K_n, alpha = 0, when alpha_n <= eta_lim;
-  # mef90's irrevThres .99 for its damage 1 - alpha.
+  # the mef90 run had irrevThres 0 instead, alpha <= alpha_n everywhere.
   eta_lim: 1.0e-2
   # Faces of the initial crack, named in mesh.faces, where alpha = 0 at
   # every step.
   initial_crack: [crack]
   # Tolerance on ||alpha^(j+1) - alpha^(j)||_inf, and the maximum of
-  # iterations per load step.
-  tol: 1.0e-6
+  # iterations per load step. 1e-3 as the atol of the mef90 run; with 1e-6
+  # the step delta = 24, where the notch starts to grow, took over 1000
+  # iterations of about 2 s on 8 ranks, alpha changing by a factor of .988
+  # per iteration at the end.
+  tol: 1.0e-3
   max_iter: 1000
 
 # Newton's method of the displacement problem; linear in the displacement
 # for a linear elastic material, so that the predictor already solves it and
 # the absolute tolerance must be positive. linear_solver gmres, preconditioned
-# by BoomerAMG, or mumps: on the helical mesh, 8 ranks, a load step took 11 s
+# by BoomerAMG, or mumps: on the mesh of the 2007 helical crack, h = .08, 8 ranks, a load step took 11 s
 # with gmres for both problems and 65 s with mumps for both, for the same
 # energies; mumps is the fallback should gmres stall once the crack opens,
 # where the stiffness falls to eta.
@@ -97,11 +103,9 @@ solver_disp:
   newton_max_iter: 20
 
 # Newton's method of the phase-field problem, linear in alpha for AT2 and
-# AT1, with the bounds 0 <= alpha <= 1 by nonlinear_solver vi, the SNES VI of
-# PETSc, which AT1 needs; newton, MFEM's Newton method without bounds, is
-# for AT2 only.
+# AT1, with the bounds 0 <= alpha <= 1, SNESVINEWTONRSLS of PETSc, which AT1
+# needs, for AT1 and AT2 alike.
 solver_fracture:
-  nonlinear_solver: vi
   linear_solver: gmres
   newton_rel_tol: 1.0e-8
   newton_abs_tol: 1.0e-10
@@ -120,5 +124,5 @@ output:
   vtu_reference: true
   gf: results_gf
   # The fields are saved every gf_interval-th load step, and at the last;
-  # every .1 here, for the disk.
-  gf_interval: 5
+  # every step here, 51 of them on a mesh of 28,154 vertices.
+  gf_interval: 1
