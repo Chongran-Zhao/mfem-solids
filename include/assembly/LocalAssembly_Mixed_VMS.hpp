@@ -53,7 +53,6 @@
 #include "LocalAssemblyTools.hpp"
 #include "LocalAssembly_Mixed.hpp"
 #include "MaterialModel.hpp"
-#include "ShapeCache.hpp"
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
 #include "Vector_3D.hpp"
@@ -110,20 +109,27 @@ public:
 
       const double tau_J = get_tau_per_J_cached(elem_u, elem_map);
 
-      for (const ShapeCache::PointShapes &point :
-           shape_cache.get(elem_u, &elem_p, elem_map, get_quad_rule(elem_u, elem_map)))
+      // N, N_a,J and N_a,JL of the velocity, M and M_c,J of the pressure at a
+      // point; dN_dxi, dM_dxi, d2N_dxi2 and d2G_dxi2 are work matrices.
+      mfem::Vector N(num_nodes_u), M(num_nodes_p);
+      mfem::DenseMatrix dN_dxi(num_nodes_u, 3), dN_dX(num_nodes_u, 3), d2N_dX2(num_nodes_u, 6);
+      mfem::DenseMatrix dM_dxi(num_nodes_p, 3), dM_dX(num_nodes_p, 3), d2N_dxi2, d2G_dxi2;
+
+      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem_u, elem_map);
+
+      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
-         const mfem::Vector &N = point.N;
-         const mfem::DenseMatrix &dN_dX = point.dN_dX;
-         const mfem::DenseMatrix &d2N_dX2 = point.d2N_dX2;
-         const mfem::Vector &M = point.M;
-         const mfem::DenseMatrix &dM_dX = point.dM_dX;
+         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
+         elem_map.SetIntPoint(&quad_pt);
+         calc_shapes(elem_u, elem_p, elem_map, quad_pt, N, dN_dxi, dN_dX, d2N_dX2, M, dM_dxi,
+                     dM_dX, d2N_dxi2, d2G_dxi2);
 
          const QuadPointState state = get_quad_point_state(velo, pres, rates, N, dN_dX,
                                                            d2N_dX2, M, dM_dX);
          const double tau = tau_J * state.J;
 
-         const double dV = point.dV;
+         // dV = w_q * det( dX/dxi )
+         const double dV = quad_pt.weight * elem_map.Weight();
 
          // R^a_k at u.
          add_momentum_residual(dN_dX, get_1st_PK_stress(state.F, state.p), dV, residual_u);
@@ -193,14 +199,20 @@ public:
       const double tau_J = get_tau_per_J_cached(elem_u, elem_map);
       const double rho_0 = material->get_rho_0();
 
-      for (const ShapeCache::PointShapes &point :
-           shape_cache.get(elem_u, &elem_p, elem_map, get_quad_rule(elem_u, elem_map)))
+      // N, N_a,J and N_a,JL of the velocity, M and M_c,J of the pressure at a
+      // point; dN_dxi, dM_dxi, d2N_dxi2 and d2G_dxi2 are work matrices.
+      mfem::Vector N(num_nodes_u), M(num_nodes_p);
+      mfem::DenseMatrix dN_dxi(num_nodes_u, 3), dN_dX(num_nodes_u, 3), d2N_dX2(num_nodes_u, 6);
+      mfem::DenseMatrix dM_dxi(num_nodes_p, 3), dM_dX(num_nodes_p, 3), d2N_dxi2, d2G_dxi2;
+
+      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem_u, elem_map);
+
+      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
-         const mfem::Vector &N = point.N;
-         const mfem::DenseMatrix &dN_dX = point.dN_dX;
-         const mfem::DenseMatrix &d2N_dX2 = point.d2N_dX2;
-         const mfem::Vector &M = point.M;
-         const mfem::DenseMatrix &dM_dX = point.dM_dX;
+         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
+         elem_map.SetIntPoint(&quad_pt);
+         calc_shapes(elem_u, elem_p, elem_map, quad_pt, N, dN_dxi, dN_dX, d2N_dX2, M, dM_dxi,
+                     dM_dX, d2N_dxi2, d2G_dxi2);
 
          const QuadPointState state = get_quad_point_state(velo, pres, rates, N, dN_dX,
                                                            d2N_dX2, M, dM_dX);
@@ -217,7 +229,8 @@ public:
             material->get_d_1st_elasticity_tensor_ich_sum(state.F, CC_ich,
                                                           get_hessian_slices(state.d2u_dX2));
 
-         const double dV = point.dV;
+         // dV = w_q * det( dX/dxi )
+         const double dV = quad_pt.weight * elem_map.Weight();
 
          // K_uu and K_up of the momentum equation at u.
          LocalAssemblyTools::add_momentum_tangent_uu(
@@ -297,6 +310,25 @@ public:
    }
 
 private:
+   // N, N_a,J and N_a,JL of the velocity, M and M_c,J of the pressure;
+   // d2N_dxi2 and d2G_dxi2 are work matrices.
+   static void calc_shapes(const mfem::FiniteElement &elem_u, const mfem::FiniteElement &elem_p,
+                           mfem::ElementTransformation &elem_map,
+                           const mfem::IntegrationPoint &quad_pt, mfem::Vector &N,
+                           mfem::DenseMatrix &dN_dxi, mfem::DenseMatrix &dN_dX,
+                           mfem::DenseMatrix &d2N_dX2, mfem::Vector &M,
+                           mfem::DenseMatrix &dM_dxi, mfem::DenseMatrix &dM_dX,
+                           mfem::DenseMatrix &d2N_dxi2, mfem::DenseMatrix &d2G_dxi2)
+   {
+      elem_u.CalcShape(quad_pt, N);
+      elem_u.CalcDShape(quad_pt, dN_dxi);
+      mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
+      LocalAssemblyTools::calc_phys_hessian(elem_u, elem_map, dN_dX, d2N_dxi2, d2G_dxi2, d2N_dX2);
+      elem_p.CalcShape(quad_pt, M);
+      elem_p.CalcDShape(quad_pt, dM_dxi);
+      mfem::Mult(dM_dxi, elem_map.InverseJacobian(), dM_dX);
+   }
+
    // tau / J of the element of elem_map, computed at its first assembly.
    double get_tau_per_J_cached(const mfem::FiniteElement &elem,
                                mfem::ElementTransformation &elem_map)
@@ -540,7 +572,6 @@ private:
    const mfem::GridFunction *dot_velo_offset = nullptr;   // dv/dt = dot_velo_offset + dot_factor v
    const mfem::GridFunction *dot_pres_offset = nullptr;   // dp/dt = dot_pres_offset + dot_factor p
    double dot_factor = 0.0;
-   ShapeCache shape_cache{true};                          // N, N_a,J, N_a,JL, M, M_c,J, dV of each element
    std::vector<double> tau_cache;                         // tau / J by element number, -1 until computed
 };
 

@@ -3,7 +3,8 @@
 //
 // Parallel global assembly of the displacement form, with the Dirichlet and
 // the Neumann boundary conditions, on the dofs each rank owns:
-//    external force  F_ext, from the tractions;
+//    external force  F_ext, from the tractions and, if set, the body force
+//                    on some regions;
 //    residual        R(d) = int N_a,J P_kJ dV - F_ext, from one
 //                    ParNonlinearForm over LocalAssembly_Disp;
 //    tangent         K(d) = dR/dd, a HypreParMatrix assembled from the
@@ -43,11 +44,16 @@ public:
         dirichlet(std::move(input_dirichlet)),
         neumann(std::move(input_neumann)),
         local_traction(&input_space),
+        local_body_force(&input_space),
         ess_tdof_list(dirichlet->get_ess_tdof_list()),
+        traction_force(input_space.GetTrueVSize()),
+        body_force_load(input_space.GetTrueVSize()),
         external_force(input_space.GetTrueVSize()),
         local_assembly(std::move(input_local_assembly)),
         global_assembly(&input_space)
    {
+      traction_force = 0.0;
+      body_force_load = 0.0;
       external_force = 0.0;
       if (neumann->is_traction_load())
          neumann->add_traction_integrators(local_traction);
@@ -69,8 +75,49 @@ public:
    {
       neumann->set_time(tt);
       local_traction.Assemble();
-      local_traction.ParallelAssemble(external_force);
+      local_traction.ParallelAssemble(traction_force);
+      add(traction_force, body_force_load, external_force);
    }
+
+   // The body force per unit reference volume, rho_0 b, on the elements
+   // whose attribute region_marker marks; it stays the caller's, and
+   // set_body_force_load sets its time.
+   void set_body_force(mfem::VectorCoefficient &input_body_force,
+                       const mfem::Array<int> &region_marker)
+   {
+      body_force = &input_body_force;
+      body_force_marker = region_marker;
+      local_body_force.AddDomainIntegrator(new mfem::VectorDomainLFIntegrator(input_body_force),
+                                           body_force_marker);
+   }
+
+   // Whether a body force is set.
+   bool is_body_force_load() const { return body_force != nullptr; }
+
+   // Set the time of the body force and assemble its part of F_ext on the
+   // dofs this rank owns.
+   void set_body_force_load(double tt)
+   {
+      body_force->SetTime(tt);
+      local_body_force.Assemble();
+      local_body_force.ParallelAssemble(body_force_load);
+      add(traction_force, body_force_load, external_force);
+   }
+
+   // F_ext on the dofs this rank owns.
+   const mfem::Vector &get_external_force() const { return external_force; }
+
+   // The work of the external force F_ext . d over all ranks, from the values
+   // of disp on the dofs this rank owns.
+   double get_external_work(const mfem::Vector &disp) const
+   {
+      return mfem::InnerProduct(space.GetComm(), external_force, disp);
+   }
+
+   // The strain energy int Psi(F) dV over all ranks, times the factor of
+   // LocalAssembly_Disp, from the values of disp on the dofs this rank owns;
+   // without the work of the tractions.
+   double get_energy(const mfem::Vector &disp) const { return global_assembly.GetEnergy(disp); }
 
    // R(d) at every dof this rank owns.
    void assemble_residual(const mfem::Vector &disp, mfem::Vector &residual) const
@@ -130,7 +177,12 @@ private:
    const std::unique_ptr<DirichletBoundary> dirichlet;    // constrained dofs and their values
    const std::unique_ptr<NeumannBoundary> neumann;        // tractions
    mfem::ParLinearForm local_traction;                    // destroyed before the tractions
+   mfem::ParLinearForm local_body_force;                  // of the body force, if set
+   mfem::VectorCoefficient *body_force = nullptr;         // rho_0 b, not owned
+   mfem::Array<int> body_force_marker;                    // regions of the body force
    const mfem::Array<int> ess_tdof_list;                  // constrained dofs this rank owns
+   mfem::Vector traction_force;                           // the tractions part of F_ext
+   mfem::Vector body_force_load;                          // the body force part of F_ext
    mfem::Vector external_force;                           // F_ext on the dofs this rank owns
 
    // Declared before global_assembly, so that global_assembly, which

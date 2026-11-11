@@ -2,9 +2,11 @@
 // LocalAssembly_Disp.hpp
 //
 // Local (element) assembly of compressible hyperelasticity in the Total
-// Lagrangian form: the element residual and tangent. The unknown is the
-// displacement. It is an MFEM NonlinearFormIntegrator, called by
-// NonlinearForm, which assembles the global residual and tangent.
+// Lagrangian form: the element energy, residual and tangent. The unknown is
+// the displacement. It is an MFEM NonlinearFormIntegrator, called by
+// NonlinearForm, which assembles the global residual and tangent. An optional
+// factor multiplies the energy density, thus the residual and the tangent, as
+// g(alpha) of phase-field fracture.
 //
 // Author: Chongran Zhao
 // Date: Sep. 25, 2026
@@ -19,17 +21,52 @@
 #include <mfem.hpp>
 
 #include "LocalAssemblyTools.hpp"
-#include "MaterialModel.hpp"
-#include "ShapeCache.hpp"
+#include "IMaterialModel.hpp"
 #include "Tensor2_3D.hpp"
 #include "Tensor4_3D.hpp"
 
 class LocalAssembly_Disp : public mfem::NonlinearFormIntegrator
 {
 public:
-   // Takes the ownership of the material.
-   LocalAssembly_Disp(std::unique_ptr<const MaterialModel> input_material)
+   // Takes the ownership of the material, hyperelastic (MaterialModel) or
+   // linear elastic (MaterialModel_LinearElastic).
+   LocalAssembly_Disp(std::unique_ptr<const IMaterialModel> input_material)
       : material(std::move(input_material)) {}
+
+   // Required by MFEM: overrides mfem::NonlinearFormIntegrator::
+   // GetElementEnergy, which NonlinearForm::GetEnergy calls on every element.
+   // E = int Psi(F) dV over the element in the reference configuration,
+   // times the factor of the energy density.
+   double GetElementEnergy(const mfem::FiniteElement &elem,
+                           mfem::ElementTransformation &elem_map,
+                           const mfem::Vector &disp) override
+   {
+      const int num_nodes = elem.GetDof();
+      mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
+
+      double energy = 0.0;
+
+      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
+
+      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
+      {
+         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
+         elem_map.SetIntPoint(&quad_pt);
+
+         // dN/dxi
+         elem.CalcDShape(quad_pt, dN_dxi);
+         // N_a,J = dN/dX = dN/dxi (dX/dxi)^-1.
+         mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
+
+         const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
+
+         // dV = w_q * det( dX/dxi ), times the factor of the energy density.
+         const double dV = quad_pt.weight * elem_map.Weight() * get_energy_factor(elem_map, quad_pt);
+
+         energy += dV * material->get_strain_energy(F);
+      }
+      return energy;
+   }
 
    // Required by MFEM: overrides mfem::NonlinearFormIntegrator::
    // AssembleElementVector, which NonlinearForm calls on every element.
@@ -42,21 +79,29 @@ public:
                               mfem::Vector &residual) override
    {
       const int num_nodes = elem.GetDof();
+      mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
 
       residual.SetSize(3 * num_nodes);
       residual = 0.0;
 
-      // N_a,J and dV at the points, kept from the first assembly.
-      for (const ShapeCache::PointShapes &point :
-           shape_cache.get(elem, nullptr, elem_map, get_quad_rule(elem, elem_map)))
+      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
+
+      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
-         const mfem::DenseMatrix &dN_dX = point.dN_dX;
+         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
+         elem_map.SetIntPoint(&quad_pt);
+
+         // dN/dxi
+         elem.CalcDShape(quad_pt, dN_dxi);
+         // N_a,J = dN/dX = dN/dxi (dX/dxi)^-1.
+         mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
 
          const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
 
          const Tensor2_3D PK1 = material->get_1st_PK_stress(F);
 
-         const double dV = point.dV;
+         // dV = w_q * det( dX/dxi ), times the factor of the energy density.
+         const double dV = quad_pt.weight * elem_map.Weight() * get_energy_factor(elem_map, quad_pt);
 
          for (int aa = 0; aa < num_nodes; aa++)
          {
@@ -86,21 +131,29 @@ public:
                             mfem::DenseMatrix &tangent) override
    {
       const int num_nodes = elem.GetDof();
+      mfem::DenseMatrix dN_dxi(num_nodes, 3), dN_dX(num_nodes, 3);
 
       tangent.SetSize(3*num_nodes);
       tangent = 0.0;
 
-      // N_a,J and dV at the points, kept from the first assembly.
-      for (const ShapeCache::PointShapes &point :
-           shape_cache.get(elem, nullptr, elem_map, get_quad_rule(elem, elem_map)))
+      const mfem::IntegrationRule &quad_rule = get_quad_rule(elem, elem_map);
+
+      for (int qq = 0; qq < quad_rule.GetNPoints(); qq++)
       {
-         const mfem::DenseMatrix &dN_dX = point.dN_dX;
+         const mfem::IntegrationPoint &quad_pt = quad_rule.IntPoint(qq);
+         elem_map.SetIntPoint(&quad_pt);
+
+         // dN/dxi
+         elem.CalcDShape(quad_pt, dN_dxi);
+         // N_a,J = dN/dX = dN/dxi (dX/dxi)^-1.
+         mfem::Mult(dN_dxi, elem_map.InverseJacobian(), dN_dX);
 
          const Tensor2_3D F = LocalAssemblyTools::get_deformation_gradient(disp, dN_dX);
 
          const Tensor4_3D AA = material->get_1st_elasticity_tensor(F);
 
-         const double dV = point.dV;
+         // dV = w_q * det( dX/dxi ), times the factor of the energy density.
+         const double dV = quad_pt.weight * elem_map.Weight() * get_energy_factor(elem_map, quad_pt);
 
          LocalAssemblyTools::add_momentum_tangent_uu(dN_dX, AA, dV, tangent);
       }
@@ -113,7 +166,21 @@ public:
    // LocalAssemblyTools::get_quad_rule.
    void set_quad_order(int input_quad_order) { quad_order = input_quad_order; }
 
+   // The factor of the energy density, which stays the caller's and is read
+   // at every assembly; without it the factor is 1.
+   void set_energy_factor(mfem::Coefficient &input_energy_factor)
+   {
+      energy_factor = &input_energy_factor;
+   }
+
 private:
+   // The factor of the energy density at quad_pt, 1 without one.
+   double get_energy_factor(mfem::ElementTransformation &elem_map,
+                            const mfem::IntegrationPoint &quad_pt) const
+   {
+      return energy_factor ? energy_factor->Eval(elem_map, quad_pt) : 1.0;
+   }
+
    // The rule of order quad_order, or that of LocalAssemblyTools.
    const mfem::IntegrationRule &get_quad_rule(const mfem::FiniteElement &elem,
                                               mfem::ElementTransformation &elem_map) const
@@ -122,9 +189,9 @@ private:
                               : LocalAssemblyTools::get_quad_rule(elem, elem_map);
    }
 
-   const std::unique_ptr<const MaterialModel> material;
+   const std::unique_ptr<const IMaterialModel> material;
+   mfem::Coefficient *energy_factor = nullptr;   // factor of the energy density, not owned
    int quad_order = 0;   // quadrature order, 0 for that of LocalAssemblyTools
-   ShapeCache shape_cache{false};   // N_a,J and dV of each element
 };
 
 #endif

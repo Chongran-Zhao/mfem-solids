@@ -5,3 +5,4 @@ bd/
 build*/
 .DS_Store
 __pycache__/
+mesh_files/*.msh

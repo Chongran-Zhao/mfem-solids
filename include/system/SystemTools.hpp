@@ -87,11 +87,15 @@ public:
       return fespace.FEColl()->Name();
    }
 
-   // Header of the Newton iterations printed by NewtonMonitor.
-   static void print_newton_header()
+   // Header of the Newton iterations printed by NewtonMonitor, after a blank
+   // line; indented by indent spaces, it belongs to an enclosing block and
+   // has no blank line before it.
+   static void print_newton_header(int indent = 0)
    {
-      mfem::out << '\n' << std::left << std::setw(12) << "iteration" << std::setw(18) << "||R||"
-                << "||R|| / ||R_0||\n";
+      if (indent == 0)
+         mfem::out << '\n';
+      mfem::out << std::string(indent, ' ') << std::left << std::setw(12) << "iteration"
+                << std::setw(18) << "||R||" << "||R|| / ||R_0||\n";
    }
 
    // Header of the Newton iterations printed by BlockNewtonMonitor.
@@ -105,10 +109,13 @@ public:
    // Prints the residual norm of every Newton iteration, absolute and
    // relative to the first iteration of the load step. NewtonSolver calls
    // MonitorResidual once per iteration, and once more with final = true,
-   // which is skipped.
+   // which is skipped. The lines are indented by indent spaces, as the
+   // header of print_newton_header.
    class NewtonMonitor : public mfem::IterativeSolverMonitor
    {
    public:
+      explicit NewtonMonitor(int input_indent = 0) : indent(input_indent) {}
+
       // Required by MFEM: overrides mfem::IterativeSolverMonitor::
       // MonitorResidual, which NewtonSolver calls at every iteration.
       void MonitorResidual(int it, mfem::real_t norm, const mfem::Vector &,
@@ -118,13 +125,15 @@ public:
             return;
          if (it == 0)
             initial_norm = norm;
-         mfem::out << std::left << std::setw(12) << it << std::scientific
+         mfem::out << std::string(indent, ' ') << std::left << std::setw(12) << it
+                   << std::scientific
                    << std::setprecision(6) << std::setw(18) << norm
                    << (initial_norm > 0.0 ? norm / initial_norm : 0.0)
                    << std::defaultfloat << '\n';
       }
 
    private:
+      const int indent;            // spaces before each line
       double initial_norm = 1.0;
    };
 

@@ -1,0 +1,128 @@
+# Input of driver, read_mesh and vtu_writer of elastic_fracture, given as
+# their first argument, else config.yaml; CMake copies it into
+# elastic_fracture/build/. mesh.file is relative to the project directory.
+# The case is the helical crack of Bourdin, Francfort and Marigo (The
+# variational approach to fracture, J. Elasticity 2008, Section 6, Fig.
+# 30), as set up in the mef90 run HelicalCrack of ~/runs/ATTEMPTS.md, the one
+# with AT1 that gave a helix: a tube along e1 of length 30 and diameter 2
+# with an unbreakable core of diameter 1, a half-disk notch in the middle
+# cross-section, clamped at the left end and pulled by a displacement delta
+# at the right one, LoadData::disp_loading. The regions are in
+# MaterialModelData.
+
+mesh:
+  # Mesh file, Gmsh 2.2, of mesh_files/HelicalCrack2008.geo with h = .15,
+  # 28,154 vertices, against 27,963 in the mef90 run; not kept in git, made
+  # from the project directory by
+  #    gmsh -3 -setnumber h 0.15 mesh_files/HelicalCrack2008.geo -o mesh_files/HelicalCrack2008-h015.msh
+  file: mesh_files/HelicalCrack2008-h015.msh
+
+  # Names of the boundary attributes of the mesh file, the physical tags of
+  # a Gmsh file; the boundary conditions and the initial crack refer to the
+  # faces by these names.
+  faces:
+    left: 10      # left cross-section, x = 0
+    right: 20     # right cross-section, x = 30
+    crack: 40     # initial crack, a half disk of radius .4 in the cross-section x = 15
+
+  # Number of uniform refinements.
+  refine_levels: 0
+
+  # Name of the mesh file written by read_mesh.
+  output: tube.mesh
+
+  # Web page showing the named faces in 3D, and whether to open it.
+  output_html: tube_boundary.html
+  open_html: false
+
+space:
+  # Order of the continuous shape functions, of the displacement and of the
+  # phase field.
+  elem_order: 1
+
+  # Quadrature order of the elements; 0 keeps the default rule of
+  # LocalAssemblyTools, only 1 point on a linear tetrahedron. 2 integrates
+  # g(alpha) psi_e and w(alpha) exactly on linear elements; on hexahedra it
+  # is the same rule as 3, 2 x 2 x 2 points.
+  quad_order: 2
+
+# Load steps, read into TimeSteps: t is the displacement delta of the right
+# end, 0 to 50 in 50 steps as in the mef90 run, whose notch started to grow
+# near delta = 23; Fig. 30 of the paper goes on up to delta = 86.5.
+time:
+  dt: 1.0
+  final_time: 50.0
+
+# Displacement boundary conditions, one entry per face and direction.
+Dirichlet:
+  # Zero displacement.
+  # The left end is clamped (Section 6); the right end does not move
+  # across, which the paper does not say.
+  fixed_bc:
+    - { face: left, dir: x }
+    - { face: left, dir: y }
+    - { face: left, dir: z }
+    - { face: right, dir: y }
+    - { face: right, dir: z }
+  # Prescribed displacement, given by LoadData::disp_loading: delta = t
+  # along e1 at the right end.
+  disp_bc:
+    - { face: right, dir: x }
+
+# Traction faces; the traction is given by LoadData::surface_traction.
+Neumann:
+  faces: []
+
+# Alternate minimization.
+fracture:
+  # A node joins the crack set K_n, alpha = 0, when alpha_n <= eta_lim;
+  # the mef90 run had irrevThres 0 instead, alpha <= alpha_n everywhere.
+  eta_lim: 1.0e-2
+  # Faces of the initial crack, named in mesh.faces, where alpha = 0 at
+  # every step.
+  initial_crack: [crack]
+  # Tolerance on ||alpha^(j+1) - alpha^(j)||_inf, and the maximum of
+  # iterations per load step. 1e-3 as the atol of the mef90 run; with 1e-6
+  # the step delta = 24, where the notch starts to grow, took over 1000
+  # iterations of about 2 s on 8 ranks, alpha changing by a factor of .988
+  # per iteration at the end.
+  tol: 1.0e-3
+  max_iter: 1000
+
+# Newton's method of the displacement problem; linear in the displacement
+# for a linear elastic material, so that the predictor already solves it and
+# the absolute tolerance must be positive. linear_solver gmres, preconditioned
+# by BoomerAMG, or mumps: on the mesh of the 2007 helical crack, h = .08, 8 ranks, a load step took 11 s
+# with gmres for both problems and 65 s with mumps for both, for the same
+# energies; mumps is the fallback should gmres stall once the crack opens,
+# where the stiffness falls to eta.
+solver_disp:
+  linear_solver: gmres
+  newton_rel_tol: 1.0e-8
+  newton_abs_tol: 1.0e-10
+  newton_max_iter: 20
+
+# Newton's method of the phase-field problem, linear in alpha for AT2 and
+# AT1, with the bounds 0 <= alpha <= 1, SNESVINEWTONRSLS of PETSc, which AT1
+# needs, for AT1 and AT2 alike.
+solver_fracture:
+  linear_solver: gmres
+  newton_rel_tol: 1.0e-8
+  newton_abs_tol: 1.0e-10
+  newton_max_iter: 20
+
+# Output folders, in the directory the programs run in.
+output:
+  vtu: results_vtu
+  # vtu_writer cuts each element into vtu_refine^3 cells at its sampling
+  # points; 1, the element itself, suffices for linear elements.
+  vtu_refine: 1
+  # The points at the reference positions X, else at X + u. Where the
+  # material is broken its stiffness is about eta and the displacement
+  # across the crack is large, which X + u would stretch the cells by;
+  # ParaView's Warp By Vector of displacement draws the deformed shape.
+  vtu_reference: true
+  gf: results_gf
+  # The fields are saved every gf_interval-th load step, and at the last;
+  # every step here, 51 of them on a mesh of 28,154 vertices.
+  gf_interval: 1

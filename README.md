@@ -1,63 +1,6 @@
 # mfem-solids
 
-Finite-strain solid mechanics with [MFEM](https://mfem.org/).
-
-## Cases
-
-Each case in `examples/` is a CMake project of its own, with one driver and one input per
-formulation and time method: the driver sets the nonlinear solver, and the input the mesh,
-the material settings, the time steps, the boundary conditions and the results folders,
-`results_<suffix of the driver>_{gf,vtu,csv}`.
-
-| Case | Driver | Input | Problem |
-|---|---|---|---|
-| `hyperelasticity_disp` | `driver_static` | `config_static.yaml` | beam, displacement form, statics |
-| | `driver_dynamic` | `config_dynamic.yaml` | beam, displacement form, generalized-alpha of second order |
-| `hyperelasticity_mixed` | `driver_TaylorHood_static` | `config_TaylorHood_static.yaml` | beam, mixed u/p form, Taylor-Hood elements, statics |
-| | `driver_TaylorHood_dynamic` | `config_TaylorHood_dynamic.yaml` | beam, mixed u/p form, Taylor-Hood elements, generalized-alpha of second order |
-| | `driver_vms_dynamic` | `config_vms_dynamic.yaml` | beam, rate form of the mixed u/p form, equal-order elements with VMS, generalized-alpha of first order |
-| `sphere_rotation` | `driver_TaylorHood_dynamic` | `config_TaylorHood_dynamic.yaml` | gelatin ball in a skull shell, spun up by the measured rotation of its surface, Taylor-Hood elements |
-| | `driver_vms_dynamic` | `config_vms_dynamic.yaml` | the same, equal-order elements with VMS |
-
-Besides the drivers, each case has:
-- `read_mesh`, which prepares the mesh of the input;
-- `vtu_writer`, which writes the saved fields and the stresses as a VTU series for ParaView,
-  on MPI ranks;
-- in the beam cases, `csv_writer`: mean displacement and pressure, reaction forces and
-  energies;
-- in `sphere_rotation`, `probe_disp`: u_phi at the measured radii, and the pvpython scripts
-  of `scripts/`.
-
-The drivers read their own input by default; the other programs take it as first argument.
-For example, the Taylor-Hood statics of the beam, from `examples/hyperelasticity_mixed`:
-
-```bash
-cmake -B build && cmake --build build
-```
-
-```bash
-cd build && ./read_mesh config_TaylorHood_static.yaml && mpirun -np 2 ./driver_TaylorHood_static
-```
-
-```bash
-mpirun -np 2 ./vtu_writer config_TaylorHood_static.yaml && mpirun -np 2 ./csv_writer config_TaylorHood_static.yaml
-```
-
-The ParaView file is `results_TaylorHood_static_vtu/results_TaylorHood_static_vtu.pvd`.
-
-The code the cases share is in `include/`:
-
-| Folder | Content |
-|---|---|
-| `assembly` | local (element) and global assemblies of the displacement and the mixed forms, Taylor-Hood and VMS |
-| `boundary` | Dirichlet and Neumann boundary conditions on named faces |
-| `material` | isochoric and volumetric hyperelastic models |
-| `solver` | the bases of the nonlinear and time solvers of the cases, the generalized-alpha methods, and the time steps |
-| `system` | tensors and printing and file tools |
-| `visualization` | the VTU writers, in Cartesian and spherical components |
-
-Each case has in its own `include/` the loading (`LoadData.hpp`), the material
-(`MaterialModelData.hpp`), its nonlinear solvers and its time solver.
+Finite-strain solid mechanics and phase-field fracture with [MFEM](https://mfem.org/).
 
 ## Dependencies
 
@@ -67,14 +10,14 @@ if yours are elsewhere.
 
 | Package | Version | Usage |
 |---|---|---|
-| CMake | 3.20 or newer | builds the libraries and the cases |
+| CMake | 3.20 or newer | builds the libraries and the examples |
 | Open MPI | 5.0.10 | parallel runs: the MPI compilers and `mpirun` |
 | gfortran, OpenBLAS, ScaLAPACK | Homebrew `gcc`, `openblas`, `scalapack` | for PETSc and MUMPS: MUMPS is written in Fortran, and its dense kernels use BLAS, LAPACK and ScaLAPACK |
-| PETSc | 3.24.6 | the solver of the damage problems with bounds, `SNESVINEWTONRSLS`; it also provides METIS, hypre and MUMPS below, which it downloads and builds, so that one copy of each is linked |
+| PETSc | 3.24.6 | the solver of the phase field of fracture with the bounds 0 <= alpha <= 1, `SNESVINEWTONRSLS`; it also provides METIS, hypre and MUMPS below, which it downloads and builds, so that one copy of each is linked |
 | METIS | 5.1.0, from PETSc | splits the mesh among the ranks (`ParMesh`), and orders the matrix for MUMPS |
 | hypre | 3.0.0, `da9f93f8d`, from PETSc | the parallel matrices of MFEM (`HypreParMatrix`), and the BoomerAMG preconditioners of the GMRES solvers of the linear systems |
-| MUMPS | 5.8.1, from PETSc | parallel direct solver of the linear systems, instead of GMRES with `linear_solver: mumps` in the `solver` section of the input of a case; MFEM has only its interface |
-| yaml-cpp | 0.9.0 | reads the inputs of the cases, `config_*.yaml` |
+| MUMPS | 5.8.1, from PETSc | parallel direct solver of the linear systems, instead of GMRES with `linear_solver: mumps` in a solver section of the input; MFEM has only its interface |
+| yaml-cpp | 0.9.0 | reads the inputs, `config*.yaml` |
 | MFEM | 4.10.1, master `45799eb` | finite element spaces, meshes, assembly, the Krylov solvers and the interface to PETSc |
 
 ```

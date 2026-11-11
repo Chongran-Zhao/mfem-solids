@@ -79,22 +79,27 @@ target_include_directories(mfem_solids INTERFACE
 target_link_libraries(mfem_solids INTERFACE ${mfem_libraries})
 set(shared_headers
   ${project_dir}/include/assembly/GlobalAssembly_Disp.hpp
+  ${project_dir}/include/assembly/GlobalAssembly_Fracture.hpp
   ${project_dir}/include/assembly/GlobalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssemblyTools.hpp
   ${project_dir}/include/assembly/LocalAssembly_Disp.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Disp_Regions.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Fracture.hpp
+  ${project_dir}/include/assembly/LocalAssembly_Fracture_Regions.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_TaylorHood_Regions.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS.hpp
   ${project_dir}/include/assembly/LocalAssembly_Mixed_VMS_Regions.hpp
   ${project_dir}/include/assembly/ParBlockNonlinearForm_External.hpp
-  ${project_dir}/include/assembly/ShapeCache.hpp
   ${project_dir}/include/boundary/DirichletBoundary.hpp
   ${project_dir}/include/boundary/NeumannBoundary.hpp
   ${project_dir}/include/material/ISurfaceEnergy.hpp
+  ${project_dir}/include/material/IMaterialModel.hpp
   ${project_dir}/include/material/IMaterialModel_ich.hpp
   ${project_dir}/include/material/IMaterialModel_vol.hpp
   ${project_dir}/include/material/MaterialModel.hpp
+  ${project_dir}/include/material/MaterialModel_LinearElastic.hpp
   ${project_dir}/include/material/MaterialModel_ich_NeoHookean.hpp
   ${project_dir}/include/material/MaterialModel_vol_Incompressible.hpp
   ${project_dir}/include/material/MaterialModel_vol_Quadratic.hpp
