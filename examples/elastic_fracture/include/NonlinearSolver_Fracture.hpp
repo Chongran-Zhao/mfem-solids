@@ -7,15 +7,12 @@
 // as mef90 solves the phase field (m_MEF90_DefMech.F90), for AT1 and AT2
 // alike: AT1 needs the bounds, its w'(1) < 0 would push alpha above 1, and
 // AT2, whose alpha stays in [0, 1] without them, does not mind them.
-// The irreversibility of the notes Phase-field-fracture.pdf (p. 5, 7), after
-// Bourdin, Francfort and Marigo (J. Elasticity 2008, eq. 8.13), fixes
-// alpha = 0 on the nodes of the crack set K_n, those where alpha_n <= eta_lim
-// at the start of the load step; set_crack_set builds it, together with the
-// initial crack, the dofs of the faces given by set_initial_crack, where
+// The irreversibility bounds alpha by alpha_n, its value at the start of the
+// load step, at every node, alpha <= alpha_n, so that alpha never rises, as
+// irrevThres 0 of the mef90 runs; set_bounds sets the bounds of the step.
+// On the initial crack, the dofs of the faces given by set_initial_crack,
 // alpha = 0 at every step, as the damage boundary condition of mef90
-// (damageBC, boundaryDamage 1); both bounds are 0 there. Elsewhere alpha is
-// bounded by alpha_n from above, alpha <= alpha_n, so that alpha never rises
-// in a load step, as irrevThres 0 of the mef90 runs. It owns the global
+// (damageBC, boundaryDamage 1); both bounds are 0 there. It owns the global
 // assembly and the SNES, and is the mfem::Operator that the SNES solves,
 // through Mult and GetGradient. Newton's method works on the vector of the
 // dofs this rank owns, with the norms over all ranks.
@@ -66,47 +63,32 @@ public:
    }
 
    // The initial crack: the dofs this rank owns on the faces of the crack,
-   // where alpha = 0 at every step. Returns the number of its dofs over all
-   // ranks.
+   // where alpha = 0 at every step, constrained. Returns the number of its
+   // dofs over all ranks.
    int set_initial_crack(const mfem::Array<int> &input_initial_crack)
    {
       initial_crack = input_initial_crack;
       initial_crack.Sort();
       initial_crack.Unique();
+      global_assembly->set_ess_tdof_list(initial_crack);
 
       int size = initial_crack.Size();
       MPI_Allreduce(MPI_IN_PLACE, &size, 1, MPI_INT, MPI_SUM, global_assembly->get_comm());
       return size;
    }
 
-   // The crack set K_n of the load step: the dofs this rank owns where
-   // alpha <= eta_lim, and those of the initial crack, set to alpha = 0 and
-   // constrained; and the bounds 0 <= alpha <= alpha_n of the step. Returns
-   // the number of dofs of K_n over all ranks.
-   int set_crack_set(mfem::ParGridFunction &alpha, double eta_lim)
+   // The bounds 0 <= alpha <= alpha_n of the load step, alpha_n the alpha
+   // given, set to 0 on the initial crack, so that both bounds are 0 there.
+   void set_bounds(mfem::ParGridFunction &alpha)
    {
       mfem::Vector alpha_owned(global_assembly->get_num_dofs());
       alpha.GetTrueDofs(alpha_owned);
-
-      mfem::Array<int> crack_set(initial_crack);
-      for (int dof = 0; dof < alpha_owned.Size(); dof++)
-         if (alpha_owned(dof) <= eta_lim)
-            crack_set.Append(dof);
-      crack_set.Sort();
-      crack_set.Unique();
-      for (int dof : crack_set)
+      for (int dof : initial_crack)
          alpha_owned(dof) = 0.0;
-      global_assembly->set_ess_tdof_list(crack_set);
 
-      // The bounds: 0 <= alpha <= alpha_n, alpha_n <= 1, so both 0 on the
-      // crack set.
       lower_bound = 0.0;
       upper_bound = alpha_owned;
       alpha.SetFromTrueDofs(alpha_owned);
-
-      int size = crack_set.Size();
-      MPI_Allreduce(MPI_IN_PLACE, &size, 1, MPI_INT, MPI_SUM, global_assembly->get_comm());
-      return size;
    }
 
    // Solves the phase field from alpha, and returns the number of Newton

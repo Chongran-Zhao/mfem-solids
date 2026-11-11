@@ -12,10 +12,9 @@
 //    tangent    K(alpha) = dR/dalpha, a HypreParMatrix assembled from the
 //               element tangents, whose rows on each rank are the dofs it
 //               owns.
-// The constrained dofs, those where alpha = 0 (the crack set K_n of the
-// irreversibility and the initial crack), change from one load step to the
-// next and are set by set_ess_tdof_list; set_essential_bdr sets R to zero
-// and K to the identity on them.
+// The constrained dofs, those where alpha = 0 (the initial crack), are set
+// by set_ess_tdof_list; set_essential_bdr sets R to zero and K to the
+// identity on them.
 //
 // Author: Chongran Zhao
 // Date: Nov. 8, 2026
