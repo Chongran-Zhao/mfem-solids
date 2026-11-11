@@ -7,11 +7,10 @@
 // unbreakable core, perfectly bonded. Poisson's ratio .2 in both (Section
 // 6); E_f / E_m = 1, of the caption of Fig. 30, with E = 1, and the
 // toughness 1, as in the mef90 runs of ~/runs/ATTEMPTS.md; the core does not
-// break, elastic: true in those runs. The surface energy is AT2, the
-// regularization of the paper, with G_c = 1 and the width eps = .085, mef90's
-// internal length .17, not given in the paper, for an AT2 stress limit near
-// the stress .8 where the notch of the AT1 run grew; with eps = .15 the limit
-// is .59 and no helix formed. AT1 is chosen by SurfaceEnergy_AT1 in
+// break, elastic: true in those runs. The surface energy is AT1, as in the
+// run of those that gave a helix (HelicalCrack), with G_c = 1 and the width
+// eps = .15, mef90's internal length .3, not given in the paper; the paper's
+// regularization is AT2; AT2 is chosen by SurfaceEnergy_AT2 in
 // set_surface_energy below. The phase field is solved with the bounds
 // 0 <= alpha <= 1, which AT1 needs, for both.
 // Changing the materials means changing this file.
@@ -32,7 +31,7 @@
 #include "IMaterialModel.hpp"
 #include "ISurfaceEnergy.hpp"
 #include "MaterialModel_LinearElastic.hpp"
-#include "SurfaceEnergy_AT2.hpp"
+#include "SurfaceEnergy_AT1.hpp"
 
 // The parameters of a region.
 struct region_material
@@ -53,7 +52,7 @@ inline const std::array<region_material, 2> region_materials = {{
 // energy; eta = 1e-6 is the value of Section 8.3.3 of Bourdin, Francfort
 // and Marigo (2008), and of the mef90 runs.
 inline constexpr double toughness = 1.0;
-inline constexpr double width = 8.5e-2;
+inline constexpr double width = 1.5e-1;
 inline constexpr double residual_stiffness = 1.0e-6;
 
 // The parameters of the region of the given element attribute.
@@ -77,7 +76,7 @@ inline std::unique_ptr<IMaterialModel> set_material_model(int attribute)
 // The surface energy, one per owner as the material.
 inline std::unique_ptr<ISurfaceEnergy> set_surface_energy()
 {
-   return std::make_unique<SurfaceEnergy_AT2>(toughness, width, residual_stiffness);
+   return std::make_unique<SurfaceEnergy_AT1>(toughness, width, residual_stiffness);
 }
 
 #endif
