@@ -126,6 +126,47 @@ public:
       return iterations;
    }
 
+   // Over-relaxes the solve from alpha_old to alpha, Algorithm 2 of Farrell
+   // and Maurini (IJNME 2017, Section 2.1): alpha = alpha_old + omega_bar
+   // (alpha - alpha_old), where omega_bar starts at omega and, while the
+   // result leaves the bounds of the step on any rank, is set to the
+   // midpoint of [1, omega_bar]; omega_bar = 1, the solve itself, is
+   // feasible. Returns omega_bar.
+   double relax(const mfem::ParGridFunction &alpha_old, mfem::ParGridFunction &alpha,
+                double omega) const
+   {
+      mfem::Vector old_owned(global_assembly->get_num_dofs());
+      mfem::Vector alpha_owned(global_assembly->get_num_dofs());
+      alpha_old.GetTrueDofs(old_owned);
+      alpha.GetTrueDofs(alpha_owned);
+      mfem::Vector change(alpha_owned);
+      change -= old_owned;
+
+      double omega_bar = omega;
+      mfem::Vector relaxed(alpha_owned.Size());
+      for (int halving = 0; halving < 60; halving++)
+      {
+         add(old_owned, omega_bar, change, relaxed);
+         int infeasible = 0;
+         for (int dof = 0; dof < relaxed.Size(); dof++)
+            if (relaxed(dof) < lower_bound(dof) || relaxed(dof) > upper_bound(dof))
+            {
+               infeasible = 1;
+               break;
+            }
+         MPI_Allreduce(MPI_IN_PLACE, &infeasible, 1, MPI_INT, MPI_MAX,
+                       global_assembly->get_comm());
+         if (!infeasible)
+         {
+            alpha.SetFromTrueDofs(relaxed);
+            return omega_bar;
+         }
+         omega_bar = 0.5 * (1.0 + omega_bar);
+      }
+      // The solve itself, alpha unchanged.
+      return 1.0;
+   }
+
    // E(alpha), the degraded elastic energy plus the surface energy, over all
    // ranks.
    double get_energy(const mfem::ParGridFunction &alpha) const

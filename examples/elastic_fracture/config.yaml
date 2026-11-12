@@ -88,6 +88,11 @@ fracture:
   # per iteration at the end.
   tol: 1.0e-3
   max_iter: 3000
+  # Over-relaxation omega in (0, 2) of each solve of the alternate
+  # minimization, Algorithm 2 of Farrell and Maurini (IJNME 2017); 1 is the
+  # plain alternate minimization, and 1.6 was their best on the cases where
+  # it converged slowly.
+  omega: 1.0
 
 # Newton's method of the displacement problem; linear in the displacement
 # for a linear elastic material, so that the predictor already solves it and
