@@ -7,10 +7,11 @@
 // the crack:
 //    Pi(u, alpha) = int g(alpha) psi_e dV + G_c S_eps(alpha),
 //    S_eps(alpha) = int ( w(alpha) + c_grad |Grad alpha|^2 ) dV,
-//    g(alpha)     = alpha^2 + eta,
+//    g(alpha)     = eta + (1 - eta) alpha^2,
 // with G_c the critical energy release rate, k in the paper, eps the width of
 // the transition, and eta the residual stiffness, which keeps g > 0 in the
-// crack; MaterialModelData of each case gives G_c, eps and eta. Each
+// crack; g is that of mef90 (aAT1 of m_MEF90_DefMechAT1.F90), a(d) = eta +
+// (1 - eta) (1 - d)^2 with d = 1 - alpha, so that g(1) = 1. MaterialModelData of each case gives G_c, eps and eta. Each
 // model gives w(alpha), its derivatives and c_grad, scaled so that a fully
 // developed crack costs G_c per unit area.
 //
@@ -29,11 +30,11 @@ public:
 
    virtual ~ISurfaceEnergy() = default;
 
-   // g = alpha^2 + eta, the degradation of the elastic energy, and its
-   // derivatives.
-   double get_g(double alpha) const { return alpha * alpha + eta; }
-   double get_dg(double alpha) const { return 2.0 * alpha; }
-   double get_d2g(double alpha) const { return 2.0; }
+   // g = eta + (1 - eta) alpha^2, the degradation of the elastic energy, and
+   // its derivatives.
+   double get_g(double alpha) const { return eta + (1.0 - eta) * alpha * alpha; }
+   double get_dg(double alpha) const { return 2.0 * (1.0 - eta) * alpha; }
+   double get_d2g(double alpha) const { return 2.0 * (1.0 - eta); }
 
    // w(alpha), the local part of the density of S_eps, and its derivatives.
    virtual double get_w(double alpha) const = 0;
