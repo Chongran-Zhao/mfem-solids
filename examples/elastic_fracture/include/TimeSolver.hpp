@@ -11,16 +11,18 @@
 //    2. repeat: solve the displacement with alpha fixed, then the phase
 //       field with the displacement fixed,
 //       until ||alpha^(j+1) - alpha^(j)||_inf <= tol.
-//       With omega != 1 each solve is over-relaxed, Algorithm 2 (ORAM) of
-//       Farrell and Maurini (IJNME 2017): u = u_old + omega (u~ - u_old) on
-//       the free dofs, and alpha = alpha_old + omega_bar (alpha~ - alpha_old),
-//       omega_bar <= omega within the bounds of the step; omega = 1 is the
-//       alternate minimization above. Two choices are ours, not the
-//       paper's: the first iteration of a step is not relaxed, its change
+//       With omega != 1 each solve is over-relaxed, after Algorithm 2 (ORAM)
+//       of Farrell and Maurini (IJNME 2017): u = u_old + omega (u~ - u_old)
+//       on the free dofs, and alpha = alpha_old + omega (alpha~ - alpha_old)
+//       projected onto the bounds of the step dof by dof; omega = 1 is the
+//       alternate minimization above. Four choices are ours, not the
+//       paper's: the projection, where the paper halves one omega for all
+//       dofs; the change of the convergence test is that of the solve,
+//       alpha~ - alpha_old, not of the relaxed alpha, which omega would
+//       enlarge; the first iteration of a step is not relaxed, its change
 //       being that of the load, which the relaxation would overshoot; and
-//       the displacement of the converged step is that of the last solve,
-//       u~, since the convergence is judged on alpha alone and the relaxed u
-//       would keep the error (1 - omega)^k of the relaxation.
+//       the converged step keeps the u~ and alpha~ of the last solves, since
+//       the relaxed u would keep the error (1 - omega)^k of the relaxation.
 // The first iteration of each step starts from the alpha of the previous
 // one; step 0, without load, starts from the alpha given, 1 but 0 on the
 // initial crack, and forms the profile of alpha around the crack, as mef90
@@ -204,12 +206,8 @@ private:
             solver_disp->relax(disp_old, disp, omega);
          mfem::out << "  --> phase field alpha\n";
          solver_fracture->solve(time, alpha);
-         if (relaxed)
-         {
-            const double omega_bar = solver_fracture->relax(alpha_old, alpha, omega);
-            mfem::out << "  omega_bar = " << omega_bar << '\n';
-         }
 
+         // The change of the solve, before any relaxation.
          const double change = get_max_change(alpha, alpha_old);
          mfem::out << "  max|Delta alpha| = " << std::scientific << std::setprecision(6)
                    << change << std::defaultfloat << '\n';
@@ -218,6 +216,12 @@ private:
          {
             disp = disp_solved;
             return iter;
+         }
+         if (relaxed)
+         {
+            const int projected = solver_fracture->relax(alpha_old, alpha, omega);
+            mfem::out << "  relaxed by omega = " << omega << ", " << projected
+                      << " dofs projected onto the bounds\n";
          }
       }
       MFEM_ABORT("Alternate minimization did not converge at t = " << time << ".");

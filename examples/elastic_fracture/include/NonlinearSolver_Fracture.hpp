@@ -126,45 +126,43 @@ public:
       return iterations;
    }
 
-   // Over-relaxes the solve from alpha_old to alpha, Algorithm 2 of Farrell
-   // and Maurini (IJNME 2017, Section 2.1): alpha = alpha_old + omega_bar
-   // (alpha - alpha_old), where omega_bar starts at omega and, while the
-   // result leaves the bounds of the step on any rank, is set to the
-   // midpoint of [1, omega_bar]; omega_bar = 1, the solve itself, is
-   // feasible. Returns omega_bar.
-   double relax(const mfem::ParGridFunction &alpha_old, mfem::ParGridFunction &alpha,
-                double omega) const
+   // Over-relaxes the solve from alpha_old to alpha, after Algorithm 2 of
+   // Farrell and Maurini (IJNME 2017, Section 2.1): alpha = alpha_old +
+   // omega (alpha - alpha_old), projected onto the bounds of the step dof by
+   // dof. The projection is ours: the paper halves one omega for all dofs
+   // toward 1 until the step is feasible, which, with many dofs at their
+   // bounds, kept omega jumping between 1 and omega and stalled the
+   // iterations. Returns the number of dofs projected over all ranks.
+   int relax(const mfem::ParGridFunction &alpha_old, mfem::ParGridFunction &alpha,
+             double omega) const
    {
       mfem::Vector old_owned(global_assembly->get_num_dofs());
       mfem::Vector alpha_owned(global_assembly->get_num_dofs());
       alpha_old.GetTrueDofs(old_owned);
       alpha.GetTrueDofs(alpha_owned);
-      mfem::Vector change(alpha_owned);
-      change -= old_owned;
 
-      double omega_bar = omega;
-      mfem::Vector relaxed(alpha_owned.Size());
-      for (int halving = 0; halving < 60; halving++)
+      int projected = 0;
+      for (int dof = 0; dof < alpha_owned.Size(); dof++)
       {
-         add(old_owned, omega_bar, change, relaxed);
-         int infeasible = 0;
-         for (int dof = 0; dof < relaxed.Size(); dof++)
-            if (relaxed(dof) < lower_bound(dof) || relaxed(dof) > upper_bound(dof))
-            {
-               infeasible = 1;
-               break;
-            }
-         MPI_Allreduce(MPI_IN_PLACE, &infeasible, 1, MPI_INT, MPI_MAX,
-                       global_assembly->get_comm());
-         if (!infeasible)
+         const double relaxed =
+            old_owned(dof) + omega * (alpha_owned(dof) - old_owned(dof));
+         if (relaxed < lower_bound(dof))
          {
-            alpha.SetFromTrueDofs(relaxed);
-            return omega_bar;
+            alpha_owned(dof) = lower_bound(dof);
+            projected++;
          }
-         omega_bar = 0.5 * (1.0 + omega_bar);
+         else if (relaxed > upper_bound(dof))
+         {
+            alpha_owned(dof) = upper_bound(dof);
+            projected++;
+         }
+         else
+            alpha_owned(dof) = relaxed;
       }
-      // The solve itself, alpha unchanged.
-      return 1.0;
+      alpha.SetFromTrueDofs(alpha_owned);
+
+      MPI_Allreduce(MPI_IN_PLACE, &projected, 1, MPI_INT, MPI_SUM, global_assembly->get_comm());
+      return projected;
    }
 
    // E(alpha), the degraded elastic energy plus the surface energy, over all
