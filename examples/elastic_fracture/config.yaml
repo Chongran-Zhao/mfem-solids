@@ -51,7 +51,7 @@ space:
 # near delta = 23; Fig. 30 of the paper goes on up to delta = 86.5.
 time:
   dt: 1.0
-  final_time: 30.0
+  final_time: 50.0
 
 # Displacement boundary conditions, one entry per face and direction.
 Dirichlet:
@@ -92,7 +92,7 @@ fracture:
   # minimization, Algorithm 2 of Farrell and Maurini (IJNME 2017); 1 is the
   # plain alternate minimization, and 1.6 was their best on the cases where
   # it converged slowly.
-  omega: 1.6
+  omega: 1.0
 
 # Newton's method of the displacement problem; linear in the displacement
 # for a linear elastic material, so that the predictor already solves it and
