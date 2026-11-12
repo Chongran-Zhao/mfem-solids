@@ -126,45 +126,6 @@ public:
       return iterations;
    }
 
-   // Over-relaxes the solve from alpha_old to alpha, after Algorithm 2 of
-   // Farrell and Maurini (IJNME 2017, Section 2.1): alpha = alpha_old +
-   // omega (alpha - alpha_old), projected onto the bounds of the step dof by
-   // dof. The projection is ours: the paper halves one omega for all dofs
-   // toward 1 until the step is feasible, which, with many dofs at their
-   // bounds, kept omega jumping between 1 and omega and stalled the
-   // iterations. Returns the number of dofs projected over all ranks.
-   int relax(const mfem::ParGridFunction &alpha_old, mfem::ParGridFunction &alpha,
-             double omega) const
-   {
-      mfem::Vector old_owned(global_assembly->get_num_dofs());
-      mfem::Vector alpha_owned(global_assembly->get_num_dofs());
-      alpha_old.GetTrueDofs(old_owned);
-      alpha.GetTrueDofs(alpha_owned);
-
-      int projected = 0;
-      for (int dof = 0; dof < alpha_owned.Size(); dof++)
-      {
-         const double relaxed =
-            old_owned(dof) + omega * (alpha_owned(dof) - old_owned(dof));
-         if (relaxed < lower_bound(dof))
-         {
-            alpha_owned(dof) = lower_bound(dof);
-            projected++;
-         }
-         else if (relaxed > upper_bound(dof))
-         {
-            alpha_owned(dof) = upper_bound(dof);
-            projected++;
-         }
-         else
-            alpha_owned(dof) = relaxed;
-      }
-      alpha.SetFromTrueDofs(alpha_owned);
-
-      MPI_Allreduce(MPI_IN_PLACE, &projected, 1, MPI_INT, MPI_SUM, global_assembly->get_comm());
-      return projected;
-   }
-
    // E(alpha), the degraded elastic energy plus the surface energy, over all
    // ranks.
    double get_energy(const mfem::ParGridFunction &alpha) const

@@ -11,18 +11,6 @@
 //    2. repeat: solve the displacement with alpha fixed, then the phase
 //       field with the displacement fixed,
 //       until ||alpha^(j+1) - alpha^(j)||_inf <= tol.
-//       With omega != 1 each solve is over-relaxed, after Algorithm 2 (ORAM)
-//       of Farrell and Maurini (IJNME 2017): u = u_old + omega (u~ - u_old)
-//       on the free dofs, and alpha = alpha_old + omega (alpha~ - alpha_old)
-//       projected onto the bounds of the step dof by dof; omega = 1 is the
-//       alternate minimization above. Four choices are ours, not the
-//       paper's: the projection, where the paper halves one omega for all
-//       dofs; the change of the convergence test is that of the solve,
-//       alpha~ - alpha_old, not of the relaxed alpha, which omega would
-//       enlarge; the first iteration of a step is not relaxed, its change
-//       being that of the load, which the relaxation would overshoot; and
-//       the converged step keeps the u~ and alpha~ of the last solves, since
-//       the relaxed u would keep the error (1 - omega)^k of the relaxation.
 // The first iteration of each step starts from the alpha of the previous
 // one; step 0, without load, starts from the alpha given, 1 but 0 on the
 // initial crack, and forms the profile of alpha around the crack, as mef90
@@ -72,8 +60,8 @@
 class TimeSolver : public ITimeSolver
 {
 public:
-   // Takes the ownership of the two nonlinear solvers; eta_lim, tol,
-   // max_iter and omega come from the fracture section of config.yaml; the results go
+   // Takes the ownership of the two nonlinear solvers; eta_lim, tol and
+   // max_iter come from the fracture section of config.yaml; the results go
    // to results_dir, which rank 0 empties first and where it saves the
    // serial mesh of mesh, with its named faces; the fields are saved every
    // input_save_interval-th step.
@@ -88,11 +76,8 @@ public:
         eta_lim(fracture["eta_lim"].as<double>()),
         tol(fracture["tol"].as<double>()),
         max_iter(fracture["max_iter"].as<int>()),
-        omega(fracture["omega"].as<double>()),
         time_steps(input_time_steps)
    {
-      MFEM_VERIFY(omega > 0.0 && omega < 2.0,
-                  "The over-relaxation omega must lie in (0, 2), not " << omega << ".");
    }
 
    // Solves the load steps from disp and alpha, the initial state, step 0
@@ -184,12 +169,10 @@ private:
    {
       solver_disp->print_load(time, disp);
 
-      mfem::ParGridFunction alpha_old(alpha.ParFESpace()), disp_old(disp.ParFESpace());
-      mfem::ParGridFunction disp_solved(disp.ParFESpace());
+      mfem::ParGridFunction alpha_old(alpha.ParFESpace());
       for (int iter = 1; iter <= max_iter; iter++)
       {
          alpha_old = alpha;
-         disp_old = disp;
 
          // One block per iteration: the Newton iterations of each problem,
          // then the change of alpha; a blank line before the first,
@@ -200,29 +183,15 @@ private:
                    << num_steps << ", t = " << time << ")\n";
          mfem::out << "  --> displacement u\n";
          solver_disp->solve(time, disp);
-         const bool relaxed = omega != 1.0 && iter > 1;
-         disp_solved = disp;
-         if (relaxed)
-            solver_disp->relax(disp_old, disp, omega);
          mfem::out << "  --> phase field alpha\n";
          solver_fracture->solve(time, alpha);
 
-         // The change of the solve, before any relaxation.
          const double change = get_max_change(alpha, alpha_old);
          mfem::out << "  max|Delta alpha| = " << std::scientific << std::setprecision(6)
                    << change << std::defaultfloat << '\n';
 
          if (change <= tol)
-         {
-            disp = disp_solved;
             return iter;
-         }
-         if (relaxed)
-         {
-            const int projected = solver_fracture->relax(alpha_old, alpha, omega);
-            mfem::out << "  relaxed by omega = " << omega << ", " << projected
-                      << " dofs projected onto the bounds\n";
-         }
       }
       MFEM_ABORT("Alternate minimization did not converge at t = " << time << ".");
       return max_iter;
@@ -245,7 +214,6 @@ private:
    const double eta_lim;     // alpha_n <= eta_lim puts a node in K_n
    const double tol;         // tolerance on ||alpha^(j+1) - alpha^(j)||_inf
    const int max_iter;       // maximum of alternate iterations per step
-   const double omega;       // over-relaxation of the alternate minimization, 1 none
    const TimeSteps time_steps;   // t_n of the steps
 };
 

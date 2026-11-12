@@ -78,28 +78,6 @@ public:
       return iterations;
    }
 
-   // Over-relaxes the solve from disp_old to disp, Algorithm 2 of Farrell and
-   // Maurini (IJNME 2017): disp = disp_old + omega (disp - disp_old) on the
-   // free dofs; the constrained ones keep the values of the solve, which the
-   // relaxation would carry past the load of the step at its first
-   // iteration.
-   void relax(const mfem::ParGridFunction &disp_old, mfem::ParGridFunction &disp,
-              double omega) const
-   {
-      mfem::Vector old_owned(global_assembly->get_num_dofs());
-      mfem::Vector disp_owned(global_assembly->get_num_dofs());
-      disp_old.GetTrueDofs(old_owned);
-      disp.GetTrueDofs(disp_owned);
-
-      mfem::Vector relaxed(disp_owned);
-      relaxed -= old_owned;
-      relaxed *= omega;
-      relaxed += old_owned;
-      for (int dof : global_assembly->get_dirichlet().get_ess_tdof_list())
-         relaxed(dof) = disp_owned(dof);
-      disp.SetFromTrueDofs(relaxed);
-   }
-
    // The elastic energy int g(alpha) psi_e dV over all ranks.
    double get_energy(const mfem::ParGridFunction &disp) const
    {
