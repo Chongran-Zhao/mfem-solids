@@ -10,9 +10,13 @@
 // (m_MEF90_DefMechAssembly.F90), the elastic energy is not degraded and does
 // not drive the phase field, which keeps the surface terms there: alpha stays
 // free, governed by the surface energy only, so that a crack may reach the
-// boundary of the region. The element energy of such a region counts psi_e,
-// which does not depend on alpha, so that the energy is that of the
-// displacement problem plus the surface energy. The unknown is the phase
+// boundary of the region. The element energy of such a region counts psi_e
+// only, without its surface terms, as the surface energy that mef90 reports
+// (MEF90DefMechSurfaceEnergy, which takes alpha and its gradient as 0 where
+// elastic: true), so that the energy is that of the displacement problem
+// plus the surface energy of the breakable regions; it is thus not the
+// functional whose derivative is the residual there, and serves the output
+// only, the solvers using the residual and the tangent. The unknown is the phase
 // field alpha; F = I + Grad u comes from the displacement, which it reads at
 // every assembly, and g, w and c_grad from the surface energy. It is an MFEM
 // NonlinearFormIntegrator, called by NonlinearForm, which assembles the global
@@ -59,7 +63,7 @@ public:
    // Required by MFEM: overrides mfem::NonlinearFormIntegrator::
    // GetElementEnergy, which NonlinearForm::GetEnergy calls on every element.
    // E = int g(alpha) psi_e + G_c ( w(alpha) + c_grad alpha,J alpha,J ) dV,
-   // with psi_e in place of g(alpha) psi_e where the region does not break.
+   // and psi_e alone where the region does not break.
    double GetElementEnergy(const mfem::FiniteElement &elem,
                            mfem::ElementTransformation &elem_map,
                            const mfem::Vector &phase) override
@@ -103,12 +107,14 @@ public:
          // dV = w_q * det( dX/dxi )
          const double dV = quad_pt.weight * elem_map.Weight();
 
-         // g(alpha) psi_e, or psi_e where the region does not break
-         const double elastic = is_breakable ? surface_energy->get_g(alpha) * psi_e : psi_e;
-
-         energy += dV * (elastic
-                         + G_c * (surface_energy->get_w(alpha)
-                                  + c_grad * (dalpha_dX * dalpha_dX)));
+         // g(alpha) psi_e + G_c ( w + c_grad alpha,J alpha,J ), or psi_e
+         // where the region does not break
+         if (is_breakable)
+            energy += dV * (surface_energy->get_g(alpha) * psi_e
+                            + G_c * (surface_energy->get_w(alpha)
+                                     + c_grad * (dalpha_dX * dalpha_dX)));
+         else
+            energy += dV * psi_e;
       }
       return energy;
    }
