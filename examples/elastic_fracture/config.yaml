@@ -51,19 +51,19 @@ space:
 # near delta = 23; Fig. 30 of the paper goes on up to delta = 86.5.
 time:
   dt: 1.0
-  final_time: 50.0
+  final_time: 30.0
 
 # Displacement boundary conditions, one entry per face and direction.
 Dirichlet:
   # Zero displacement.
-  # The left end is clamped (Section 6); the right end does not move
-  # across, which the paper does not say.
+  # The left end is clamped (Section 6); the right end is free across, the
+  # paper giving only the displacement delta there. With the right end held
+  # across as well the problem was symmetric about the middle cross-section,
+  # and no helix formed.
   fixed_bc:
     - { face: left, dir: x }
     - { face: left, dir: y }
     - { face: left, dir: z }
-    - { face: right, dir: y }
-    - { face: right, dir: z }
   # Prescribed displacement, given by LoadData::disp_loading: delta = t
   # along e1 at the right end.
   disp_bc:
