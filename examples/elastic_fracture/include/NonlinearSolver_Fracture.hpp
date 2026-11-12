@@ -182,10 +182,11 @@ private:
    };
 
    // The SNES of PETSc, SNESVINEWTONRSLS, on this operator, with the Newton
-   // tolerances of the solver section of config.yaml, no step tolerance, so
-   // that it does not stop on a small step before the residual tolerance, and
-   // the KSP and PC of linear_solver: GMRES or CG with BoomerAMG of hypre, or
-   // MUMPS. The PETSc options of the prefix fracture_ may change them.
+   // tolerances of the solver section of config.yaml, the step tolerance
+   // among them, and the KSP and PC of linear_solver: GMRES or CG with
+   // BoomerAMG of hypre, to the relative and absolute tolerances 1e-8 of
+   // the damage KSP of mef90 (MEF90DefMechCreateSNESDamage), or MUMPS. The
+   // PETSc options of the prefix fracture_ may change them.
    void set_vi_solver(const YAML::Node &solver)
    {
       vi_solver = std::make_unique<mfem::PetscNonlinearSolver>(global_assembly->get_comm(), *this,
@@ -202,7 +203,8 @@ private:
       SNESGetDM(snes, &dm);
       DMShellSetGlobalVector(dm, *vi_layout);
       SNESSetTolerances(snes, solver["newton_abs_tol"].as<double>(),
-                        solver["newton_rel_tol"].as<double>(), 0.0,
+                        solver["newton_rel_tol"].as<double>(),
+                        solver["newton_step_tol"].as<double>(),
                         solver["newton_max_iter"].as<int>(), PETSC_CURRENT);
 
       KSP ksp;
@@ -219,7 +221,7 @@ private:
       else
       {
          KSPSetType(ksp, name == "cg" ? KSPCG : KSPGMRES);
-         KSPSetTolerances(ksp, 1.0e-8, 0.0, PETSC_CURRENT, 200);
+         KSPSetTolerances(ksp, 1.0e-8, 1.0e-8, PETSC_CURRENT, 200);
          PCSetType(pc, PCHYPRE);
          PCHYPRESetType(pc, "boomeramg");
       }

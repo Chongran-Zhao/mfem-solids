@@ -104,11 +104,16 @@ solver_disp:
 
 # Newton's method of the phase-field problem, linear in alpha for AT2 and
 # AT1, with the bounds 0 <= alpha <= 1, SNESVINEWTONRSLS of PETSc, which AT1
-# needs, for AT1 and AT2 alike.
+# needs, for AT1 and AT2 alike. The tolerances are those that mef90 sets for
+# its damage SNES (MEF90DefMechCreateSNESDamage): atol 1e-7, rtol 1e-5,
+# stol 1e-7, the step tolerance stopping on ||Delta alpha|| <= stol ||alpha||.
+# With 1e-10, 1e-8 and no step tolerance the crack closed into a flat ring
+# by delta = 30, symmetric about the notch, where the mef90 run gave a helix.
 solver_fracture:
   linear_solver: gmres
-  newton_rel_tol: 1.0e-8
-  newton_abs_tol: 1.0e-10
+  newton_rel_tol: 1.0e-5
+  newton_abs_tol: 1.0e-7
+  newton_step_tol: 1.0e-7
   newton_max_iter: 20
 
 # Output folders, in the directory the programs run in.
