@@ -12,7 +12,7 @@
 
 mesh:
   # Mesh file, Gmsh 2.2, of mesh_files/HelicalCrack2008.geo with h = .15,
-  # 28,154 vertices, against 27,963 in the mef90 run; not kept in git, made
+  # 27,963 vertices, the mesh of the mef90 run; not kept in git, made
   # from the project directory by
   #    gmsh -3 -setnumber h 0.15 mesh_files/HelicalCrack2008.geo -o mesh_files/HelicalCrack2008-h015.msh
   file: mesh_files/HelicalCrack2008-h015.msh
@@ -21,9 +21,9 @@ mesh:
   # a Gmsh file; the boundary conditions and the initial crack refer to the
   # faces by these names.
   faces:
-    left: 10      # left cross-section, x = 0
-    right: 20     # right cross-section, x = 30
-    crack: 40     # initial crack, a half disk of radius .4 in the cross-section x = 15
+    left: 10      # left cross-section, x = -15
+    right: 20     # right cross-section, x = 15
+    crack: 40     # initial crack, a half disk of radius .4 in the cross-section x = 0
 
   # Number of uniform refinements.
   refine_levels: 0
@@ -51,19 +51,20 @@ space:
 # near delta = 23; Fig. 30 of the paper goes on up to delta = 86.5.
 time:
   dt: 1.0
-  final_time: 30.0
+  final_time: 50.0
 
 # Displacement boundary conditions, one entry per face and direction.
 Dirichlet:
   # Zero displacement.
-  # The left end is clamped (Section 6); the right end is free across, the
-  # paper giving only the displacement delta there. With the right end held
-  # across as well the problem was symmetric about the middle cross-section,
-  # and no helix formed.
+  # The left end is clamped (Section 6); the right end is held across,
+  # u = (delta, 0, 0), as in the mef90 run. Free across, the crack grew in
+  # two branches together, not the one-sided helix of the mef90 run.
   fixed_bc:
     - { face: left, dir: x }
     - { face: left, dir: y }
     - { face: left, dir: z }
+    - { face: right, dir: y }
+    - { face: right, dir: z }
   # Prescribed displacement, given by LoadData::disp_loading: delta = t
   # along e1 at the right end.
   disp_bc:
@@ -104,8 +105,6 @@ solver_disp:
 # needs, for AT1 and AT2 alike. The tolerances are those that mef90 sets for
 # its damage SNES (MEF90DefMechCreateSNESDamage): atol 1e-7, rtol 1e-5,
 # stol 1e-7, the step tolerance stopping on ||Delta alpha|| <= stol ||alpha||.
-# With 1e-10, 1e-8 and no step tolerance the crack closed into a flat ring
-# by delta = 30, symmetric about the notch, where the mef90 run gave a helix.
 solver_fracture:
   linear_solver: gmres
   newton_rel_tol: 1.0e-5
@@ -126,5 +125,5 @@ output:
   vtu_reference: true
   gf: results_gf
   # The fields are saved every gf_interval-th load step, and at the last;
-  # every step here, 51 of them on a mesh of 28,154 vertices.
+  # every step here, 51 of them on a mesh of 27,963 vertices.
   gf_interval: 1
