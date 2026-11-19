@@ -4,17 +4,19 @@
 // The materials of the helical crack of Bourdin, Francfort and Marigo
 // (2008, Section 6, Fig. 30), one per element attribute, the physical volumes
 // of mesh_files/HelicalCrack2008.geo: 1 the brittle matrix, 2 the
-// unbreakable core, perfectly bonded. Poisson's ratio .2 in both (Section
-// 6); E_f / E_m = 1, of the caption of Fig. 30, with E = 1, and the
-// toughness 1, as in the mef90 runs of ~/runs/ATTEMPTS.md; the core does not
-// break, elastic: true in those runs. The surface energy is AT2, the
-// regularization of the paper, with G_c = 1 and the width eps = .15, mef90's
-// internal length .3 (Gc / cw * .25 / l and Gc / cw * .25 * l with cw = 1/2,
-// m_MEF90_DefMechAssembly.F90), not given in the paper, as the mef90 run
-// HelicalCrackAT2 on the same mesh; AT1, the run HelicalCrack that gave the
-// helix, is chosen by SurfaceEnergy_AT1 in set_surface_energy below. The
-// phase field is solved with the bounds 0 <= alpha <= 1, which AT1 needs,
-// for both.
+// unbreakable core, perfectly bonded. The values are those of a real
+// spicule, in SI units (m, N, Pa, J), on the tube of the paper written in
+// meters, mesh_files/HelicalCrack2008-h015-m.msh, 30 mm long and 2 mm across:
+// E = 20.8 GPa and nu = .3 in both regions, G_c = 500 J/m^2, AT1. The core
+// does not break, elastic: true of the mef90 runs.
+//
+// The width eps of the surface energy, the length scale of the phase field,
+// is set here, not in config.yaml: eps = 1.5e-4 m equals the mesh size h =
+// 1.5e-4 m of HelicalCrack2008-h015-m.msh, as in the mef90 runs on that
+// mesh (mef90's internal length l = 2 eps = 3e-4 m). On a finer mesh keep
+// eps >= h, e.g. eps = h; a smaller eps raises the critical stress
+// sigma_c = sqrt(3 G_c E / (16 eps)) of AT1 (114 MPa here), so the load at
+// which the notch grows.
 // Changing the materials means changing this file.
 //
 // Author: Chongran Zhao
@@ -33,28 +35,29 @@
 #include "IMaterialModel.hpp"
 #include "ISurfaceEnergy.hpp"
 #include "MaterialModel_LinearElastic.hpp"
-#include "SurfaceEnergy_AT2.hpp"
+#include "SurfaceEnergy_AT1.hpp"
 
 // The parameters of a region.
 struct region_material
 {
    std::string name;   // name of the region in the mesh
-   double young;       // Young's modulus
+   double young;       // Young's modulus (Pa)
    double poisson;     // Poisson's ratio
-   double density;     // reference density rho_0, which matters only to the dynamics
+   double density;     // reference density rho_0, which matters only to the dynamics, unused here
    bool breakable;     // whether the region breaks, else elastic: true of mef90
 };
 
 // The regions, element attribute 1 and 2.
 inline const std::array<region_material, 2> region_materials = {{
-   {"matrix", 1.0, 0.2, 1.0, true},
-   {"core", 1.0, 0.2, 1.0, false}}};
+   {"matrix", 2.08e10, 0.3, 1.0, true},
+   {"core", 2.08e10, 0.3, 1.0, false}}};
 
-// Toughness G_c, width eps and residual stiffness eta of the surface
-// energy; eta = 1e-6 is the value of Section 8.3.3 of Bourdin, Francfort
-// and Marigo (2008), and of the mef90 runs.
-inline constexpr double toughness = 1.0;
-inline constexpr double width = 1.5e-1;
+// Toughness G_c (J/m^2), width eps (m), the length scale of the phase field,
+// and residual stiffness eta of the surface energy; eta = 1e-6 is the value
+// of Section 8.3.3 of Bourdin, Francfort and Marigo (2008), and of the mef90
+// runs. eps follows the mesh: see the top of this file.
+inline constexpr double toughness = 500.0;
+inline constexpr double width = 1.5e-4;
 inline constexpr double residual_stiffness = 1.0e-6;
 
 // The parameters of the region of the given element attribute.
@@ -78,7 +81,7 @@ inline std::unique_ptr<IMaterialModel> set_material_model(int attribute)
 // The surface energy, one per owner as the material.
 inline std::unique_ptr<ISurfaceEnergy> set_surface_energy()
 {
-   return std::make_unique<SurfaceEnergy_AT2>(toughness, width, residual_stiffness);
+   return std::make_unique<SurfaceEnergy_AT1>(toughness, width, residual_stiffness);
 }
 
 #endif

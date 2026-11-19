@@ -205,7 +205,10 @@ private:
       else
       {
          KSPSetType(ksp, name == "cg" ? KSPCG : KSPGMRES);
-         KSPSetTolerances(ksp, 1.0e-8, 1.0e-8, PETSC_CURRENT, 200);
+         // rtol 1e-8, atol 1e-11: the residual of the phase field is in J,
+         // some 1e-3 of the energies of the tube in meters, so the atol
+         // of 1e-8 of the tube in mm, scaled by 1e-3.
+         KSPSetTolerances(ksp, 1.0e-8, 1.0e-11, PETSC_CURRENT, 200);
          PCSetType(pc, PCHYPRE);
          PCHYPRESetType(pc, "boomeramg");
       }

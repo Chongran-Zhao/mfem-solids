@@ -6,3 +6,4 @@ build*/
 .DS_Store
 __pycache__/
 mesh_files/*.msh
+!mesh_files/HelicalCrack2008-h015-m.msh

@@ -4,9 +4,9 @@
 // The loading of the helical crack of Bourdin, Francfort and Marigo (2008,
 // Section 6, Fig. 30): the tube is clamped at its left cross-section and
 // pulled by a displacement delta along e1 at its right one, monotonically
-// increasing; delta = t here, from 0 to 50 as in the mef90 runs of
-// ~/runs/ATTEMPTS.md. The paper does not say whether the right cross-section
-// may move across; config.yaml fixes it, u = (delta, 0, 0) there. No
+// increasing; delta = t here, in m, from 0 to 2.5e-4 by config.yaml. The
+// paper does not say whether the right cross-section may move across;
+// config.yaml fixes it, u = (delta, 0, 0) there. No
 // traction and no body force. It passes its functions to DirichletBoundary
 // and NeumannBoundary.
 //
