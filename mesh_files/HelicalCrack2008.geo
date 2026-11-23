@@ -16,6 +16,12 @@
 // h = .15 is that of the mef90 runs of ~/runs/ATTEMPTS.md, not given in the paper,
 // whose mesh has over 1.7 million elements (Section 8).
 //
+// tilt (degrees, 0 by default) turns the notch about the radius through its
+// center, so that it makes the angle tilt with the cross-section, as the notch
+// at 30 degrees of B. Bourdin, The variational formulation of brittle fracture:
+// numerical implementation and extensions (2007), Section 3; a turn about the
+// radius breaks the mirror symmetry y -> -y, which a flat notch keeps.
+//
 // The mesh is written in the Gmsh 2.2 format, the one MFEM reads; it is not
 // kept in git. From the project directory:
 //    gmsh -3 -setnumber h 0.15 mesh_files/HelicalCrack2008.geo -o mesh_files/HelicalCrack2008-h015.msh
@@ -28,7 +34,7 @@
 //    40 initial crack, inside the matrix
 SetFactory("OpenCASCADE");
 
-DefineConstant[ L = 30, R = 1., Rc = .5, a = .4, h = .15 ];
+DefineConstant[ L = 30, R = 1., Rc = .5, a = .4, h = .15, tilt = 0 ];
 
 Mesh.CharacteristicLengthMin = h;
 Mesh.CharacteristicLengthMax = h;
@@ -44,6 +50,7 @@ Cylinder(2) = {-L/2, 0, 0, L, 0, 0, Rc};
 disk = news;
 Disk(disk) = {0, 0, R, a};
 Rotate {{0, 1, 0}, {0, 0, R}, Pi/2} { Surface{disk}; }
+Rotate {{0, 0, 1}, {0, 0, R}, tilt*Pi/180} { Surface{disk}; }
 crack() = BooleanIntersection{ Surface{disk}; Delete; }{ Volume{1}; };
 
 v() = BooleanFragments{ Volume{1}; Delete; }{ Volume{2}; Surface{crack()}; Delete; };
@@ -56,7 +63,8 @@ matrix() -= core();
 left()  = Surface In BoundingBox{-L/2-eps, -R-eps, -R-eps, -L/2+eps, R+eps, R+eps};
 right() = Surface In BoundingBox{L/2-eps, -R-eps, -R-eps, L/2+eps, R+eps, R+eps};
 // the bounding boxes of trimmed surfaces are loose, so leave some margin
-crk()   = Surface In BoundingBox{-.2, -a-.2, R-a-.2, .2, a+.2, R+.2};
+dx = a*Sin(tilt*Pi/180) + .2;
+crk()   = Surface In BoundingBox{-dx, -a-.2, R-a-.2, dx, a+.2, R+.2};
 If (#crk() != 1)
    Error("Expected 1 surface for the initial crack, found %g", #crk());
 EndIf
