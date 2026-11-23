@@ -5,7 +5,7 @@
 # Section 6, Fig. 30) with the material of a real spicule: a tube 30 mm long
 # and 2 mm across with an unbreakable core 1 mm across, a half-disk notch in
 # the middle cross-section, clamped at the left end and pulled by delta at the
-# right one. E, nu, G_c, the length scale eps and AT2 are in
+# right one. E, nu, G_c, the length scale eps and AT1 are in
 # include/MaterialModelData.hpp, not here.
 #
 # Paths:

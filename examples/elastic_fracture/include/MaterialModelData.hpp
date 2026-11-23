@@ -7,8 +7,7 @@
 // unbreakable core, perfectly bonded. The values are those of a real
 // spicule, in SI units (m, N, Pa, J), on the tube of the paper written in
 // meters, mesh_files/HelicalCrack2008-h015-m.msh, 30 mm long and 2 mm across:
-// E = 20.8 GPa and nu = .3 in both regions, G_c = 500 J/m^2, AT2, the
-// regularization of the paper (eq. 8.2). The core
+// E = 20.8 GPa and nu = .3 in both regions, G_c = 500 J/m^2, AT1. The core
 // does not break, elastic: true of the mef90 runs.
 //
 // The width eps of the surface energy, the length scale of the phase field,
@@ -16,8 +15,8 @@
 // 1.5e-4 m of HelicalCrack2008-h015-m.msh, as in the mef90 runs on that
 // mesh (mef90's internal length l = 2 eps = 3e-4 m). On a finer mesh keep
 // eps >= h, e.g. eps = h; a smaller eps raises the critical stress
-// sigma_c = (9 / 16) sqrt(E G_c / (6 eps)) of AT2 (60 MPa here), so the load
-// at which the notch grows.
+// sigma_c = sqrt(3 G_c E / (16 eps)) of AT1 (114 MPa here), so the load at
+// which the notch grows.
 // Changing the materials means changing this file.
 //
 // Author: Chongran Zhao
@@ -36,7 +35,7 @@
 #include "IMaterialModel.hpp"
 #include "ISurfaceEnergy.hpp"
 #include "MaterialModel_LinearElastic.hpp"
-#include "SurfaceEnergy_AT2.hpp"
+#include "SurfaceEnergy_AT1.hpp"
 
 // The parameters of a region.
 struct region_material
@@ -82,7 +81,7 @@ inline std::unique_ptr<IMaterialModel> set_material_model(int attribute)
 // The surface energy, one per owner as the material.
 inline std::unique_ptr<ISurfaceEnergy> set_surface_energy()
 {
-   return std::make_unique<SurfaceEnergy_AT2>(toughness, width, residual_stiffness);
+   return std::make_unique<SurfaceEnergy_AT1>(toughness, width, residual_stiffness);
 }
 
 #endif
