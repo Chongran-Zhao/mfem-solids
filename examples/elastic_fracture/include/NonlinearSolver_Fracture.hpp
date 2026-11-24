@@ -43,6 +43,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "GlobalAssembly_Fracture.hpp"
+#include "LocalAssembly_Fracture_Regions.hpp"
 #include "INonlinearSolver.hpp"
 #include "SystemTools.hpp"
 
@@ -117,6 +118,19 @@ public:
       mfem::Vector alpha_owned(global_assembly->get_num_dofs());
       alpha.GetTrueDofs(alpha_owned);
       return global_assembly->get_energy(alpha_owned);
+   }
+
+   // E(alpha) with the surface terms also where the region does not break,
+   // the energy that the phase-field problem minimizes, whose derivative is
+   // the residual; the backtracking compares it.
+   double get_energy_everywhere(const mfem::ParGridFunction &alpha) const
+   {
+      auto &local_assembly =
+         dynamic_cast<LocalAssembly_Fracture_Regions &>(global_assembly->get_local_assembly());
+      local_assembly.set_surface_everywhere(true);
+      const double energy = get_energy(alpha);
+      local_assembly.set_surface_everywhere(false);
+      return energy;
    }
 
    // Required by MFEM: overrides mfem::Operator::Mult, which the SNES calls

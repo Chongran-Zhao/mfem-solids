@@ -63,7 +63,9 @@ public:
    // Required by MFEM: overrides mfem::NonlinearFormIntegrator::
    // GetElementEnergy, which NonlinearForm::GetEnergy calls on every element.
    // E = int g(alpha) psi_e + G_c ( w(alpha) + c_grad alpha,J alpha,J ) dV,
-   // and psi_e alone where the region does not break.
+   // and psi_e alone where the region does not break, as mef90, unless
+   // set_surface_everywhere(true): then also G_c ( w + c_grad alpha,J alpha,J )
+   // there, the energy whose derivative is the residual below.
    double GetElementEnergy(const mfem::FiniteElement &elem,
                            mfem::ElementTransformation &elem_map,
                            const mfem::Vector &phase) override
@@ -108,13 +110,14 @@ public:
          const double dV = quad_pt.weight * elem_map.Weight();
 
          // g(alpha) psi_e + G_c ( w + c_grad alpha,J alpha,J ), or psi_e
-         // where the region does not break
+         // where the region does not break, with the surface terms if
+         // surface_everywhere
+         const double surface = G_c * (surface_energy->get_w(alpha)
+                                       + c_grad * (dalpha_dX * dalpha_dX));
          if (is_breakable)
-            energy += dV * (surface_energy->get_g(alpha) * psi_e
-                            + G_c * (surface_energy->get_w(alpha)
-                                     + c_grad * (dalpha_dX * dalpha_dX)));
+            energy += dV * (surface_energy->get_g(alpha) * psi_e + surface);
          else
-            energy += dV * psi_e;
+            energy += dV * (surface_everywhere ? psi_e + surface : psi_e);
       }
       return energy;
    }
@@ -246,6 +249,13 @@ public:
    // LocalAssemblyTools::get_quad_rule.
    void set_quad_order(int input_quad_order) { quad_order = input_quad_order; }
 
+   // Whether GetElementEnergy counts the surface terms where the region does
+   // not break, as the residual does; false, the default, as mef90.
+   void set_surface_everywhere(bool input_surface_everywhere)
+   {
+      surface_everywhere = input_surface_everywhere;
+   }
+
 private:
    // Whether the region of an element attribute breaks.
    bool get_breakable(int attribute) const
@@ -281,6 +291,7 @@ private:
    const mfem::GridFunction &disp;      // displacement, not owned
    mfem::DenseMatrix grad_u;            // u_k,J at the point
    int quad_order = 0;   // quadrature order, 0 for that of LocalAssemblyTools
+   bool surface_everywhere = false;   // surface terms in the energy where it does not break
 };
 
 #endif

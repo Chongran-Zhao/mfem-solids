@@ -42,7 +42,10 @@
 // condition (8.15) violated, is solved again: from u = (t_j / t_i) u_i and
 // alpha = alpha_i, with the bound alpha <= alpha_(j-1), not alpha_i; the
 // steps from j on are dropped, their fields and rows of time.csv too. The
-// state of every step is kept in memory for it.
+// state of every step is kept in memory for it. The surface energy of the
+// condition is over all regions, the unbreakable ones too, that of the
+// energy the phase-field problem minimizes: the energy printed leaves it
+// out there, as mef90, and the alternate minimization need not decrease it.
 //
 // Author: Chongran Zhao
 // Date: Nov. 8, 2026
@@ -187,7 +190,12 @@ public:
          //    the scaled state of this one beats.
          if (backtracking)
          {
-            step_state state{time, dt, iterations, elastic_energy, work, surface_energy,
+            const double surface_everywhere =
+               solver_fracture->get_energy_everywhere(alpha) - elastic_energy;
+            mfem::out << std::scientific << std::setprecision(6)
+                      << "  backtracking: surface over all regions = " << surface_everywhere
+                      << std::defaultfloat << '\n';
+            step_state state{time, dt, iterations, elastic_energy, work, surface_everywhere,
                              external_work, mfem::Vector(), disp_owned, force};
             state.alpha.SetSize(alpha.ParFESpace()->GetTrueVSize());
             alpha.GetTrueDofs(state.alpha);
@@ -224,7 +232,7 @@ private:
       int iterations;         // alternate iterations
       double elastic;         // elastic energy
       double work;            // work F_ext . u of the external force
-      double surface;         // surface energy
+      double surface;         // surface energy over all regions
       double external_work;   // W_ext of the loads up to this step
       mfem::Vector alpha;     // alpha, owned dofs
       mfem::Vector disp;      // u, owned dofs
