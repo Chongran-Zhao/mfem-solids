@@ -13,3 +13,19 @@ mesh:
 
   # Name of the mesh file written by read_kfile.
   output: simon.mesh
+
+# The motion of the rigid skull, read by LoadData::read_motion: the load
+# curves of *DEFINE_CURVE in motion_file, of the velocity of the center of
+# mass of the skull along the global x, y, z (translation_curves) and of
+# its angular velocity about them (rotation_curves), the IDs of
+# *BOUNDARY_PRESCRIBED_MOTION_RIGID in Simon.k. The velocities are in the
+# lengths of the keyword file, mm, times mesh.length_scale; center is the
+# center of mass of the skull, in mm, as read_kfile reports it.
+loading:
+  motion_file: /Users/chongran/MFEM/benchmarks/Giudice2018/simon/loadcurv_thor9042P.txt
+  translation_curves: [3, 4, 5]
+  rotation_curves: [6, 7, 8]
+  center: [-7.6084146, 0.0, 31.905163]
+  # Substeps of each interval of the curves in the integration of the
+  # rotation.
+  substeps: 10

@@ -310,9 +310,11 @@ int main(int argc, char *argv[])
    // 4. The faces of the elements: an outer face, of one element, takes the
    //    attribute of the shell on it, skull or foramen, else "free"; an inner
    //    face under a shell of the falx and the tentorium is kept as a
-   //    boundary element too. A shell is found by its distinct vertices; the
-   //    shells of the skull also give its center, the mean of the shell
-   //    centers weighted by their areas, in the units of the keyword file.
+   //    boundary element too. A shell is found by its distinct vertices. The
+   //    shells of the skull, of even thickness and density, also give the
+   //    center of mass of the rigid skull, about which LS-Dyna turns it: the
+   //    mass of a shell, its area, lumped evenly to its distinct nodes, in
+   //    the units of the keyword file.
    enum bdr_attribute { skull_bdr = 1, foramen_bdr = 2, falx_bdr = 3, free_bdr = 4 };
 
    std::map<std::vector<int>, int> shell_parts;
@@ -331,8 +333,9 @@ int main(int argc, char *argv[])
 
       if (shell.part != skull_part)
          continue;
-      // Triangles (n1, n2, n3) and (n1, n3, n4), the second empty for a
-      // triangle, n3 = n4.
+      // The area of the triangles (n1, n2, n3) and (n1, n3, n4), the second
+      // empty for a triangle, n3 = n4.
+      double area = 0.0;
       for (int tri = 0; tri < 2; tri++)
       {
          const std::array<double, 3> &p0 = nodes.at(shell.nodes[0]);
@@ -345,12 +348,14 @@ int main(int argc, char *argv[])
             cross[axis] = (p1[a1] - p0[a1]) * (p2[a2] - p0[a2])
                           - (p1[a2] - p0[a2]) * (p2[a1] - p0[a1]);
          }
-         const double area = 0.5 * std::sqrt(cross[0] * cross[0] + cross[1] * cross[1]
-                                              + cross[2] * cross[2]);
-         for (int axis = 0; axis < 3; axis++)
-            skull_center[axis] += area * (p0[axis] + p1[axis] + p2[axis]) / 3.0;
-         skull_area += area;
+         area += 0.5 * std::sqrt(cross[0] * cross[0] + cross[1] * cross[1]
+                                 + cross[2] * cross[2]);
       }
+      const std::set<int> shell_nodes(shell.nodes.begin(), shell.nodes.end());
+      for (const int node : shell_nodes)
+         for (int axis = 0; axis < 3; axis++)
+            skull_center[axis] += area * nodes.at(node)[axis] / shell_nodes.size();
+      skull_area += area;
    }
    for (int axis = 0; axis < 3; axis++)
       skull_center[axis] /= skull_area;
@@ -517,8 +522,8 @@ int main(int argc, char *argv[])
    for (const auto &[region, volume] : region_volumes)
       mfem::out << std::setw(24) << region + " volume" << std::scientific
                 << std::setprecision(4) << volume << std::defaultfloat << '\n';
-   mfem::out << std::setw(24) << "skull center" << skull_center[0] << ", "
-             << skull_center[1] << ", " << skull_center[2] << " (keyword units)\n"
+   mfem::out << std::setw(24) << "skull center" << std::setprecision(8) << skull_center[0] << ", "
+             << skull_center[1] << ", " << skull_center[2] << " (keyword units)\n" << std::setprecision(6)
              << std::setw(24) << "hex length" << std::fixed << std::setprecision(2)
              << length_stats[0] << " +- " << length_stats[1] << " (keyword units)\n"
              << std::setw(24) << "hex scaled Jacobian" << jacobian_stats[0] << " +- "
