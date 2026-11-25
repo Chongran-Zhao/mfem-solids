@@ -23,7 +23,7 @@ mesh:
 # center of mass of the skull, in mm, as read_kfile reports it.
 # The football impact of Fig. 1 of Giudice et al. (2019), 0 to 0.06 s,
 # digitized by scripts/digitize_fig1.py; the sample of NHTSA,
-# .../simon/loadcurv_thor9042P.txt, has the same curves.
+# .../simon/loadcurv_thor9042P.txt, another impact, uses the same curve IDs.
 loading:
   motion_file: /Users/chongran/MFEM/benchmarks/Giudice2018/fig1/fig1_curves.k
   translation_curves: [3, 4, 5]
