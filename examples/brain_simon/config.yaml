@@ -21,8 +21,11 @@ mesh:
 # *BOUNDARY_PRESCRIBED_MOTION_RIGID in Simon.k. The velocities are in the
 # lengths of the keyword file, mm, times mesh.length_scale; center is the
 # center of mass of the skull, in mm, as read_kfile reports it.
+# The football impact of Fig. 1 of Giudice et al. (2019), 0 to 0.06 s,
+# digitized by scripts/digitize_fig1.py; the sample of NHTSA,
+# .../simon/loadcurv_thor9042P.txt, has the same curves.
 loading:
-  motion_file: /Users/chongran/MFEM/benchmarks/Giudice2018/simon/loadcurv_thor9042P.txt
+  motion_file: /Users/chongran/MFEM/benchmarks/Giudice2018/fig1/fig1_curves.k
   translation_curves: [3, 4, 5]
   rotation_curves: [6, 7, 8]
   center: [-7.6084146, 0.0, 31.905163]
