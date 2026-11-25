@@ -1,6 +1,7 @@
-# Input of read_kfile of brain_simon, given as its first argument, else read
-# from the directory it runs in; CMake copies it into brain_simon/build/.
-# The mesh is in SI units, meters; the keyword file is in mm.
+# Input of driver_TaylorHood_dynamic of brain_simon, which reads it by
+# default, and of read_kfile, given as its first argument; CMake copies it
+# into brain_simon/build/. The mesh and the solver are in SI units, meters,
+# seconds; the keyword file and the load curves are in mm.
 
 mesh:
   # The SIMon model of NHTSA, the LS-Dyna keyword file Simon.k (units ton,
@@ -32,3 +33,61 @@ loading:
   # Substeps of each interval of the curves in the integration of the
   # rotation.
   substeps: 10
+
+space:
+  # Order of the continuous shape functions of the displacement, at least 2;
+  # the pressure is one order lower (Taylor-Hood). The mesh, of hexahedra,
+  # wedges, pyramids and tetrahedra, stays straight.
+  elem_order: 2
+
+  # Quadrature order of the elements, 2 x elem_order + 1: the 3 x 3 x 3
+  # Gauss rule on the hexahedra; 0 keeps the default rule of
+  # LocalAssemblyTools.
+  quad_order: 5
+
+# Time integration method, read into TimeMethod_GenAlpha_2nd_Order.
+time_method:
+  # Spectral radius at infinite frequency of generalized-alpha, in [0, 1].
+  rho_inf: 0.5
+
+# Time steps, read into TimeSolver; the 60 ms of Fig. 1.
+time:
+  dt: 1.0e-4
+  final_time: 0.06
+
+# Displacement boundary conditions: the skull, and the foramen magnum as a
+# rigid closure of it, follow the motion of LoadData::disp_loading. The faces
+# "free", outer faces of the CSF under no shell in SIMon, stay free, and
+# "falx_tentorium" is inside the body.
+Dirichlet:
+  fixed_bc: []
+  disp_bc:
+    - { face: skull, dir: x }
+    - { face: skull, dir: y }
+    - { face: skull, dir: z }
+    - { face: foramen, dir: x }
+    - { face: foramen, dir: y }
+    - { face: foramen, dir: z }
+
+# No traction.
+Neumann:
+  faces: []
+
+# Newton's method settings; the linear solver is GMRES, with the block
+# preconditioner of include/NonlinearSolver_TaylorHood_Dynamic.hpp.
+solver:
+  # The traction-free faces, which set the level of the pressure; p = 0 on
+  # them in the pressure Laplacian of the preconditioner.
+  free_faces: [free]
+  # Solver of the tangents: gmres, with the preconditioner of
+  # include/NonlinearSolver_TaylorHood_Dynamic.hpp, or mumps, a direct solver.
+  linear_solver: gmres
+  newton_rel_tol: 1.0e-5
+  newton_abs_tol: 1.0e-8
+  newton_max_iter: 20
+
+# Output folders, in the directory the programs run in; the fields are saved
+# every gf_interval-th time step, and at the last.
+output:
+  gf: results_TaylorHood_dynamic_gf
+  gf_interval: 10

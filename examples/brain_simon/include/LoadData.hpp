@@ -2,7 +2,9 @@
 // LoadData.hpp
 //
 // The loading of brain_simon: the face "skull" moves as the rigid skull of
-// SIMon, while the body starts at rest, without body force or traction.
+// SIMon, while the body starts at rest, without body force or traction. The
+// face "foramen", the shell of the foramen magnum, of E = 6.9 GPa against
+// the kPa of the brain, may move with it too, as a rigid closure.
 //
 // SIMon drives its rigid skull by *BOUNDARY_PRESCRIBED_MOTION_RIGID of
 // Simon.k: the velocity of its center of mass c along the global axes, load
@@ -171,10 +173,10 @@ public:
    }
 
 private:
-   // The only face that moves.
+   // The faces that move with the skull.
    static void check_face(const std::string &face)
    {
-      MFEM_VERIFY(face == "skull", "Unknown face \"" << face << "\".");
+      MFEM_VERIFY(face == "skull" || face == "foramen", "Unknown face \"" << face << "\".");
    }
 
    // A load curve, its points scaled by SFA and SFO.
