@@ -1,0 +1,15 @@
+# Input of read_kfile of brain_simon, given as its first argument, else read
+# from the directory it runs in; CMake copies it into brain_simon/build/.
+# The mesh is in SI units, meters; the keyword file is in mm.
+
+mesh:
+  # The SIMon model of NHTSA, the LS-Dyna keyword file Simon.k (units ton,
+  # mm, s), from
+  # https://static.nhtsa.gov/nhtsa/downloads/NRD/Research/SIMON-Model/Simon.k
+  kfile: /Users/chongran/MFEM/benchmarks/Giudice2018/simon/Simon.k
+
+  # Factor from the lengths of the keyword file to those of the mesh, mm to m.
+  length_scale: 1.0e-3
+
+  # Name of the mesh file written by read_kfile.
+  output: simon.mesh
