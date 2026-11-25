@@ -31,6 +31,22 @@
 // iterations are the alternate iterations of the step, not the Newton ones.
 // It owns the two nonlinear solvers.
 //
+// With backtracking: true in the fracture section of config.yaml, the
+// backtracking of Bourdin, Francfort and Marigo (J. Elasticity 2008),
+// Section 8.2.2, Algorithm 2, also Algorithm 2 of Bourdin (2007): the loads
+// being proportional to t and the bulk energy quadratic in u, the state of
+// step i scaled to an earlier step j, ((t_j / t_i) u_i, alpha_i), is
+// admissible at step j, of energy (t_j / t_i)^2 (elastic_i - work_i)
+// + surface_i. After each step i, the first step j = 1, ..., i - 1 where
+//    E_j - (t_j / t_i)^2 (elastic_i - work_i) - surface_i >= backtracking_tol,
+// condition (8.15) violated, is solved again: from u = (t_j / t_i) u_i and
+// alpha = alpha_i, with the bound alpha <= alpha_(j-1), not alpha_i; the
+// steps from j on are dropped, their fields and rows of time.csv too. The
+// state of every step is kept in memory for it. The surface energy of the
+// condition is over all regions, the unbreakable ones too, that of the
+// energy the phase-field problem minimizes: the energy printed leaves it
+// out there, as mef90, and the alternate minimization need not decrease it.
+//
 // Author: Chongran Zhao
 // Date: Nov. 8, 2026
 // Email: chongran_zhao@brown.edu
@@ -46,7 +62,9 @@
 #include <ios>
 #include <memory>
 #include <string>
+#include <sstream>
 #include <utility>
+#include <vector>
 
 #include <mfem.hpp>
 #include <yaml-cpp/yaml.h>
@@ -74,6 +92,8 @@ public:
         solver_fracture(std::move(input_solver_fracture)),
         tol(fracture["tol"].as<double>()),
         max_iter(fracture["max_iter"].as<int>()),
+        backtracking(fracture["backtracking"] ? fracture["backtracking"].as<bool>() : false),
+        backtracking_tol(backtracking ? fracture["backtracking_tol"].as<double>() : 0.0),
         time_steps(input_time_steps)
    {
    }
@@ -98,9 +118,14 @@ public:
       double external_work = 0.0;
       double surface_0 = 0.0;
 
+      // The converged steps so far, step k at history[k], kept only with
+      // backtracking.
+      std::vector<step_state> history;
+
       mfem::StopWatch step_timer;
       double time_n = 0.0;
-      for (int step = 0; step <= num_steps; step++)
+      int step = 0;
+      while (step <= num_steps)
       {
          // Wall-clock time of the step, up to the convergence.
          step_timer.Restart();
@@ -112,8 +137,17 @@ public:
                    << "Time step " << step << " / " << num_steps << ", t = " << time
                    << ", dt = " << dt << '\n';
 
-         // 1. The bounds alpha <= alpha_n, from the alpha of the previous step.
-         solver_fracture->set_bounds(alpha);
+         // 1. The bounds alpha <= alpha_n, from the alpha of the previous step;
+         //    with backtracking, the one kept, alpha_(j-1) after going back
+         //    to step j, while alpha starts from alpha_i.
+         if (backtracking && step > 0)
+         {
+            mfem::ParGridFunction alpha_n(alpha.ParFESpace());
+            alpha_n.SetFromTrueDofs(history[step - 1].alpha);
+            solver_fracture->set_bounds(alpha_n);
+         }
+         else
+            solver_fracture->set_bounds(alpha);
 
          // 2. The alternate minimization.
          const int iterations = solve_alternate(step, num_steps, time, disp, alpha);
@@ -151,10 +185,112 @@ public:
          }
 
          time_n = time;
+
+         // 4. The backtracking: back to the first earlier step whose energy
+         //    the scaled state of this one beats.
+         if (backtracking)
+         {
+            const double surface_everywhere =
+               solver_fracture->get_energy_everywhere(alpha) - elastic_energy;
+            mfem::out << std::scientific << std::setprecision(6)
+                      << "  backtracking: surface over all regions = " << surface_everywhere
+                      << std::defaultfloat << '\n';
+            step_state state{time, dt, iterations, elastic_energy, work, surface_everywhere,
+                             external_work, mfem::Vector(), disp_owned, force};
+            state.alpha.SetSize(alpha.ParFESpace()->GetTrueVSize());
+            alpha.GetTrueDofs(state.alpha);
+            history.push_back(std::move(state));
+
+            const int target = find_backtrack(history);
+            if (target > 0)
+            {
+               // u = (t_j / t_i) u_i, alpha = alpha_i; the state of step
+               // j - 1 for the energy balance; the steps from j on dropped.
+               disp *= history[target].time / time;
+               const step_state &previous = history[target - 1];
+               force_n = previous.force;
+               disp_n = previous.disp;
+               external_work = previous.external_work;
+               time_n = previous.time;
+               drop_steps(target, step, num_steps, history, time_file);
+               step = target;
+               continue;
+            }
+         }
+         step++;
       }
    }
 
 private:
+   // The converged state of a step, kept for the backtracking: energies, the
+   // work W_ext so far, and alpha, u and the internal force on the dofs this
+   // rank owns.
+   struct step_state
+   {
+      double time;            // t of the step
+      double dt;              // t - t of the previous step
+      int iterations;         // alternate iterations
+      double elastic;         // elastic energy
+      double work;            // work F_ext . u of the external force
+      double surface;         // surface energy over all regions
+      double external_work;   // W_ext of the loads up to this step
+      mfem::Vector alpha;     // alpha, owned dofs
+      mfem::Vector disp;      // u, owned dofs
+      mfem::Vector force;     // internal force, owned dofs
+   };
+
+   // The first step j = 1, ..., i - 1 at which the state of the last step i
+   // of history, scaled to t_j, has an energy lower by backtracking_tol or
+   // more, condition (8.15) of Bourdin, Francfort and Marigo (2008)
+   // violated; 0 if none. Prints the step found.
+   int find_backtrack(const std::vector<step_state> &history) const
+   {
+      const int last = static_cast<int>(history.size()) - 1;
+      const step_state &current = history[last];
+      for (int earlier = 1; earlier < last; earlier++)
+      {
+         const step_state &state = history[earlier];
+         const double ratio = state.time / current.time;
+         const double scaled = ratio * ratio * (current.elastic - current.work) + current.surface;
+         const double energy = state.elastic - state.work + state.surface;
+         if (energy - scaled >= backtracking_tol)
+         {
+            mfem::out << std::scientific << std::setprecision(6)
+                      << "  backtracking: step " << last << " -> step " << earlier
+                      << ", E = " << energy << ", scaled E of step " << last << " = "
+                      << scaled << ", difference = " << energy - scaled
+                      << std::defaultfloat << '\n';
+            return earlier;
+         }
+      }
+      return 0;
+   }
+
+   // Drops the steps from target to last, solved again: their states, the
+   // fields saved of them, and time.csv rewritten with the saved steps
+   // before target.
+   void drop_steps(int target, int last, int num_steps, std::vector<step_state> &history,
+                   std::ofstream &time_file)
+   {
+      history.resize(target);
+      if (mfem::Mpi::Root())
+      {
+         for (int step = target; step <= last; step++)
+            for (const char *name : {"disp", "alpha"})
+            {
+               std::ostringstream file_name;
+               file_name << name << '_' << std::setw(4) << std::setfill('0') << step << ".gf";
+               std::filesystem::remove(results_dir / file_name.str());
+            }
+         time_file.close();
+      }
+      time_file = open_time_file();
+      for (int step = 1; step < target; step++)
+         if (is_saved(step, num_steps))
+            write_time(time_file, step, history[step].time, history[step].dt,
+                       history[step].iterations);
+   }
+
    // Alternate minimization at time: disp and alpha are solved in turn until
    // the largest change of alpha is at most tol; aborts unless it converges
    // in max_iter iterations. Returns the number of iterations. step of
@@ -208,6 +344,8 @@ private:
    const std::unique_ptr<NonlinearSolver_Fracture> solver_fracture;   // alpha with u fixed
    const double tol;         // tolerance on ||alpha^(j+1) - alpha^(j)||_inf
    const int max_iter;       // maximum of alternate iterations per step
+   const bool backtracking;          // whether to backtrack
+   const double backtracking_tol;    // delta of the backtracking, in J
    const TimeSteps time_steps;   // t_n of the steps
 };
 

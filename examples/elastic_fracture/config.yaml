@@ -59,11 +59,16 @@ Neumann:
   faces: []
 
 # Alternate minimization: alpha = 0 on the initial crack; a load step stops
-# at ||alpha^(j+1) - alpha^(j)||_inf <= tol.
+# at ||alpha^(j+1) - alpha^(j)||_inf <= tol. backtracking: true goes back to
+# an earlier step j whose energy the state of step i, scaled to t_j, beats by
+# backtracking_tol (J) or more (Bourdin, Francfort and Marigo 2008,
+# Algorithm 2); it needs the loads proportional to t.
 fracture:
   initial_crack: [crack]
   tol: 1.0e-3
   max_iter: 3000
+  backtracking: false
+  backtracking_tol: 1.0e-6
 
 # linear_solver: gmres (BoomerAMG) or mumps.
 solver_disp:

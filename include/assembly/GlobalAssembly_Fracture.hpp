@@ -61,6 +61,9 @@ public:
    // owns.
    double get_energy(const mfem::Vector &alpha) const { return global_assembly.GetEnergy(alpha); }
 
+   // The local assembly, owned by this.
+   mfem::NonlinearFormIntegrator &get_local_assembly() const { return *local_assembly; }
+
    // R(alpha) at every dof this rank owns.
    void assemble_residual(const mfem::Vector &alpha, mfem::Vector &residual) const
    {
