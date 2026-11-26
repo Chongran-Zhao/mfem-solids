@@ -6,10 +6,12 @@
 #    driver_TaylorHood_dynamic   config.yaml   Taylor-Hood, generalized-alpha, GMRES,
 #                                              the skull moved by the load curves
 #                                              of loading.motion_file
+#    vtu_writer                  config.yaml   the saved fields to VTU, for ParaView
 #
 # Build and run in this folder:
 #    cmake -B build && cmake --build build
 #    cd build && ./read_kfile config.yaml && mpirun -np 8 ./driver_TaylorHood_dynamic
+#    mpirun -np 8 ./vtu_writer
 # ============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(brain_simon LANGUAGES CXX)
@@ -36,3 +38,7 @@ target_link_libraries(read_kfile PRIVATE ${mfem_libraries})
 add_executable(driver_TaylorHood_dynamic driver_TaylorHood_dynamic.cpp ${case_headers})
 target_include_directories(driver_TaylorHood_dynamic PRIVATE include)
 target_link_libraries(driver_TaylorHood_dynamic PRIVATE mfem_solids)
+
+add_executable(vtu_writer vtu_writer.cpp ${case_headers})
+target_include_directories(vtu_writer PRIVATE include)
+target_link_libraries(vtu_writer PRIVATE mfem_solids)

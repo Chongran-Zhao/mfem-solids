@@ -7,10 +7,12 @@
 // hexahedra at (refine + 1)^3 evenly spaced points of its reference cube, as
 // the visualization of MixPERIGEE does, so that the curved geometry and the
 // fields of the higher-order elements show within it; the points of an
-// element are its own, not shared with its neighbors. At each point it
+// element are its own, not shared with its neighbors. Wedges, pyramids and
+// tetrahedra are cut likewise, by mfem::GeometryRefiner, into cells of their
+// own kind, the pyramids into pyramids and tetrahedra. At each point it
 // writes the displacement, and, if given, the velocity and the
 // acceleration; the pressure; the Cauchy and the second Piola-Kirchhoff
-// stresses and the Green-Lagrange strain; and for each hexahedron the
+// stresses and the Green-Lagrange strain; and for each cell the
 // region of its element, the element attribute. The pressure is that of
 // the pressure field of the mixed form, and in the displacement form
 // p = -tr(sigma) / 3, the pressure of the volumetric model, since the
@@ -149,14 +151,23 @@ public:
             append_symmetric(E_out, Q_ref.transpose() * E * Q_ref);
          }
 
-         // The hexahedra of this element; MFEM and VTK order their vertices
-         // the same way.
-         for (int hh = 0; hh < refined.RefGeoms.Size() / 8; hh++)
+         // The cells of this element, of its geometry, in groups of its
+         // number of vertices; a group of a pyramid ending in -1 is a
+         // tetrahedron. MFEM and VTK order the vertices the same way, the
+         // prism too: VTK's cell validator takes MFEM's reference prism as
+         // valid, not with mfem::VTKGeometry::PrismMap.
+         const mfem::Geometry::Type geom = elem.GetGeomType();
+         const int num_verts = mfem::Geometry::NumVerts[geom];
+         for (int cc = 0; cc < refined.RefGeoms.Size() / num_verts; cc++)
          {
-            for (int vv = 0; vv < 8; vv++)
-               connectivity.push_back(first_point + refined.RefGeoms[8 * hh + vv]);
+            const int *cell = refined.RefGeoms.GetData() + num_verts * cc;
+            const bool is_tet = geom == mfem::Geometry::TETRAHEDRON
+                                || (geom == mfem::Geometry::PYRAMID && cell[4] < 0);
+            const int num_cell_verts = is_tet ? 4 : num_verts;
+            for (int vv = 0; vv < num_cell_verts; vv++)
+               connectivity.push_back(first_point + cell[vv]);
             offsets.push_back(static_cast<std::int32_t>(connectivity.size()));
-            types.push_back(12);   // VTK_HEXAHEDRON
+            types.push_back(get_vtk_type(is_tet ? mfem::Geometry::TETRAHEDRON : geom));
             regions.push_back(attribute);
          }
       }
@@ -240,6 +251,20 @@ protected:
 private:
    std::filesystem::path dir;
    const int refine;                                   // hexahedra per edge of an element
+
+   // The VTK cell type of a geometry of three dimensions.
+   static std::uint8_t get_vtk_type(mfem::Geometry::Type geom)
+   {
+      switch (geom)
+      {
+         case mfem::Geometry::TETRAHEDRON: return 10;   // VTK_TETRA
+         case mfem::Geometry::CUBE: return 12;          // VTK_HEXAHEDRON
+         case mfem::Geometry::PRISM: return 13;         // VTK_WEDGE
+         case mfem::Geometry::PYRAMID: return 14;       // VTK_PYRAMID
+         default: MFEM_ABORT("No VTK cell for geometry " << geom << ".");
+      }
+      return 0;
+   }
 
    // The components Q^T v of a vector in the basis Q.
    static void append_vector(std::vector<float> &data, const Tensor2_3D &Q,
